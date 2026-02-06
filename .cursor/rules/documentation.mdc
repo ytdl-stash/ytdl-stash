@@ -1,0 +1,45 @@
+---
+description: Read roadmap + current phase before building, update docs after changes
+alwaysApply: true
+---
+
+# Documentation-Driven Development
+
+Docs live in `docs/`. Read only what you need — the roadmap tells you what that is.
+
+## Before Starting Work
+
+1. Read `docs/roadmap/README.md` to find the **current phase** (first non-COMPLETE phase).
+2. Read that phase file (e.g. `docs/roadmap/phase-07-routes.md`). It lists deliverables and which pattern/recipe docs to follow.
+3. Read **only** the pattern/recipe docs the phase file references. Do NOT read every doc up front.
+4. If the task isn't tied to a phase, read only the specific doc relevant to the task (architecture, data-flow, glossary, etc.).
+
+### Available docs (read on-demand, not all at once)
+
+- `docs/architecture/README.md` -- system overview, component map, config reference, status lifecycle
+- `docs/adr/` -- architectural decision records
+- `docs/patterns/` -- code patterns (FastAPI, SQLAlchemy, yt-dlp, Stash GraphQL, HTMX)
+- `docs/recipes/` -- step-by-step guides (add config, DB field, route, Stash query)
+- `docs/data-flow.md` -- end-to-end pipeline
+- `docs/glossary.md` -- key terms
+
+## After Making Changes
+
+Update docs to reflect your changes:
+
+- New config setting → update `docs/architecture/README.md` config table.
+- New model/field → update `docs/architecture/README.md` schema section.
+- New architectural decision → write a new ADR in `docs/adr/`.
+- New pattern → add to relevant file in `docs/patterns/`.
+- Changed pipeline flow → update `docs/data-flow.md`.
+- New term → add to `docs/glossary.md`.
+- Completed a deliverable → mark it `[x]` in the phase file.
+
+## Key Rules (always apply — no need to look these up)
+
+- Pydantic v2 `model_config` dict, NOT inner `class Config` (ADR-006).
+- `Mapped[T]` + `mapped_column()` for models, NOT legacy `Column()`.
+- Wrap yt-dlp calls with `asyncio.to_thread()` — they are blocking.
+- Use `Depends(get_db)` and `Depends(get_settings)` in routes — never instantiate directly.
+- HTMX partials prefixed with `_`, do NOT extend `base.html`.
+- Use `lifespan` async context manager, NOT `@app.on_event` decorators.

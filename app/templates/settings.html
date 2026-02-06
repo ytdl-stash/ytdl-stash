@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Settings — ytdl-stash{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<table>
+  <tbody>
+    <tr><th>Stash URL</th><td>{{ settings.stash_url }}</td></tr>
+    <tr><th>Stash API Key</th><td>{{ '***' if settings.stash_api_key else '(empty)' }}</td></tr>
+    <tr><th>Download directory</th><td>{{ settings.download_dir }}</td></tr>
+    <tr><th>Stash download dir (path mapping)</th><td>{{ settings.stash_download_dir or '—' }}</td></tr>
+    <tr><th>Data directory</th><td>{{ settings.data_dir }}</td></tr>
+    <tr><th>Default check interval (hours)</th><td>{{ settings.default_check_interval_hours }}</td></tr>
+    <tr><th>Download delay (seconds)</th><td>{{ settings.download_delay_seconds }}</td></tr>
+    <tr><th>Cookies file</th><td>{{ settings.cookies_file or '—' }}</td></tr>
+    <tr><th>yt-dlp output template</th><td><code>{{ settings.ytdlp_output_template }}</code></td></tr>
+  </tbody>
+</table>
+<h2>Stash connection</h2>
+<button hx-post="/settings/test-stash"
+        hx-target="#stash-test-result"
+        hx-swap="innerHTML"
+        hx-indicator="#stash-test-spinner">
+  Test Stash Connection
+</button>
+<span id="stash-test-spinner" class="htmx-indicator">Testing…</span>
+<span id="stash-test-result"></span>
+<h2>Import from YoutubeDL-Material</h2>
+<p>Upload your <code>local_db.json</code> file to import subscriptions as channels and downloaded files as videos. Duplicates (same URL or video ID) are skipped.</p>
+<form id="import-form"
+      hx-post="/settings/import"
+      hx-target="#import-results"
+      hx-swap="innerHTML"
+      hx-encoding="multipart/form-data"
+      hx-indicator="#import-spinner">
+  <label for="import-file">JSON file (local_db.json)</label>
+  <input type="file" id="import-file" name="file" accept=".json" required>
+  <label>
+    <input type="checkbox" name="include_playlists" value="true">
+    Include playlists
+  </label>
+  <div>
+    <button type="submit" name="dry_run" value="true">Preview Import</button>
+    <button type="submit" name="dry_run" value="false">Import</button>
+  </div>
+</form>
+<span id="import-spinner" class="htmx-indicator">Importing…</span>
+<div id="import-results"></div>
+{% endblock %}

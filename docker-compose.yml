@@ -1,0 +1,32 @@
+services:
+  ytdl-stash:
+    # Use the pre-built image from GitHub Container Registry:
+    # image: ghcr.io/<OWNER>/ytdl-stash:latest
+    # Or build from source:
+    build: .
+    ports:
+      - "8282:8000"
+    volumes:
+      - ./data:/app/data
+      - ${DOWNLOAD_PATH:-./downloads}:/downloads
+      # Optional: mount cookies file (also uncomment YTDL_COOKIES_FILE below)
+      # - ./cookies.txt:/app/cookies.txt:ro
+    environment:
+      YTDL_STASH_URL: ${STASH_URL:-http://host.docker.internal:9999}
+      YTDL_STASH_API_KEY: ${STASH_API_KEY:-}
+      YTDL_DOWNLOAD_DIR: /downloads
+      # YTDL_STASH_DOWNLOAD_DIR: /data/downloads  # Path to downloads as Stash sees it
+      YTDL_DATA_DIR: /app/data
+      # YTDL_COOKIES_FILE: /app/cookies.txt
+      # YTDL_DEFAULT_CHECK_INTERVAL_HOURS: 6
+      # YTDL_DOWNLOAD_DELAY_SECONDS: 5
+      # YTDL_YTDLP_OUTPUT_TEMPLATE: "%(uploader)s - %(title)s [%(id)s].%(ext)s"
+      # YTDL_LOG_LEVEL: INFO
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

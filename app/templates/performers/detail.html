@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ channel.name }} — Performers — ytdl-stash{% endblock %}
+{% block content %}
+<p><a href="/performers">← Back to Performers</a></p>
+<article>
+  <header class="performer-detail-header">
+    {% if channel.performer_image_url %}
+    <img src="{{ channel.performer_image_url }}" alt="" class="performer-detail-img" width="120" height="120">
+    {% else %}
+    <div class="performer-detail-placeholder"></div>
+    {% endif %}
+    <div>
+      <h2>{{ channel.name }}</h2>
+      <p><span class="performer-site-badge">{{ channel.site }}</span></p>
+      <p><a href="{{ channel.url }}" target="_blank" rel="noopener">{{ channel.url }}</a></p>
+      <p>
+        {% if channel.stash_performer_id %}
+        <span class="stash-linked"></span>
+        <a href="{{ stash_url }}/performers/{{ channel.stash_performer_id }}" target="_blank" rel="noopener">Open in Stash</a>
+        {% else %}
+        <span class="stash-unlinked"></span>
+        {% endif %}
+      </p>
+    </div>
+  </header>
+  <div class="performer-detail-actions" style="margin: 1rem 0;">
+    <form action="/performers/{{ channel.id }}/toggle" method="post" style="display: inline;">
+      <button type="submit" class="{% if not channel.enabled %}secondary{% endif %}">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
+    </form>
+    <form action="/performers/{{ channel.id }}/sync" method="post" style="display: inline;">
+      <button type="submit">Sync to Stash</button>
+    </form>
+  </div>
+  <h3>Videos ({{ videos|length }})</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Status</th>
+        <th>Upload Date</th>
+        <th>Duration</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% include "videos/_table_body.html" %}
+    </tbody>
+  </table>
+</article>
+{% endblock %}

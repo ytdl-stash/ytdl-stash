@@ -1,0 +1,29 @@
+<div id="import-results-content">
+  <p><strong>{{ result.channels_created }} channel(s) created</strong>, {{ result.channels_skipped }} skipped — <strong>{{ result.videos_created }} video(s) created</strong>, {{ result.videos_skipped }} skipped.</p>
+  {% if result.dry_run %}
+  <p><em>This is a preview. No changes were saved.</em></p>
+  {% endif %}
+  {% if result.errors %}
+  <details open>
+    <summary>Errors ({{ result.errors|length }})</summary>
+    <ul>
+      {% for err in result.errors %}
+      <li class="error">{{ err }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+  {% if result.warnings %}
+  <details>
+    <summary>Warnings ({{ result.warnings|length }})</summary>
+    <ul>
+      {% for w in result.warnings %}
+      <li>{{ w }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+  {% if result.channels_created + result.videos_created > 0 and not result.dry_run %}
+  <p><a href="/channels">View channels</a></p>
+  {% endif %}
+</div>

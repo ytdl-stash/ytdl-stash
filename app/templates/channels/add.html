@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Add Channel — ytdl-stash{% endblock %}
+{% block content %}
+<h1>Add Channel</h1>
+<p><a href="/channels">← Back to Channels</a></p>
+<form method="post" action="/channels">
+  <label>URL <input type="url" name="url" placeholder="Channel URL" required></label>
+  <label>Name <input type="text" name="name" placeholder="Display name"></label>
+  <label>Interval (hours) <input type="number" name="check_interval_hours" value="6" min="1"></label>
+  <button type="submit">Add Channel</button>
+</form>
+{% endblock %}

@@ -1,0 +1,14 @@
+.git
+.cursor
+__pycache__
+*.pyc
+data/
+downloads/
+.env
+docs/
+.venv/
+*.md
+.gitignore
+*.egg-info/
+.env.example
+terminals/

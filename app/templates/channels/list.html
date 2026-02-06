@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Channels — ytdl-stash{% endblock %}
+{% block content %}
+<h1>Channels</h1>
+<form hx-post="/channels"
+      hx-target="#channel-list"
+      hx-swap="beforeend"
+      hx-on::after-request="this.reset()">
+  <div class="grid">
+    <label>URL <input type="url" name="url" placeholder="Channel URL" required></label>
+    <label>Name <input type="text" name="name" placeholder="Display name"></label>
+    <label>Interval (hours) <input type="number" name="check_interval_hours" value="6" min="1"></label>
+  </div>
+  <button type="submit">Add Channel</button>
+</form>
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Site</th>
+      <th>Videos</th>
+      <th>Interval</th>
+      <th>Last Checked</th>
+      <th>Status</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody id="channel-list">
+    {% for channel in channels %}
+    {% include "channels/_row.html" %}
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

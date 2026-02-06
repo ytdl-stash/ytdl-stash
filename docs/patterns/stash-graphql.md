@@ -1,0 +1,295 @@
+# Stash GraphQL Patterns
+
+Reference patterns for how this project communicates with the Stash GraphQL API. Read this before modifying the Stash client module.
+
+**Implementation note:** In `app/stash_client.py`, GraphQL query and mutation strings are defined as module-level constants (e.g. `_METADATA_SCAN_MUTATION`, `_FIND_SCENES_QUERY`) for readability and reuse; methods call `self._query(constant, variables)`.
+
+---
+
+## Client Setup
+
+```python
+# app/stash_client.py
+import httpx
+
+class StashClient:
+    def __init__(self, url: str, api_key: str = ""):
+        self.graphql_url = f"{url.rstrip('/')}/graphql"
+        self.headers = {"Content-Type": "application/json"}
+        if api_key:
+            self.headers["ApiKey"] = api_key
+        self._client: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> "StashClient":
+        self._client = httpx.AsyncClient(headers=self.headers, timeout=30.0)
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+    async def _query(self, query: str, variables: dict | None = None) -> dict:
+        payload = {"query": query, "variables": variables or {}}
+        if self._client:
+            response = await self._client.post(self.graphql_url, json=payload)
+        else:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.graphql_url, json=payload, headers=self.headers,
+                )
+        response.raise_for_status()
+        data = response.json()
+        if "errors" in data:
+            raise RuntimeError(f"GraphQL errors: {data['errors']}")
+        return data["data"]
+```
+
+**Key points:**
+- Stash uses the `ApiKey` header (not `Authorization: Bearer`).
+- The GraphQL endpoint is always at `{stash_url}/graphql`.
+- All methods are async (using httpx).
+- Timeout is set to 30s to handle slow scan operations.
+- Use as an async context manager (`async with StashClient(...) as c:`) to reuse connections across requests (especially important during polling).
+
+---
+
+## Trigger Metadata Scan
+
+Tell Stash to scan specific file paths:
+
+```python
+async def trigger_scan(self, paths: list[str]) -> None:
+    query = """
+    mutation MetadataScan($input: ScanMetadataInput!) {
+        metadataScan(input: $input)
+    }
+    """
+    variables = {
+        "input": {
+            "paths": paths,
+            "scanGenerateCovers": False,
+            "scanGeneratePreviews": False,
+            "scanGenerateSprites": False,
+            "scanGeneratePhashes": False,
+        }
+    }
+    await self._query(query, variables)
+```
+
+**Note**: We disable cover/preview/sprite/phash generation to speed up the scan. We only need the file fingerprinted (oshash + md5) and the scene created.
+
+---
+
+## Find Scene by oshash
+
+Query Stash for a scene matching a specific file oshash fingerprint:
+
+```python
+async def find_scene_by_oshash(self, oshash: str) -> dict | None:
+    query = """
+    query FindScenes($filter: FindFilterType!, $scene_filter: SceneFilterType!) {
+        findScenes(filter: $filter, scene_filter: $scene_filter) {
+            scenes {
+                id
+                title
+                files {
+                    path
+                    fingerprints {
+                        type
+                        value
+                    }
+                }
+            }
+        }
+    }
+    """
+    variables = {
+        "filter": {"per_page": 1},
+        "scene_filter": {
+            "oshash": {
+                "value": oshash,
+                "modifier": "EQUALS",
+            }
+        }
+    }
+    data = await self._query(query, variables)
+    scenes = data["findScenes"]["scenes"]
+    return scenes[0] if scenes else None
+```
+
+---
+
+## Find or Create Performer
+
+```python
+async def find_performer(self, name: str) -> str | None:
+    query = """
+    query FindPerformers($filter: FindFilterType!, $performer_filter: PerformerFilterType!) {
+        findPerformers(filter: $filter, performer_filter: $performer_filter) {
+            performers {
+                id
+                name
+            }
+        }
+    }
+    """
+    variables = {
+        "filter": {"per_page": 1},
+        "performer_filter": {
+            "name": {
+                "value": name,
+                "modifier": "EQUALS",
+            }
+        }
+    }
+    data = await self._query(query, variables)
+    performers = data["findPerformers"]["performers"]
+    return performers[0]["id"] if performers else None
+
+async def create_performer(self, name: str) -> str:
+    query = """
+    mutation PerformerCreate($input: PerformerCreateInput!) {
+        performerCreate(input: $input) {
+            id
+        }
+    }
+    """
+    data = await self._query(query, {"input": {"name": name}})
+    return data["performerCreate"]["id"]
+
+async def find_or_create_performer(self, name: str) -> str:
+    performer_id = await self.find_performer(name)
+    if performer_id:
+        return performer_id
+    return await self.create_performer(name)
+```
+
+---
+
+## Find or Create Studio
+
+Same pattern as performers:
+
+```python
+async def find_studio(self, name: str) -> str | None:
+    query = """
+    query FindStudios($filter: FindFilterType!, $studio_filter: StudioFilterType!) {
+        findStudios(filter: $filter, studio_filter: $studio_filter) {
+            studios {
+                id
+                name
+            }
+        }
+    }
+    """
+    variables = {
+        "filter": {"per_page": 1},
+        "studio_filter": {
+            "name": {
+                "value": name,
+                "modifier": "EQUALS",
+            }
+        }
+    }
+    data = await self._query(query, variables)
+    studios = data["findStudios"]["studios"]
+    return studios[0]["id"] if studios else None
+
+async def find_or_create_studio(self, name: str) -> str:
+    studio_id = await self.find_studio(name)
+    if studio_id:
+        return studio_id
+    return await self.create_studio(name)
+```
+
+---
+
+## Update Scene Metadata
+
+Apply title, performers, studio, date, and URLs to a scene:
+
+```python
+async def update_scene(
+    self,
+    scene_id: str,
+    title: str | None = None,
+    urls: list[str] | None = None,
+    date: str | None = None,       # "YYYY-MM-DD" format
+    studio_id: str | None = None,
+    performer_ids: list[str] | None = None,
+) -> None:
+    query = """
+    mutation SceneUpdate($input: SceneUpdateInput!) {
+        sceneUpdate(input: $input) {
+            id
+        }
+    }
+    """
+    scene_input: dict = {"id": scene_id}
+    if title is not None:
+        scene_input["title"] = title
+    if urls is not None:
+        scene_input["urls"] = urls
+    if date is not None:
+        scene_input["date"] = date
+    if studio_id is not None:
+        scene_input["studio_id"] = studio_id
+    if performer_ids is not None:
+        scene_input["performer_ids"] = performer_ids
+
+    await self._query(query, {"input": scene_input})
+```
+
+**Note**: Only include fields that have values. Stash will clear fields that are set to empty/null.
+
+---
+
+## Health Check
+
+Verify connectivity to Stash:
+
+```python
+async def health_check(self) -> bool:
+    try:
+        query = "query { systemStatus { status } }"
+        data = await self._query(query)
+        return data["systemStatus"]["status"] == "OK"
+    except Exception:
+        return False
+```
+
+---
+
+## Polling Pattern for Scene Discovery
+
+After triggering a scan, the scene may not appear immediately. Poll with backoff:
+
+```python
+import asyncio
+import time
+
+async def wait_for_scene(self, oshash: str, timeout: float = 30, interval: float = 2) -> dict | None:
+    """Poll Stash for a scene matching the oshash, with timeout."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        scene = await self.find_scene_by_oshash(oshash)
+        if scene:
+            return scene
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        await asyncio.sleep(min(interval, remaining))
+    return None  # Timed out
+```
+
+**Rule**: Always use this polling pattern after `trigger_scan`. Never assume the scene exists immediately. Use `time.monotonic()` for wall-clock tracking so HTTP request time counts toward the timeout.
+
+---
+
+## Stash GraphQL Schema Notes
+
+- **IDs are strings** in GraphQL, even though they are integers internally. Always pass them as `str`.
+- **Dates** use `YYYY-MM-DD` format (ISO 8601 date only, no time).
+- **Filter modifiers**: `EQUALS`, `NOT_EQUALS`, `INCLUDES`, `EXCLUDES`, `IS_NULL`, `NOT_NULL`, `MATCHES_REGEX`.
+- **Pagination**: `FindFilterType` has `page`, `per_page`, `sort`, `direction`.

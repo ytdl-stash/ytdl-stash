@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Videos — ytdl-stash{% endblock %}
+{% block content %}
+<h1>Videos</h1>
+<form id="filter-form" method="get" action="/videos" class="inline">
+  <div class="grid" style="align-items: end;">
+    <label>
+      Channel
+      <select name="channel_id">
+        <option value="">All</option>
+        {% for c in channels %}
+        <option value="{{ c.id }}" {% if selected_channel_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Status
+      <select name="status">
+        <option value="">All</option>
+        <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>Pending</option>
+        <option value="downloading" {% if selected_status == 'downloading' %}selected{% endif %}>Downloading</option>
+        <option value="importing" {% if selected_status == 'importing' %}selected{% endif %}>Importing</option>
+        <option value="imported" {% if selected_status == 'imported' %}selected{% endif %}>Imported</option>
+        <option value="synced" {% if selected_status == 'synced' %}selected{% endif %}>Synced</option>
+        <option value="failed" {% if selected_status == 'failed' %}selected{% endif %}>Failed</option>
+      </select>
+    </label>
+    <button type="submit">Filter</button>
+  </div>
+</form>
+<div hx-get="/videos"
+     hx-trigger="every 10s"
+     hx-target="#video-table-body"
+     hx-swap="innerHTML"
+     hx-include="#filter-form">
+  <table>
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Channel</th>
+        <th>Status</th>
+        <th>Upload Date</th>
+        <th>Duration</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="video-table-body">
+      {% include "videos/_table_body.html" %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

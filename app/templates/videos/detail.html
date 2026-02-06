@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ video.title }} — ytdl-stash{% endblock %}
+{% block content %}
+<p><a href="/videos">← Back to Videos</a></p>
+<article>
+  <header>
+    <h2>{{ video.title }}</h2>
+    <p>
+      {% include "videos/_status_badge.html" %}
+      {% if video.channel %}<a href="/videos?channel_id={{ video.channel.id }}">{{ video.channel.name }}</a>{% else %}—{% endif %}
+    </p>
+  </header>
+  <dl>
+    <dt>URL</dt>
+    <dd><a href="{{ video.url }}" target="_blank" rel="noopener">{{ video.url }}</a></dd>
+    <dt>Site video ID</dt>
+    <dd>{{ video.site_video_id }}</dd>
+    <dt>Upload date</dt>
+    <dd>{{ video.upload_date.isoformat() if video.upload_date else '—' }}</dd>
+    <dt>Performers</dt>
+    <dd>{{ video.performers|join(', ') if video.performers else '—' }}</dd>
+    <dt>Studio</dt>
+    <dd>{{ video.studio or '—' }}</dd>
+    <dt>Duration</dt>
+    <dd>{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</dd>
+    <dt>Error</dt>
+    <dd>{{ video.error_message or '—' }}</dd>
+    <dt>OSHash</dt>
+    <dd>{{ video.oshash or '—' }}</dd>
+    <dt>Original filename</dt>
+    <dd>{{ video.original_filename or '—' }}</dd>
+    <dt>Stash scene</dt>
+    <dd>
+      {% if video.stash_scene_id and settings %}
+      <a href="{{ settings.stash_url.rstrip('/') }}/scenes/{{ video.stash_scene_id }}" target="_blank" rel="noopener">View in Stash</a>
+      {% elif video.stash_scene_id %}
+      {{ video.stash_scene_id }}
+      {% else %}
+      —
+      {% endif %}
+    </dd>
+  </dl>
+  <footer>
+    {% if video.status == 'failed' %}
+    <button hx-post="/videos/{{ video.id }}/retry"
+            hx-target="#video-status-{{ video.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Retry download for '{{ video.title|e }}'?">
+      Retry
+    </button>
+    {% endif %}
+    <button hx-delete="/videos/{{ video.id }}"
+            hx-confirm="Delete this video?"
+            class="secondary">
+      Delete
+    </button>
+  </footer>
+</article>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% for video in videos %}
+<tr id="video-row-{{ video.id }}">
+  <td><a href="/videos/{{ video.id }}">{{ video.title }}</a></td>
+  <td>{{ video.channel.name if video.channel else '—' }}</td>
+  <td>{% include "videos/_status_badge.html" %}</td>
+  <td>{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>
+  <td>{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</td>
+  <td>
+    <a href="/videos/{{ video.id }}">Detail</a>
+    {% if video.status == 'failed' %}
+    <button hx-post="/videos/{{ video.id }}/retry"
+            hx-target="#video-status-{{ video.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Retry download for '{{ video.title|e }}'?">
+      Retry
+    </button>
+    {% endif %}
+    <button hx-delete="/videos/{{ video.id }}"
+            hx-target="#video-row-{{ video.id }}"
+            hx-swap="outerHTML swap:1s"
+            hx-confirm="Delete this video?"
+            class="secondary">
+      Delete
+    </button>
+  </td>
+</tr>
+{% endfor %}

@@ -1,0 +1,35 @@
+<tr id="channel-row-{{ channel.id }}">
+  <td><a href="/videos?channel_id={{ channel.id }}">{{ channel.name }}</a></td>
+  <td>{{ channel.site }}</td>
+  <td>{{ channel.videos|length }}</td>
+  <td>{{ channel.check_interval_hours }}h</td>
+  <td>{{ channel.last_checked_at.strftime('%Y-%m-%d %H:%M') if channel.last_checked_at else 'Never' }}</td>
+  <td>
+    <form hx-put="/channels/{{ channel.id }}"
+          hx-target="#channel-row-{{ channel.id }}"
+          hx-swap="outerHTML"
+          style="display: inline;">
+      <input type="hidden" name="name" value="{{ channel.name|e }}">
+      <input type="hidden" name="enabled" value="{{ 'false' if channel.enabled else 'true' }}">
+      <input type="hidden" name="check_interval_hours" value="{{ channel.check_interval_hours }}">
+      <button type="submit" class="{{ 'secondary' if not channel.enabled else '' }}">{{ 'Enabled' if channel.enabled else 'Disabled' }}</button>
+    </form>
+  </td>
+  <td>
+    <button hx-post="/channels/{{ channel.id }}/check-now"
+            hx-target="#check-result-{{ channel.id }}"
+            hx-swap="innerHTML"
+            hx-indicator="#spinner-{{ channel.id }}">
+      Check Now
+    </button>
+    <span id="spinner-{{ channel.id }}" class="htmx-indicator">Scanning…</span>
+    <span id="check-result-{{ channel.id }}"></span>
+    <button hx-delete="/channels/{{ channel.id }}"
+            hx-target="#channel-row-{{ channel.id }}"
+            hx-swap="outerHTML swap:1s"
+            hx-confirm="Delete channel '{{ channel.name|e }}' and all its videos?"
+            class="secondary">
+      Delete
+    </button>
+  </td>
+</tr>

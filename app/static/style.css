@@ -1,0 +1,157 @@
+/* ytdl-stash custom overrides (Pico CSS does the heavy lifting) */
+
+/* HTMX loading indicator */
+.htmx-indicator {
+  display: none;
+}
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  display: inline;
+}
+
+/* Status badges: green=synced, yellow=pending, blue=downloading/importing, red=failed */
+.badge-synced { color: var(--pico-ins-color, #2e7d32); font-weight: 600; }
+.badge-pending { color: #f9a825; font-weight: 600; }
+.badge-downloading,
+.badge-importing { color: var(--pico-primary, #1976d2); font-weight: 600; }
+.badge-failed { color: var(--pico-del-color, #c62828); font-weight: 600; }
+
+/* Stash test result */
+.success { color: var(--pico-ins-color, #2e7d32); }
+.error { color: var(--pico-del-color, #c62828); }
+
+/* Dashboard stat cards grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+/* Fade-out for deleted rows (HTMX swap) */
+.htmx-swapping {
+  opacity: 0;
+  transition: opacity 0.5s ease-out;
+}
+
+/* Performer browser */
+.performer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 1rem;
+}
+
+.performer-card {
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+}
+
+.performer-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.performer-card-link {
+  display: block;
+  padding: 1rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.performer-card-img,
+.performer-card-placeholder {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+  margin-bottom: 0.5rem;
+  border-radius: var(--pico-border-radius);
+}
+
+.performer-card-placeholder {
+  background: var(--pico-muted-background);
+}
+
+.performer-card-name {
+  margin: 0 0 0.25rem 0;
+  font-size: 1rem;
+}
+
+.performer-site-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+  background: var(--pico-muted-background);
+  border-radius: var(--pico-border-radius);
+  margin-right: 0.5rem;
+}
+
+.performer-video-count {
+  font-size: 0.875rem;
+  color: var(--pico-muted-color);
+}
+
+.watched-indicator::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--pico-ins-color, #2e7d32);
+  margin-left: 0.25rem;
+  vertical-align: middle;
+}
+
+.not-watched-indicator::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--pico-muted-color);
+  margin-left: 0.25rem;
+  vertical-align: middle;
+}
+
+.stash-linked::before {
+  content: "✓ Stash";
+  font-size: 0.75rem;
+  color: var(--pico-ins-color, #2e7d32);
+}
+
+.stash-unlinked::before {
+  content: "Stash —";
+  font-size: 0.75rem;
+  color: var(--pico-muted-color);
+}
+
+.performer-card-actions {
+  padding: 0 1rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.performer-detail-header {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.performer-detail-img,
+.performer-detail-placeholder {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: var(--pico-border-radius);
+  flex-shrink: 0;
+}
+
+.performer-detail-placeholder {
+  background: var(--pico-muted-background);
+}
+
+/* Phase 12: imported video status (from YTDLM import) */
+.badge-imported { color: #7b1fa2; font-weight: 600; }

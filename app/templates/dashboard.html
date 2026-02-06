@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — ytdl-stash{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<div class="stats-grid">
+  <article>
+    <header>Total Channels</header>
+    <p>{{ total_channels }}</p>
+  </article>
+  <article>
+    <header>Total Videos</header>
+    <p>{{ total_videos }}</p>
+  </article>
+  <article>
+    <header>Pending</header>
+    <p>{{ pending_count }}</p>
+  </article>
+  <article>
+    <header>Failed</header>
+    <p>{{ failed_count }}</p>
+  </article>
+</div>
+<h2>Recent Downloads</h2>
+{% if recent_downloads %}
+<table>
+  <thead>
+    <tr>
+      <th>Title</th>
+      <th>Channel</th>
+      <th>Synced</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for video in recent_downloads %}
+    <tr>
+      <td><a href="/videos/{{ video.id }}">{{ video.title }}</a></td>
+      <td>{{ video.channel.name if video.channel else '—' }}</td>
+      <td>{{ video.updated_at.strftime('%Y-%m-%d %H:%M') if video.updated_at else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No recent downloads.</p>
+{% endif %}
+{% endblock %}
