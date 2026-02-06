@@ -1,3 +1,4 @@
+import html
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -63,7 +64,7 @@ def create_app() -> FastAPI:
             )
         if request.headers.get("HX-Request"):
             return HTMLResponse(
-                f'<span class="error">Error: {exc.detail}</span>',
+                f'<span class="error">Error: {html.escape(str(exc.detail))}</span>',
                 status_code=exc.status_code,
             )
         return templates.TemplateResponse(
@@ -81,7 +82,7 @@ def create_app() -> FastAPI:
         logger.exception("Unhandled exception: %s", exc)
         if request.headers.get("HX-Request"):
             return HTMLResponse(
-                f'<span class="error">Error: {exc!s}</span>',
+                f'<span class="error">Error: {html.escape(str(exc))}</span>',
                 status_code=500,
             )
         return templates.TemplateResponse(

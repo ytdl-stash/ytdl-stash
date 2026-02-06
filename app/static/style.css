@@ -12,6 +12,7 @@
 /* Status badges: green=synced, yellow=pending, blue=downloading/importing, red=failed */
 .badge-synced { color: var(--pico-ins-color, #2e7d32); font-weight: 600; }
 .badge-pending { color: #f9a825; font-weight: 600; }
+.badge-downloaded,
 .badge-downloading,
 .badge-importing { color: var(--pico-primary, #1976d2); font-weight: 600; }
 .badge-failed { color: var(--pico-del-color, #c62828); font-weight: 600; }

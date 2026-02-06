@@ -19,6 +19,7 @@
         <option value="">All</option>
         <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>Pending</option>
         <option value="downloading" {% if selected_status == 'downloading' %}selected{% endif %}>Downloading</option>
+        <option value="downloaded" {% if selected_status == 'downloaded' %}selected{% endif %}>Downloaded</option>
         <option value="importing" {% if selected_status == 'importing' %}selected{% endif %}>Importing</option>
         <option value="imported" {% if selected_status == 'imported' %}selected{% endif %}>Imported</option>
         <option value="synced" {% if selected_status == 'synced' %}selected{% endif %}>Synced</option>

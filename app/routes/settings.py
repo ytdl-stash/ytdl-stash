@@ -1,5 +1,6 @@
 """Settings routes: settings page, Stash connectivity test, and YTDLM import."""
 
+import html as html_mod
 import json
 import logging
 
@@ -50,7 +51,7 @@ async def test_stash(
     except Exception as e:
         logger.warning("Stash test failed: %s", e)
         return HTMLResponse(
-            f'<span class="error">Error: {e!s}</span>',
+            f'<span class="error">Error: {html_mod.escape(str(e))}</span>',
             status_code=502,
         )
 
