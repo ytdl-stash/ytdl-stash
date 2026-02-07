@@ -1,5 +1,13 @@
-<tr id="channel-row-{{ channel.id }}">
-  <td><a href="/videos?channel_id={{ channel.id }}">{{ channel.name }}</a></td>
+<tr id="channel-row-{{ channel.id }}" class="{{ 'opacity-65 grayscale hover:opacity-90' if not channel.enabled else '' }}">
+  <td>
+    <a href="/videos?channel_id={{ channel.id }}">{{ channel.name }}</a>
+    <button class="btn btn-sm btn-ghost ml-2"
+            hx-get="/channels/{{ channel.id }}/edit"
+            hx-target="#channel-row-{{ channel.id }}"
+            hx-swap="outerHTML">
+      Edit
+    </button>
+  </td>
   <td>{{ channel.site }}</td>
   <td>{{ channel.videos|length }}</td>
   <td>{{ channel.check_interval_hours }}h</td>
@@ -10,17 +18,18 @@
     <form hx-put="/channels/{{ channel.id }}"
           hx-target="#channel-row-{{ channel.id }}"
           hx-swap="outerHTML"
-          style="display: inline;">
+          class="inline">
       <input type="hidden" name="name" value="{{ channel.name|e }}">
       <input type="hidden" name="enabled" value="{{ 'false' if channel.enabled else 'true' }}">
       <input type="hidden" name="check_interval_hours" value="{{ channel.check_interval_hours }}">
       {% if channel.max_video_age_days %}<input type="hidden" name="max_video_age_days" value="{{ channel.max_video_age_days }}">{% endif %}
       {% if channel.min_duration_seconds %}<input type="hidden" name="min_duration_seconds" value="{{ channel.min_duration_seconds }}">{% endif %}
-      <button type="submit" class="{{ 'secondary' if not channel.enabled else '' }}">{{ 'Enabled' if channel.enabled else 'Disabled' }}</button>
+      <button type="submit" class="btn btn-sm {{ 'btn-ghost' if not channel.enabled else 'btn-primary' }}">{{ 'Enabled' if channel.enabled else 'Disabled' }}</button>
     </form>
   </td>
   <td>
-    <button hx-post="/channels/{{ channel.id }}/check-now"
+    <button class="btn btn-sm btn-primary"
+            hx-post="/channels/{{ channel.id }}/check-now"
             hx-target="#check-result-{{ channel.id }}"
             hx-swap="innerHTML"
             hx-indicator="#spinner-{{ channel.id }}">
@@ -28,11 +37,11 @@
     </button>
     <span id="spinner-{{ channel.id }}" class="htmx-indicator">Scanning…</span>
     <span id="check-result-{{ channel.id }}"></span>
-    <button hx-delete="/channels/{{ channel.id }}"
+    <button class="btn btn-sm btn-error"
+            hx-delete="/channels/{{ channel.id }}"
             hx-target="#channel-row-{{ channel.id }}"
             hx-swap="outerHTML swap:1s"
-            hx-confirm="Delete channel '{{ channel.name|e }}' and all its videos?"
-            class="secondary">
+            hx-confirm="Delete channel '{{ channel.name|e }}' and all its videos?">
       Delete
     </button>
   </td>

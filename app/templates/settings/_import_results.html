@@ -4,19 +4,19 @@
   <p><em>This is a preview. No changes were saved.</em></p>
   {% endif %}
   {% if result.errors %}
-  <details open>
-    <summary>Errors ({{ result.errors|length }})</summary>
-    <ul>
+  <details open class="mt-2">
+    <summary class="cursor-pointer">Errors ({{ result.errors|length }})</summary>
+    <ul class="list-disc pl-6 mt-1">
       {% for err in result.errors %}
-      <li class="error">{{ err }}</li>
+      <li class="text-error">{{ err }}</li>
       {% endfor %}
     </ul>
   </details>
   {% endif %}
   {% if result.warnings %}
-  <details>
-    <summary>Warnings ({{ result.warnings|length }})</summary>
-    <ul>
+  <details class="mt-2">
+    <summary class="cursor-pointer">Warnings ({{ result.warnings|length }})</summary>
+    <ul class="list-disc pl-6 mt-1">
       {% for w in result.warnings %}
       <li>{{ w }}</li>
       {% endfor %}
@@ -24,6 +24,6 @@
   </details>
   {% endif %}
   {% if result.channels_created + result.videos_created > 0 and not result.dry_run %}
-  <p><a href="/channels">View channels</a></p>
+  <p><a href="/channels" class="link link-hover">View channels</a></p>
   {% endif %}
 </div>

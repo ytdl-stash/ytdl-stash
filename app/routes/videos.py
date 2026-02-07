@@ -10,6 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.config import Settings, get_settings
 from app.database import get_db
+from app.download_control import download_control
+from app.download_progress import download_progress
 from app.main import templates
 from app.models import Channel, Video
 
@@ -45,11 +47,12 @@ async def list_videos(
 
     result = await db.execute(stmt)
     videos = list(result.scalars().all())
+    progress_map = download_progress.snapshot()
 
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
             "videos/_table_body.html",
-            {"request": request, "videos": videos},
+            {"request": request, "videos": videos, "download_progress": progress_map},
         )
 
     channels = list(
@@ -63,6 +66,7 @@ async def list_videos(
             "channels": channels,
             "selected_channel_id": channel_id_int,
             "selected_status": status_clean,
+            "download_progress": progress_map,
         },
     )
 
@@ -86,7 +90,34 @@ async def video_detail(
 
     return templates.TemplateResponse(
         "videos/detail.html",
-        {"request": request, "video": video, "settings": settings},
+        {
+            "request": request,
+            "video": video,
+            "settings": settings,
+            "download_progress": download_progress.snapshot(),
+            "poll_status_badge": True,
+        },
+    )
+
+
+@router.get("/{video_id}/status_badge")
+async def video_status_badge(
+    video_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """HTMX partial: status badge (optionally includes download progress)."""
+    video = await db.get(Video, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    return templates.TemplateResponse(
+        "videos/_status_badge.html",
+        {
+            "request": request,
+            "video": video,
+            "download_progress": download_progress.snapshot(),
+            "poll_status_badge": True,
+        },
     )
 
 
@@ -100,10 +131,10 @@ async def retry_video(
     video = await db.get(Video, video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-    if video.status != "failed":
+    if video.status not in {"failed", "cancelled"}:
         raise HTTPException(
             status_code=400,
-            detail="Only failed videos can be retried",
+            detail="Only failed/cancelled videos can be retried",
         )
 
     video.status = "pending"
@@ -114,6 +145,54 @@ async def retry_video(
         return templates.TemplateResponse(
             "videos/_status_badge.html",
             {"request": request, "video": video},
+        )
+    return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
+
+
+@router.post("/{video_id}/stop")
+async def stop_video(
+    video_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Request a pending/in-flight video to stop.
+
+    - pending: mark cancelled immediately
+    - downloading/downloaded/importing: request cooperative cancellation and mark "cancelling"
+    """
+    video = await db.get(Video, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    if video.status == "pending":
+        video.status = "cancelled"
+        video.error_message = "Cancelled by user"
+        download_progress.clear(video.id)
+        download_control.clear_cancel(video.id)
+        await db.commit()
+    elif video.status in {"downloading", "downloaded", "importing"}:
+        download_control.request_cancel(video.id)
+        if video.status != "cancelling":
+            video.status = "cancelling"
+            await db.commit()
+    elif video.status == "cancelling":
+        # Already requested; no-op.
+        pass
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot stop a video in status '{video.status}'",
+        )
+
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            "videos/_status_badge.html",
+            {
+                "request": request,
+                "video": video,
+                "download_progress": download_progress.snapshot(),
+                "poll_status_badge": True,
+            },
         )
     return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
 

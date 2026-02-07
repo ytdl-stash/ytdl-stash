@@ -6,11 +6,19 @@ import logging
 import os
 import struct
 from datetime import date
+from typing import Any
 
 import yt_dlp
 from yt_dlp.utils import DownloadError
+from collections.abc import Callable
+
+from app.config import Settings
 
 logger = logging.getLogger(__name__)
+
+
+class DownloadCancelled(Exception):
+    """Raised to cooperatively abort a yt-dlp download when the user requests stop."""
 
 
 def _parse_date(date_str: str | None) -> date | None:
@@ -96,7 +104,96 @@ def _extract_thumbnail(info: dict) -> str | None:
     return thumb
 
 
-def extract_channel_metadata(url: str, cookies_file: str | None = None) -> dict:
+def _parse_json_obj(text: str, *, name: str) -> dict[str, Any]:
+    """Parse a JSON object string from settings. Returns {} on invalid input."""
+    s = (text or "").strip()
+    if not s:
+        return {}
+    try:
+        val = json.loads(s)
+    except Exception:
+        logger.warning("Invalid %s JSON (must be an object); ignoring", name)
+        return {}
+    if not isinstance(val, dict):
+        logger.warning("Invalid %s JSON (must be an object); ignoring", name)
+        return {}
+    return val
+
+
+def _build_common_ytdlp_opts(settings: Settings) -> dict[str, Any]:
+    """Build common yt-dlp options shared by scan + download."""
+    opts: dict[str, Any] = {}
+
+    if settings.ytdlp_proxy:
+        opts["proxy"] = settings.ytdlp_proxy
+    if settings.ytdlp_socket_timeout_seconds is not None:
+        opts["socket_timeout"] = settings.ytdlp_socket_timeout_seconds
+    if settings.ytdlp_impersonate:
+        opts["impersonate"] = settings.ytdlp_impersonate
+
+    headers: dict[str, Any] = {}
+    headers.update(
+        _parse_json_obj(
+            settings.ytdlp_http_headers_json, name="YTDL_YTDLP_HTTP_HEADERS_JSON"
+        )
+    )
+    if settings.ytdlp_user_agent:
+        headers["User-Agent"] = settings.ytdlp_user_agent
+    if settings.ytdlp_referer:
+        headers["Referer"] = settings.ytdlp_referer
+    if headers:
+        opts["http_headers"] = headers
+
+    return opts
+
+
+def _build_scan_opts(settings: Settings) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "extract_flat": True,
+        "quiet": True,
+        "no_warnings": True,
+    }
+    if settings.cookies_file:
+        base["cookiefile"] = settings.cookies_file
+
+    base.update(_build_common_ytdlp_opts(settings))
+    base.update(
+        _parse_json_obj(settings.ytdlp_scan_opts_json, name="YTDL_YTDLP_SCAN_OPTS_JSON")
+    )
+    return base
+
+
+def _build_download_opts(
+    settings: Settings,
+    *,
+    outtmpl: str,
+    progress_hook: Callable[[dict], None] | None,
+) -> dict[str, Any]:
+    opts: dict[str, Any] = {
+        "outtmpl": outtmpl,
+        "quiet": True,
+        "no_warnings": True,
+        "retries": settings.ytdlp_retries,
+        "fragment_retries": settings.ytdlp_fragment_retries,
+    }
+    if settings.cookies_file:
+        opts["cookiefile"] = settings.cookies_file
+    if settings.ytdlp_format:
+        opts["format"] = settings.ytdlp_format
+    if progress_hook is not None:
+        # yt-dlp calls these with a progress dict (from the download thread)
+        opts["progress_hooks"] = [progress_hook]
+
+    opts.update(_build_common_ytdlp_opts(settings))
+    opts.update(
+        _parse_json_obj(
+            settings.ytdlp_download_opts_json, name="YTDL_YTDLP_DOWNLOAD_OPTS_JSON"
+        )
+    )
+    return opts
+
+
+def extract_channel_metadata(url: str, settings: Settings) -> dict:
     """Extract channel-level metadata (name, thumbnail, description) from a channel URL.
 
     Uses flat extraction first (fast) so we get playlist/channel-level info
@@ -105,13 +202,7 @@ def extract_channel_metadata(url: str, cookies_file: str | None = None) -> dict:
 
     Returns dict with name, thumbnail, description keys.
     """
-    opts: dict = {
-        "extract_flat": True,
-        "quiet": True,
-        "no_warnings": True,
-    }
-    if cookies_file:
-        opts["cookiefile"] = cookies_file
+    opts = _build_scan_opts(settings)
 
     try:
         logger.debug("Extracting channel metadata (flat): %s", url)
@@ -130,14 +221,13 @@ def extract_channel_metadata(url: str, cookies_file: str | None = None) -> dict:
     # If no thumbnail from flat mode, try non-flat with no video entries
     if not thumbnail:
         try:
-            nf_opts: dict = {
-                "extract_flat": False,
-                "quiet": True,
-                "no_warnings": True,
-                "playlistend": 0,  # Do not process any video entries
-            }
-            if cookies_file:
-                nf_opts["cookiefile"] = cookies_file
+            nf_opts = dict(opts)
+            nf_opts.update(
+                {
+                    "extract_flat": False,
+                    "playlistend": 0,  # Do not process any video entries
+                }
+            )
             logger.debug("Re-extracting channel metadata (non-flat): %s", url)
             with yt_dlp.YoutubeDL(nf_opts) as ydl:
                 nf_info = ydl.extract_info(url, download=False)
@@ -190,7 +280,7 @@ def _derive_video_id(entry: dict) -> str | None:
     return None
 
 
-def scan_channel(url: str, cookies_file: str | None = None) -> dict:
+def scan_channel(url: str, settings: Settings) -> dict:
     """Scan a channel URL and return video entries plus channel-level metadata.
 
     Returns a dict with:
@@ -198,13 +288,7 @@ def scan_channel(url: str, cookies_file: str | None = None) -> dict:
       - ``channel_meta``: dict — channel-level info (name, thumbnail) extracted
         from the same yt-dlp call so no extra request is needed.
     """
-    opts: dict = {
-        "extract_flat": True,
-        "quiet": True,
-        "no_warnings": True,
-    }
-    if cookies_file:
-        opts["cookiefile"] = cookies_file
+    opts = _build_scan_opts(settings)
 
     try:
         logger.info("yt-dlp scanning channel URL: %s", url)
@@ -261,19 +345,12 @@ def download_video(
     url: str,
     output_dir: str,
     output_template: str,
-    cookies_file: str | None = None,
+    settings: Settings,
+    progress_hook: Callable[[dict], None] | None = None,
 ) -> dict:
     """Download a single video and return filepath plus metadata dict."""
     outtmpl = f"{output_dir}/{output_template}"
-    opts: dict = {
-        "outtmpl": outtmpl,
-        "quiet": True,
-        "no_warnings": True,
-        "retries": 3,
-        "fragment_retries": 3,
-    }
-    if cookies_file:
-        opts["cookiefile"] = cookies_file
+    opts = _build_download_opts(settings, outtmpl=outtmpl, progress_hook=progress_hook)
 
     try:
         logger.info("Downloading: %s -> %s", url, outtmpl)
@@ -310,27 +387,28 @@ async def async_compute_oshash(filepath: str) -> str:
 
 
 async def async_extract_channel_metadata(
-    url: str, cookies_file: str | None = None
+    url: str, settings: Settings
 ) -> dict:
     """Async wrapper for extract_channel_metadata. Use from async code to avoid blocking the event loop."""
-    return await asyncio.to_thread(extract_channel_metadata, url, cookies_file)
+    return await asyncio.to_thread(extract_channel_metadata, url, settings)
 
 
-async def async_scan_channel(url: str, cookies_file: str | None = None) -> dict:
+async def async_scan_channel(url: str, settings: Settings) -> dict:
     """Async wrapper for scan_channel. Use this from async code to avoid blocking the event loop.
 
     Returns dict with ``entries`` (list[dict]) and ``channel_meta`` (dict).
     """
-    return await asyncio.to_thread(scan_channel, url, cookies_file)
+    return await asyncio.to_thread(scan_channel, url, settings)
 
 
 async def async_download_video(
     url: str,
     output_dir: str,
     output_template: str,
-    cookies_file: str | None = None,
+    settings: Settings,
+    progress_hook: Callable[[dict], None] | None = None,
 ) -> dict:
     """Async wrapper for download_video. Use this from async code to avoid blocking the event loop."""
     return await asyncio.to_thread(
-        download_video, url, output_dir, output_template, cookies_file
+        download_video, url, output_dir, output_template, settings, progress_hook
     )

@@ -174,16 +174,22 @@ yt-dlp flat extract -> {entries: [...], channel_meta: {name, thumbnail}}
 **Trigger**: The `download_processor` job runs every 30 seconds (with `max_instances=1` to prevent overlap).
 
 **What happens**:
-1. Query one `Video` row with `status="pending"`, ordered by `created_at ASC` (FIFO).
+1. Query up to `settings.max_concurrent_downloads` `Video` row(s) with `status="pending"`, ordered by `created_at ASC` (FIFO).
 2. If none found, exit.
-3. Set `video.status = "downloading"`.
-4. Call `download_video(video.url, settings.download_dir, settings.ytdlp_output_template, settings.cookies_file)` via `asyncio.to_thread()`.
-5. On success:
+3. For each picked video, set `video.status = "downloading"`.
+4. Call `download_video(video.url, settings.download_dir, settings.ytdlp_output_template, settings.cookies_file)` via `asyncio.to_thread()` (each download runs in a worker thread).
+5. While downloading, yt-dlp `progress_hooks` update an **in-memory** progress store (percent/ETA/speed) so the web UI can render a progress bar.
+6. If the user clicks **Stop** while a video is pending or in-flight:
+   - `pending` videos are marked `status="cancelled"` immediately.
+   - In-flight videos are marked `status="cancelling"` and a cooperative cancel flag is set; the yt-dlp hook aborts the download and the pipeline finalizes with `status="cancelled"`.
+7. On success:
    a. Save `filepath`, `filename`, `performers`, `studio`, `duration`, `thumbnail_url`, `metadata_json` to the video row.
    b. Set `video.status = "downloaded"`.
-6. On failure:
+8. On failure:
    a. Set `video.status = "failed"`, `video.error_message = str(error)`.
-7. Wait `settings.download_delay_seconds` before the next iteration.
+9. Respect `settings.download_delay_seconds` as a throttle:
+   - With `max_concurrent_downloads=1`, it is applied **between** downloads.
+   - With `max_concurrent_downloads>1`, starts are **staggered** by this delay to reduce burstiness.
 
 **Data flow**:
 ```
@@ -357,6 +363,7 @@ video.status = "synced"
 |------|-------|----------|
 | 3 - Scan | yt-dlp extraction fails | Log error, skip channel this cycle |
 | 4 - Download | yt-dlp download fails | `status=failed`, `error_message` saved |
+| 4 - Download | user stop requested | `status=cancelled`, `error_message="Cancelled by user"` |
 | 5 - oshash | File read error | `status=failed`, `error_message` saved |
 | 6 - Stash scan | Stash unreachable | `status=failed`, `error_message` saved |
 | 7 - Poll | Timeout (scene not found) | `status=failed`, retry possible |
@@ -380,12 +387,16 @@ When a user clicks "Retry" on a failed video:
 
 The **Jobs** page (`/jobs`) provides a central control panel for all background operations. Each job shows its current status (idle/running), last run time, and duration. The page auto-refreshes via HTMX polling every 3 seconds.
 
+If a job is running, a **Stop** button is available:
+- For most jobs, this cancels the running task (best-effort).
+- For **Process Downloads**, Stop requests cooperative cancellation of any active video downloads (so the yt-dlp worker thread(s) can abort cleanly).
+
 ### Available Jobs
 
 | Job | Endpoint | Description |
 |-----|----------|-------------|
 | **Check All Channels** | `POST /jobs/check_all_channels/trigger` | Scans all enabled channels that are due for new videos (same as the scheduled `channel_checker`). |
-| **Process Downloads** | `POST /jobs/process_downloads/trigger` | Downloads and imports the next pending video in the queue (same as the scheduled `download_processor`). |
+| **Process Downloads** | `POST /jobs/process_downloads/trigger` | Downloads and imports pending videos in the queue (up to configured concurrency, same as the scheduled `download_processor`). |
 | **Retry All Failed** | `POST /jobs/retry_all_failed/trigger` | Resets every `status=failed` video back to `status=pending` so the download processor retries them. |
 
 ### Contextual Triggers

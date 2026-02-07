@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -12,9 +13,44 @@ class Settings(BaseSettings):
     stash_download_dir: str | None = None  # Path to downloads as Stash sees it; None = use download_dir
     data_dir: str = "/app/data"
     default_check_interval_hours: int = 6
+    max_concurrent_downloads: int = Field(
+        default=1,
+        ge=1,
+        le=16,
+        description="Max number of videos to download/import in parallel (default: 1).",
+    )
     download_delay_seconds: int = 5
     cookies_file: str | None = None
     ytdlp_output_template: str = "%(uploader)s - %(title)s [%(id)s].%(ext)s"
+    # ---------------------------------------------------------------------
+    # yt-dlp options (applied to scan/download calls)
+    #
+    # These are intentionally "opt-in" knobs with safe defaults; advanced
+    # users can set any yt-dlp option via the JSON fields below.
+    # ---------------------------------------------------------------------
+    ytdlp_format: str | None = None
+    ytdlp_impersonate: str | None = None
+    ytdlp_user_agent: str | None = None
+    ytdlp_referer: str | None = None
+    ytdlp_proxy: str | None = None
+    ytdlp_socket_timeout_seconds: int | None = None
+
+    # Defaults match the previous hard-coded downloader behavior
+    ytdlp_retries: int = 3
+    ytdlp_fragment_retries: int = 3
+
+    # Advanced overrides: JSON objects merged into yt-dlp options dict.
+    # - http_headers_json is merged into opts["http_headers"]
+    # - scan_opts_json merged for channel scans/metadata extraction
+    # - download_opts_json merged for downloads
+    #
+    # Note: These are strings so they can be supplied via env vars easily.
+    ytdlp_http_headers_json: str = "{}"
+    ytdlp_scan_opts_json: str = "{}"
+    ytdlp_download_opts_json: str = "{}"
+
+    # Convenience: periodically check whether a newer yt-dlp exists on PyPI
+    ytdlp_update_check_interval_hours: int = 24
     log_level: str = "INFO"
 
     model_config = {"env_prefix": "YTDL_"}

@@ -37,9 +37,7 @@ async def _enrich_from_source(
         return
 
     try:
-        meta = await async_extract_channel_metadata(
-            channel.url, settings.cookies_file
-        )
+        meta = await async_extract_channel_metadata(channel.url, settings)
         if needs_name and meta.get("name"):
             channel.name = meta["name"]
         if needs_thumb and meta.get("thumbnail"):

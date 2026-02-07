@@ -10,7 +10,9 @@ Source sites (adult video platforms) are aggressive about rate limiting and IP b
 
 ## Decision
 
-Process downloads **sequentially** (one at a time) with a configurable **delay between downloads** (`YTDL_DOWNLOAD_DELAY_SECONDS`, default 5 seconds).
+Default to **sequential** downloads (one at a time) with a configurable **delay between downloads** (`YTDL_DOWNLOAD_DELAY_SECONDS`, default 5 seconds).
+
+Advanced users can opt into **parallel** downloads by setting `YTDL_MAX_CONCURRENT_DOWNLOADS` to a value greater than 1 (default: 1). This increases throughput but also increases the risk of rate limiting and IP bans.
 
 ## Alternatives Considered
 
@@ -18,7 +20,7 @@ Process downloads **sequentially** (one at a time) with a configurable **delay b
 - Faster throughput.
 - Much higher risk of rate limiting and IP bans.
 - Complicates error handling and status tracking.
-- Rejected because reliability trumps speed for a background automation tool.
+- Rejected as the default because reliability trumps speed for a background automation tool, but supported as an opt-in setting (`YTDL_MAX_CONCURRENT_DOWNLOADS`).
 
 ### External download manager (aria2c, wget)
 - Better resume support.
@@ -36,7 +38,7 @@ Process downloads **sequentially** (one at a time) with a configurable **delay b
 
 **Negative:**
 - Slow for large backlogs. 100 pending videos at 5s delay = ~8 minutes just in delay time, plus download time.
-- Users with fast connections and multiple sites may want parallelism. Can be revisited later as a per-site concurrency setting.
+- Users with fast connections and multiple sites may want parallelism. `YTDL_MAX_CONCURRENT_DOWNLOADS` provides a global opt-in; a per-site concurrency setting can be revisited later.
 
 ## Implementation Notes
 

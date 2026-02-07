@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Videos — ytdl-stash{% endblock %}
 {% block content %}
-<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
-  <h1 style="margin-bottom: 0;">Videos</h1>
+<div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+  <h1 class="text-2xl font-bold m-0">Videos</h1>
   <span id="job-inline-retry_all_failed">
-    <button class="job-btn secondary"
+    <button class="btn btn-sm btn-secondary"
             hx-post="/jobs/retry_all_failed/trigger"
             hx-target="#job-inline-retry_all_failed"
             hx-swap="innerHTML"
@@ -13,31 +13,33 @@
     </button>
   </span>
 </div>
-<form id="filter-form" method="get" action="/videos" class="inline">
-  <div class="grid" style="align-items: end;">
-    <label>
-      Channel
-      <select name="channel_id">
+<form id="filter-form" method="get" action="/videos" class="mb-4">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+    <label class="form-control w-full max-w-xs">
+      <span class="label-text">Channel</span>
+      <select name="channel_id" class="select select-bordered w-full">
         <option value="">All</option>
         {% for c in channels %}
         <option value="{{ c.id }}" {% if selected_channel_id == c.id %}selected{% endif %}>{{ c.name }}</option>
         {% endfor %}
       </select>
     </label>
-    <label>
-      Status
-      <select name="status">
+    <label class="form-control w-full max-w-xs">
+      <span class="label-text">Status</span>
+      <select name="status" class="select select-bordered w-full">
         <option value="">All</option>
         <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>Pending</option>
         <option value="downloading" {% if selected_status == 'downloading' %}selected{% endif %}>Downloading</option>
+        <option value="cancelling" {% if selected_status == 'cancelling' %}selected{% endif %}>Cancelling</option>
         <option value="downloaded" {% if selected_status == 'downloaded' %}selected{% endif %}>Downloaded</option>
         <option value="importing" {% if selected_status == 'importing' %}selected{% endif %}>Importing</option>
         <option value="imported" {% if selected_status == 'imported' %}selected{% endif %}>Imported</option>
         <option value="synced" {% if selected_status == 'synced' %}selected{% endif %}>Synced</option>
         <option value="failed" {% if selected_status == 'failed' %}selected{% endif %}>Failed</option>
+        <option value="cancelled" {% if selected_status == 'cancelled' %}selected{% endif %}>Cancelled</option>
       </select>
     </label>
-    <button type="submit">Filter</button>
+    <button type="submit" class="btn btn-primary">Filter</button>
   </div>
 </form>
 <div hx-get="/videos"
@@ -45,7 +47,7 @@
      hx-target="#video-table-body"
      hx-swap="innerHTML"
      hx-include="#filter-form">
-  <table>
+  <table class="table">
     <thead>
       <tr>
         <th>Title</th>

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Settings — ytdl-stash{% endblock %}
 {% block content %}
-<h1>Settings</h1>
-<table>
+<h1 class="text-2xl font-bold mb-4">Settings</h1>
+<table class="table mb-6">
   <tbody>
     <tr><th>Stash URL</th><td>{{ settings.stash_url }}</td></tr>
     <tr><th>Stash API Key</th><td>{{ '***' if settings.stash_api_key else '(empty)' }}</td></tr>
@@ -10,39 +10,126 @@
     <tr><th>Stash download dir (path mapping)</th><td>{{ settings.stash_download_dir or '—' }}</td></tr>
     <tr><th>Data directory</th><td>{{ settings.data_dir }}</td></tr>
     <tr><th>Default check interval (hours)</th><td>{{ settings.default_check_interval_hours }}</td></tr>
+    <tr><th>Max concurrent downloads</th><td>{{ settings.max_concurrent_downloads }}</td></tr>
     <tr><th>Download delay (seconds)</th><td>{{ settings.download_delay_seconds }}</td></tr>
     <tr><th>Cookies file</th><td>{{ settings.cookies_file or '—' }}</td></tr>
     <tr><th>yt-dlp output template</th><td><code>{{ settings.ytdlp_output_template }}</code></td></tr>
   </tbody>
 </table>
-<h2>Stash connection</h2>
-<button hx-post="/settings/test-stash"
+
+<h2 class="text-xl font-semibold mb-2">yt-dlp options</h2>
+<p class="mb-4">
+  These values come from <code>YTDL_*</code> environment variables (read at startup). Use the form
+  below to generate a <code>docker-compose.yml</code> <code>environment:</code> snippet you can
+  copy/paste.
+</p>
+
+<h3 class="text-lg font-semibold mb-2">yt-dlp version & updates</h3>
+<div id="ytdlp-update-status"
+     hx-get="/settings/ytdlp/status"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <span class="text-base-content/60">Loading yt-dlp version…</span>
+</div>
+
+<form class="mt-4"
+  hx-post="/settings/ytdlp/env"
+  hx-target="#ytdlp-env-snippet"
+  hx-swap="innerHTML"
+  hx-indicator="#ytdlp-env-spinner">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <label class="form-control w-full">
+      <span class="label-text">Format</span>
+      <input type="text" name="ytdlp_format" value="{{ settings.ytdlp_format or '' }}" placeholder="bestvideo+bestaudio/best" class="input input-bordered w-full">
+    </label>
+    <label class="form-control w-full">
+      <span class="label-text">Impersonate</span>
+      <input type="text" name="ytdlp_impersonate" value="{{ settings.ytdlp_impersonate or '' }}" placeholder="chrome" class="input input-bordered w-full">
+    </label>
+    <label class="form-control w-full">
+      <span class="label-text">User-Agent</span>
+      <input type="text" name="ytdlp_user_agent" value="{{ settings.ytdlp_user_agent or '' }}" placeholder="Mozilla/5.0 ..." class="input input-bordered w-full">
+    </label>
+    <label class="form-control w-full">
+      <span class="label-text">Referer</span>
+      <input type="text" name="ytdlp_referer" value="{{ settings.ytdlp_referer or '' }}" placeholder="https://example.com/" class="input input-bordered w-full">
+    </label>
+    <label class="form-control w-full">
+      <span class="label-text">Proxy</span>
+      <input type="text" name="ytdlp_proxy" value="{{ settings.ytdlp_proxy or '' }}" placeholder="socks5://127.0.0.1:9050" class="input input-bordered w-full">
+    </label>
+    <label class="form-control w-full">
+      <span class="label-text">Socket timeout (seconds)</span>
+      <input type="number" name="ytdlp_socket_timeout_seconds" value="{{ settings.ytdlp_socket_timeout_seconds or '' }}" min="1" step="1" class="input input-bordered w-full">
+    </label>
+    <label class="form-control w-full">
+      <span class="label-text">Retries</span>
+      <input type="number" name="ytdlp_retries" value="{{ settings.ytdlp_retries }}" min="0" step="1" class="input input-bordered w-full">
+    </label>
+    <label class="form-control w-full">
+      <span class="label-text">Fragment retries</span>
+      <input type="number" name="ytdlp_fragment_retries" value="{{ settings.ytdlp_fragment_retries }}" min="0" step="1" class="input input-bordered w-full">
+    </label>
+    <label class="form-control w-full">
+      <span class="label-text">Update check interval (hours)</span>
+      <input type="number" name="ytdlp_update_check_interval_hours" value="{{ settings.ytdlp_update_check_interval_hours }}" min="1" step="1" class="input input-bordered w-full">
+    </label>
+  </div>
+
+  <label class="form-control w-full max-w-2xl mb-4">
+    <span class="label-text">HTTP headers JSON</span>
+    <textarea name="ytdlp_http_headers_json" rows="4" class="textarea textarea-bordered w-full">{{ settings.ytdlp_http_headers_json }}</textarea>
+  </label>
+  <label class="form-control w-full max-w-2xl mb-4">
+    <span class="label-text">Scan options JSON (merged into yt-dlp options for channel scans)</span>
+    <textarea name="ytdlp_scan_opts_json" rows="4" class="textarea textarea-bordered w-full">{{ settings.ytdlp_scan_opts_json }}</textarea>
+  </label>
+  <label class="form-control w-full max-w-2xl mb-4">
+    <span class="label-text">Download options JSON (merged into yt-dlp options for downloads)</span>
+    <textarea name="ytdlp_download_opts_json" rows="4" class="textarea textarea-bordered w-full">{{ settings.ytdlp_download_opts_json }}</textarea>
+  </label>
+
+  <button type="submit" class="btn btn-primary">Generate docker-compose snippet</button>
+  <span id="ytdlp-env-spinner" class="htmx-indicator ml-2">Generating…</span>
+</form>
+
+<div id="ytdlp-env-snippet" class="mt-4">
+  {% include "settings/_ytdlp_env_snippet.html" with context %}
+</div>
+
+<h2 class="text-xl font-semibold mt-8 mb-2">Stash connection</h2>
+<button class="btn btn-primary btn-sm"
+        hx-post="/settings/test-stash"
         hx-target="#stash-test-result"
         hx-swap="innerHTML"
         hx-indicator="#stash-test-spinner">
   Test Stash Connection
 </button>
-<span id="stash-test-spinner" class="htmx-indicator">Testing…</span>
-<span id="stash-test-result"></span>
-<h2>Import from YoutubeDL-Material</h2>
-<p>Upload your <code>local_db.json</code> file to import subscriptions as channels and downloaded files as videos. Duplicates (same URL or video ID) are skipped.</p>
+<span id="stash-test-spinner" class="htmx-indicator ml-2">Testing…</span>
+<span id="stash-test-result" class="ml-2"></span>
+
+<h2 class="text-xl font-semibold mt-8 mb-2">Import from YoutubeDL-Material</h2>
+<p class="mb-4">Upload your <code>local_db.json</code> file to import subscriptions as channels and downloaded files as videos. Duplicates (same URL or video ID) are skipped.</p>
 <form id="import-form"
+      class="space-y-4"
       hx-post="/settings/import"
       hx-target="#import-results"
       hx-swap="innerHTML"
       hx-encoding="multipart/form-data"
       hx-indicator="#import-spinner">
-  <label for="import-file">JSON file (local_db.json)</label>
-  <input type="file" id="import-file" name="file" accept=".json" required>
-  <label>
-    <input type="checkbox" name="include_playlists" value="true">
+  <label class="form-control w-full max-w-md">
+    <span class="label-text">JSON file (local_db.json)</span>
+    <input type="file" id="import-file" name="file" accept=".json" required class="file-input file-input-bordered w-full max-w-md">
+  </label>
+  <label class="flex items-center gap-2 cursor-pointer">
+    <input type="checkbox" name="include_playlists" value="true" class="checkbox checkbox-sm">
     Include playlists
   </label>
-  <div>
-    <button type="submit" name="dry_run" value="true">Preview Import</button>
-    <button type="submit" name="dry_run" value="false">Import</button>
+  <div class="flex gap-2">
+    <button type="submit" name="dry_run" value="true" class="btn btn-secondary">Preview Import</button>
+    <button type="submit" name="dry_run" value="false" class="btn btn-primary">Import</button>
   </div>
 </form>
 <span id="import-spinner" class="htmx-indicator">Importing…</span>
-<div id="import-results"></div>
+<div id="import-results" class="mt-4"></div>
 {% endblock %}

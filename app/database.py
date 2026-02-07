@@ -76,13 +76,18 @@ async def _recover_stuck_videos(conn) -> None:
     If the server crashed mid-download or mid-import, videos may be left in
     'downloading' or 'importing' status with no running task to complete them.
     """
-    _STUCK_STATUSES = ("downloading", "downloaded", "importing")
+    _STUCK_STATUSES = ("downloading", "downloaded", "importing", "cancelling")
     result = await conn.execute(
         text(
             "UPDATE videos SET status = 'pending', error_message = NULL "
-            "WHERE status IN (:s1, :s2, :s3)"
+            "WHERE status IN (:s1, :s2, :s3, :s4)"
         ),
-        {"s1": _STUCK_STATUSES[0], "s2": _STUCK_STATUSES[1], "s3": _STUCK_STATUSES[2]},
+        {
+            "s1": _STUCK_STATUSES[0],
+            "s2": _STUCK_STATUSES[1],
+            "s3": _STUCK_STATUSES[2],
+            "s4": _STUCK_STATUSES[3],
+        },
     )
     if result.rowcount:
         logger.info(

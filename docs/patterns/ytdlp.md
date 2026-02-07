@@ -84,11 +84,14 @@ def scan_channel(url: str, cookies_file: str | None = None) -> dict:
 Download one video and extract its full metadata:
 
 ```python
+from collections.abc import Callable
+
 def download_video(
     url: str,
     output_dir: str,
     output_template: str,
     cookies_file: str | None = None,
+    progress_hook: Callable[[dict], None] | None = None,
 ) -> dict:
     outtmpl = f"{output_dir}/{output_template}"
     opts = {
@@ -100,6 +103,8 @@ def download_video(
     }
     if cookies_file:
         opts["cookiefile"] = cookies_file
+    if progress_hook is not None:
+        opts["progress_hooks"] = [progress_hook]
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -122,6 +127,7 @@ def download_video(
 - `ydl.prepare_filename(info)` returns the actual path the file was saved to, with template variables resolved.
 - `info` is the full `info_dict` -- a huge dictionary with every piece of metadata yt-dlp could extract.
 - `retries` and `fragment_retries` handle transient network errors.
+- `progress_hooks` can be used to report download progress (percent/speed/ETA) to the UI.
 
 ---
 

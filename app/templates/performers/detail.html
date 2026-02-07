@@ -2,137 +2,139 @@
 {% block title %}{{ channel.name }} — Performers — ytdl-stash{% endblock %}
 {% block content %}
 {% set p = channel.stash_performer_data or {} %}
-<p><a href="/performers">← Back to Performers</a></p>
-<article>
-  <header class="performer-detail-header">
-    {% if channel.performer_image_url %}
-    <img src="{{ channel.performer_image_url }}" alt="" class="performer-detail-img" width="120" height="120">
+<p class="mb-4"><a href="/performers" class="link link-hover">← Back to Performers</a></p>
+<div class="card bg-base-200">
+  <div class="card-body">
+    <div class="flex gap-6 items-start mb-4">
+      {% if channel.performer_image_url %}
+      <img src="{{ channel.performer_image_url }}" alt="" class="w-[120px] h-[120px] object-cover rounded-lg shrink-0" width="120" height="120">
+      {% else %}
+      <div class="w-[120px] h-[120px] bg-base-300 rounded-lg shrink-0"></div>
+      {% endif %}
+      <div>
+        <h2 class="text-xl font-bold mt-0">{{ channel.name }}{% if p.disambiguation %} <small class="opacity-60">({{ p.disambiguation }})</small>{% endif %}</h2>
+        <p><span class="badge badge-ghost badge-sm">{{ channel.site }}</span></p>
+        <p><a href="{{ channel.url }}" target="_blank" rel="noopener" class="link link-hover">{{ channel.url }}</a></p>
+        {% if p.alias_list %}
+        <p><strong>Aliases:</strong> {{ p.alias_list | join(', ') }}</p>
+        {% endif %}
+        <p>
+          {% if channel.stash_performer_id %}
+          <span class="stash-linked"></span>
+          <a href="{{ stash_url }}/performers/{{ channel.stash_performer_id }}" target="_blank" rel="noopener" class="link link-hover">Open in Stash</a>
+          {% if p.scene_count is defined and p.scene_count is not none %}
+          &nbsp;· {{ p.scene_count }} scene{{ p.scene_count != 1 and 's' or '' }} in Stash
+          {% endif %}
+          {% else %}
+          <span class="stash-unlinked"></span>
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-2 my-4">
+      <form action="/performers/{{ channel.id }}/toggle" method="post" class="inline">
+        <button type="submit" class="btn btn-sm {{ 'btn-ghost' if not channel.enabled else 'btn-primary' }}">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
+      </form>
+      <form action="/performers/{{ channel.id }}/sync" method="post" class="inline">
+        <button type="submit" class="btn btn-sm btn-primary">Sync to Stash</button>
+      </form>
+      <form hx-delete="/performers/{{ channel.id }}"
+            hx-confirm="Delete performer '{{ channel.name|e }}' and all its videos?"
+            hx-on::after-request="if(event.detail.successful) window.location='/performers'"
+            class="inline">
+        <button type="submit" class="btn btn-sm btn-error">Delete</button>
+      </form>
+    </div>
+
+    {# ── Performer metadata from Stash ── #}
+    {% if p %}
+    <details open class="my-6">
+      <summary class="cursor-pointer font-bold">Performer Details</summary>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 my-4">
+        {% if p.gender %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Gender</span><span class="text-base">{{ p.gender | capitalize }}</span></div>
+        {% endif %}
+        {% if p.birthdate %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Birthdate</span><span class="text-base">{{ p.birthdate }}</span></div>
+        {% endif %}
+        {% if p.death_date %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Death date</span><span class="text-base">{{ p.death_date }}</span></div>
+        {% endif %}
+        {% if p.ethnicity %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Ethnicity</span><span class="text-base">{{ p.ethnicity }}</span></div>
+        {% endif %}
+        {% if p.country %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Country</span><span class="text-base">{{ p.country }}</span></div>
+        {% endif %}
+        {% if p.hair_color %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Hair</span><span class="text-base">{{ p.hair_color }}</span></div>
+        {% endif %}
+        {% if p.eye_color %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Eyes</span><span class="text-base">{{ p.eye_color }}</span></div>
+        {% endif %}
+        {% if p.height_cm %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Height</span><span class="text-base">{{ p.height_cm }} cm</span></div>
+        {% endif %}
+        {% if p.weight %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Weight</span><span class="text-base">{{ p.weight }} kg</span></div>
+        {% endif %}
+        {% if p.measurements %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Measurements</span><span class="text-base">{{ p.measurements }}</span></div>
+        {% endif %}
+        {% if p.fake_tits %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Fake tits</span><span class="text-base">{{ p.fake_tits }}</span></div>
+        {% endif %}
+        {% if p.career_length %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Career</span><span class="text-base">{{ p.career_length }}</span></div>
+        {% endif %}
+        {% if p.tattoos %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Tattoos</span><span class="text-base">{{ p.tattoos }}</span></div>
+        {% endif %}
+        {% if p.piercings %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Piercings</span><span class="text-base">{{ p.piercings }}</span></div>
+        {% endif %}
+        {% if p.rating100 %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Rating</span><span class="text-base">{{ (p.rating100 / 20) | round(1) }} / 5</span></div>
+        {% endif %}
+      </div>
+      {% if p.details %}
+      <div class="my-4">
+        <strong>Bio</strong>
+        <p class="whitespace-pre-line mt-1">{{ p.details }}</p>
+      </div>
+      {% endif %}
+      {% if p.urls %}
+      <div class="my-4">
+        <strong>URLs</strong>
+        <ul class="mt-1 pl-6 list-disc">
+          {% for url in p.urls %}
+          <li class="break-all text-sm"><a href="{{ url }}" target="_blank" rel="noopener" class="link link-hover">{{ url }}</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </details>
     {% else %}
-    <div class="performer-detail-placeholder"></div>
+    <p class="text-base-content/60 my-4">No Stash data yet. Click <strong>Sync to Stash</strong> to pull performer details.</p>
     {% endif %}
-    <div>
-      <h2>{{ channel.name }}{% if p.disambiguation %} <small style="opacity:.6">({{ p.disambiguation }})</small>{% endif %}</h2>
-      <p><span class="performer-site-badge">{{ channel.site }}</span></p>
-      <p><a href="{{ channel.url }}" target="_blank" rel="noopener">{{ channel.url }}</a></p>
-      {% if p.alias_list %}
-      <p><strong>Aliases:</strong> {{ p.alias_list | join(', ') }}</p>
-      {% endif %}
-      <p>
-        {% if channel.stash_performer_id %}
-        <span class="stash-linked"></span>
-        <a href="{{ stash_url }}/performers/{{ channel.stash_performer_id }}" target="_blank" rel="noopener">Open in Stash</a>
-        {% if p.scene_count is defined and p.scene_count is not none %}
-        &nbsp;· {{ p.scene_count }} scene{{ p.scene_count != 1 and 's' or '' }} in Stash
-        {% endif %}
-        {% else %}
-        <span class="stash-unlinked"></span>
-        {% endif %}
-      </p>
-    </div>
-  </header>
 
-  <div class="performer-detail-actions" style="margin: 1rem 0;">
-    <form action="/performers/{{ channel.id }}/toggle" method="post" style="display: inline;">
-      <button type="submit" class="{% if not channel.enabled %}secondary{% endif %}">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
-    </form>
-    <form action="/performers/{{ channel.id }}/sync" method="post" style="display: inline;">
-      <button type="submit">Sync to Stash</button>
-    </form>
-    <form hx-delete="/performers/{{ channel.id }}"
-          hx-confirm="Delete performer '{{ channel.name|e }}' and all its videos?"
-          hx-on::after-request="if(event.detail.successful) window.location='/performers'"
-          style="display: inline;">
-      <button type="submit" class="secondary">Delete</button>
-    </form>
+    <h3 class="text-lg font-semibold mt-6">Videos ({{ videos|length }})</h3>
+    <table class="table mt-2">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Channel</th>
+          <th>Status</th>
+          <th>Upload Date</th>
+          <th>Duration</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% include "videos/_table_body.html" %}
+      </tbody>
+    </table>
   </div>
-
-  {# ── Performer metadata from Stash ── #}
-  {% if p %}
-  <details open class="performer-meta-section">
-    <summary><strong>Performer Details</strong></summary>
-    <div class="performer-meta-grid">
-      {% if p.gender %}
-      <div class="performer-meta-item"><span class="meta-label">Gender</span><span class="meta-value">{{ p.gender | capitalize }}</span></div>
-      {% endif %}
-      {% if p.birthdate %}
-      <div class="performer-meta-item"><span class="meta-label">Birthdate</span><span class="meta-value">{{ p.birthdate }}</span></div>
-      {% endif %}
-      {% if p.death_date %}
-      <div class="performer-meta-item"><span class="meta-label">Death date</span><span class="meta-value">{{ p.death_date }}</span></div>
-      {% endif %}
-      {% if p.ethnicity %}
-      <div class="performer-meta-item"><span class="meta-label">Ethnicity</span><span class="meta-value">{{ p.ethnicity }}</span></div>
-      {% endif %}
-      {% if p.country %}
-      <div class="performer-meta-item"><span class="meta-label">Country</span><span class="meta-value">{{ p.country }}</span></div>
-      {% endif %}
-      {% if p.hair_color %}
-      <div class="performer-meta-item"><span class="meta-label">Hair</span><span class="meta-value">{{ p.hair_color }}</span></div>
-      {% endif %}
-      {% if p.eye_color %}
-      <div class="performer-meta-item"><span class="meta-label">Eyes</span><span class="meta-value">{{ p.eye_color }}</span></div>
-      {% endif %}
-      {% if p.height_cm %}
-      <div class="performer-meta-item"><span class="meta-label">Height</span><span class="meta-value">{{ p.height_cm }} cm</span></div>
-      {% endif %}
-      {% if p.weight %}
-      <div class="performer-meta-item"><span class="meta-label">Weight</span><span class="meta-value">{{ p.weight }} kg</span></div>
-      {% endif %}
-      {% if p.measurements %}
-      <div class="performer-meta-item"><span class="meta-label">Measurements</span><span class="meta-value">{{ p.measurements }}</span></div>
-      {% endif %}
-      {% if p.fake_tits %}
-      <div class="performer-meta-item"><span class="meta-label">Fake tits</span><span class="meta-value">{{ p.fake_tits }}</span></div>
-      {% endif %}
-      {% if p.career_length %}
-      <div class="performer-meta-item"><span class="meta-label">Career</span><span class="meta-value">{{ p.career_length }}</span></div>
-      {% endif %}
-      {% if p.tattoos %}
-      <div class="performer-meta-item"><span class="meta-label">Tattoos</span><span class="meta-value">{{ p.tattoos }}</span></div>
-      {% endif %}
-      {% if p.piercings %}
-      <div class="performer-meta-item"><span class="meta-label">Piercings</span><span class="meta-value">{{ p.piercings }}</span></div>
-      {% endif %}
-      {% if p.rating100 %}
-      <div class="performer-meta-item"><span class="meta-label">Rating</span><span class="meta-value">{{ (p.rating100 / 20) | round(1) }} / 5</span></div>
-      {% endif %}
-    </div>
-    {% if p.details %}
-    <div class="performer-bio">
-      <strong>Bio</strong>
-      <p>{{ p.details }}</p>
-    </div>
-    {% endif %}
-    {% if p.urls %}
-    <div class="performer-urls">
-      <strong>URLs</strong>
-      <ul>
-        {% for url in p.urls %}
-        <li><a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a></li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-  </details>
-  {% else %}
-  <p style="color: var(--pico-muted-color); margin: 1rem 0;">No Stash data yet. Click <strong>Sync to Stash</strong> to pull performer details.</p>
-  {% endif %}
-
-  <h3>Videos ({{ videos|length }})</h3>
-  <table>
-    <thead>
-      <tr>
-        <th>Title</th>
-        <th>Channel</th>
-        <th>Status</th>
-        <th>Upload Date</th>
-        <th>Duration</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% include "videos/_table_body.html" %}
-    </tbody>
-  </table>
-</article>
+</div>
 {% endblock %}

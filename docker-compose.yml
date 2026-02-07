@@ -19,8 +19,22 @@ services:
       YTDL_DATA_DIR: /app/data
       # YTDL_COOKIES_FILE: /app/cookies.txt
       # YTDL_DEFAULT_CHECK_INTERVAL_HOURS: 6
+      # YTDL_MAX_CONCURRENT_DOWNLOADS: 1
       # YTDL_DOWNLOAD_DELAY_SECONDS: 5
       # YTDL_YTDLP_OUTPUT_TEMPLATE: "%(uploader)s - %(title)s [%(id)s].%(ext)s"
+      # yt-dlp options (optional)
+      # YTDL_YTDLP_FORMAT: "bestvideo+bestaudio/best"
+      # YTDL_YTDLP_IMPERSONATE: "chrome"
+      # YTDL_YTDLP_USER_AGENT: "Mozilla/5.0 ..."
+      # YTDL_YTDLP_REFERER: "https://www.pornhub.com/"
+      # YTDL_YTDLP_PROXY: "socks5://127.0.0.1:9050"
+      # YTDL_YTDLP_SOCKET_TIMEOUT_SECONDS: 30
+      # YTDL_YTDLP_RETRIES: 3
+      # YTDL_YTDLP_FRAGMENT_RETRIES: 3
+      # YTDL_YTDLP_HTTP_HEADERS_JSON: "{}"
+      # YTDL_YTDLP_SCAN_OPTS_JSON: "{}"
+      # YTDL_YTDLP_DOWNLOAD_OPTS_JSON: "{}"
+      # YTDL_YTDLP_UPDATE_CHECK_INTERVAL_HOURS: 24
       # YTDL_LOG_LEVEL: INFO
     extra_hosts:
       - "host.docker.internal:host-gateway"

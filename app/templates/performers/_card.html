@@ -1,37 +1,39 @@
-<article id="performer-card-{{ channel.id }}" class="performer-card">
-  <a href="/performers/{{ channel.id }}" class="performer-card-link">
-    {% if channel.performer_image_url %}
-    <img src="{{ channel.performer_image_url }}" alt="" class="performer-card-img" loading="lazy">
-    {% else %}
-    <div class="performer-card-placeholder"></div>
-    {% endif %}
-    <h3 class="performer-card-name">{{ channel.name }}</h3>
-    <span class="performer-site-badge">{{ channel.site }}</span>
-    <span class="performer-video-count">{{ channel.videos|length }} video{{ channel.videos|length != 1 and 's' or '' }}</span>
+<div id="performer-card-{{ channel.id }}" class="card card-bordered bg-base-200 hover:shadow-lg transition-shadow">
+  <a href="/performers/{{ channel.id }}" class="block p-4 no-underline text-inherit">
+    <figure class="w-full aspect-square overflow-hidden rounded-lg mb-2">
+      {% if channel.performer_image_url %}
+      <img src="{{ channel.performer_image_url }}" alt="" class="w-full aspect-square object-cover block" loading="lazy">
+      {% else %}
+      <div class="w-full aspect-square bg-base-300 block rounded-lg"></div>
+      {% endif %}
+    </figure>
+    <h3 class="card-title text-base m-0 mb-1">{{ channel.name }}</h3>
+    <span class="badge badge-ghost badge-sm mr-2">{{ channel.site }}</span>
+    <span class="text-sm text-base-content/60">{{ channel.videos|length }} video{{ channel.videos|length != 1 and 's' or '' }}</span>
     <span class="{% if channel.enabled %}watched-indicator{% else %}not-watched-indicator{% endif %}" title="{% if channel.enabled %}Watching{% else %}Not watching{% endif %}"></span>
     <span class="{% if channel.stash_performer_id %}stash-linked{% else %}stash-unlinked{% endif %}" title="{% if channel.stash_performer_id %}Linked to Stash{% else %}Not in Stash{% endif %}"></span>
   </a>
-  <div class="performer-card-actions">
+  <div class="card-actions px-4 pb-4 flex flex-wrap gap-2">
     <form hx-post="/performers/{{ channel.id }}/toggle"
           hx-target="#performer-card-{{ channel.id }}"
           hx-swap="outerHTML"
-          style="display: inline;">
-      <button type="submit" class="{% if not channel.enabled %}secondary{% endif %}">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
+          class="inline">
+      <button type="submit" class="btn btn-sm {{ 'btn-ghost' if not channel.enabled else 'btn-primary' }}">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
     </form>
     <form hx-post="/performers/{{ channel.id }}/sync"
           hx-target="#performer-card-{{ channel.id }}"
           hx-swap="outerHTML"
           hx-indicator="#spinner-sync-{{ channel.id }}"
-          style="display: inline;">
-      <button type="submit">Sync to Stash</button>
+          class="inline">
+      <button type="submit" class="btn btn-sm btn-primary">Sync to Stash</button>
       <span id="spinner-sync-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
     </form>
-    <button hx-delete="/performers/{{ channel.id }}"
+    <button class="btn btn-sm btn-error"
+            hx-delete="/performers/{{ channel.id }}"
             hx-target="#performer-card-{{ channel.id }}"
             hx-swap="outerHTML swap:1s"
-            hx-confirm="Delete performer '{{ channel.name|e }}' and all its videos?"
-            class="secondary">
+            hx-confirm="Delete performer '{{ channel.name|e }}' and all its videos?">
       Delete
     </button>
   </div>
-</article>
+</div>

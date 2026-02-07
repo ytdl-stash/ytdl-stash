@@ -67,6 +67,48 @@ async def list_channels(
     )
 
 
+async def _load_channel_for_row(db: AsyncSession, channel_id: int) -> Channel | None:
+    """Load a channel with relationships needed by row templates."""
+    result = await db.execute(
+        select(Channel)
+        .where(Channel.id == channel_id)
+        .options(selectinload(Channel.videos))
+    )
+    return result.scalar_one_or_none()
+
+
+@router.get("/{channel_id}/row")
+async def channel_row(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """HTMX partial: render a single channel row."""
+    channel = await _load_channel_for_row(db, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return templates.TemplateResponse(
+        "channels/_row.html",
+        {"request": request, "channel": channel},
+    )
+
+
+@router.get("/{channel_id}/edit")
+async def edit_channel_row(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """HTMX partial: render an editable channel row (rename)."""
+    channel = await _load_channel_for_row(db, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return templates.TemplateResponse(
+        "channels/_row_edit.html",
+        {"request": request, "channel": channel},
+    )
+
+
 @router.get("/add")
 async def add_channel_page(request: Request):
     """Add channel form page."""
@@ -103,7 +145,7 @@ async def add_channel(
     thumbnail_url: str | None = None
     if not display_name:
         try:
-            meta = await async_extract_channel_metadata(url, settings.cookies_file)
+            meta = await async_extract_channel_metadata(url, settings)
             display_name = meta.get("name") or ""
             thumbnail_url = meta.get("thumbnail")
         except Exception:
@@ -131,12 +173,9 @@ async def add_channel(
         logger.warning("Performer sync failed for channel %s", channel.id, exc_info=True)
 
     if request.headers.get("HX-Request"):
-        result = await db.execute(
-            select(Channel)
-            .where(Channel.id == channel.id)
-            .options(selectinload(Channel.videos))
-        )
-        channel = result.scalar_one()
+        channel = await _load_channel_for_row(db, channel.id)
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
         return templates.TemplateResponse(
             "channels/_row.html",
             {"request": request, "channel": channel},
@@ -167,12 +206,9 @@ async def update_channel(
     channel.min_duration_seconds = _parse_optional_int(min_duration_seconds)
 
     if request.headers.get("HX-Request"):
-        result = await db.execute(
-            select(Channel)
-            .where(Channel.id == channel_id)
-            .options(selectinload(Channel.videos))
-        )
-        channel = result.scalar_one()
+        channel = await _load_channel_for_row(db, channel_id)
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
         return templates.TemplateResponse(
             "channels/_row.html",
             {"request": request, "channel": channel},

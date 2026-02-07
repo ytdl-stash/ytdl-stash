@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Logs — ytdl-stash{% endblock %}
 {% block content %}
-<h1>Logs</h1>
+<h1 class="text-2xl font-bold mb-4">Logs</h1>
 
-<div class="log-controls">
-  <form id="log-filter-form" class="log-filter-row">
-    <select name="level" id="log-level-filter" aria-label="Minimum level">
+<div class="mb-4">
+  <form id="log-filter-form" class="flex flex-wrap gap-2 items-center mb-2">
+    <select name="level" id="log-level-filter" aria-label="Minimum level" class="select select-bordered select-sm max-w-56">
       <option value="" {% if not current_level %}selected{% endif %}>All levels</option>
       <option value="DEBUG" {% if current_level == "DEBUG" %}selected{% endif %}>DEBUG</option>
       <option value="INFO" {% if current_level == "INFO" %}selected{% endif %}>INFO</option>
@@ -13,14 +13,16 @@
       <option value="ERROR" {% if current_level == "ERROR" %}selected{% endif %}>ERROR</option>
     </select>
     <input type="search" name="search" placeholder="Search logs…"
-           value="{{ current_search }}" aria-label="Search logs">
-    <select name="limit" aria-label="Entries to show">
+           value="{{ current_search }}" aria-label="Search logs"
+           class="input input-bordered input-sm max-w-56">
+    <select name="limit" aria-label="Entries to show" class="select select-bordered select-sm max-w-56">
       <option value="50" {% if current_limit == 50 %}selected{% endif %}>50 entries</option>
       <option value="200" {% if current_limit == 200 %}selected{% endif %}>200 entries</option>
       <option value="500" {% if current_limit == 500 %}selected{% endif %}>500 entries</option>
       <option value="1000" {% if current_limit == 1000 %}selected{% endif %}>1000 entries</option>
     </select>
     <button type="submit"
+            class="btn btn-sm btn-primary"
             hx-get="/logs/entries"
             hx-include="#log-filter-form"
             hx-target="#log-entries"
@@ -28,17 +30,17 @@
       Filter
     </button>
   </form>
-  <div class="log-actions">
-    <button class="secondary"
+  <div class="flex flex-wrap gap-2 items-center">
+    <button class="btn btn-sm btn-ghost"
             hx-post="/logs/clear"
             hx-target="#log-entries"
             hx-swap="innerHTML"
             hx-confirm="Clear in-memory log buffer?">
       Clear
     </button>
-    <a href="/logs/download" role="button" class="secondary outline">Download log file</a>
-    <label class="log-auto-refresh">
-      <input type="checkbox" id="auto-refresh-toggle" checked>
+    <a href="/logs/download" class="btn btn-sm btn-outline">Download log file</a>
+    <label class="flex items-center gap-1 text-sm cursor-pointer">
+      <input type="checkbox" id="auto-refresh-toggle" class="toggle toggle-sm" checked>
       Auto-refresh
     </label>
   </div>

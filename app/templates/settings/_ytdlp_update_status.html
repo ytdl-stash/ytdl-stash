@@ -1,0 +1,61 @@
+<table class="table">
+  <tbody>
+    <tr>
+      <th>Loaded version (current process)</th>
+      <td><code>{{ status.loaded_version or 'unknown' }}</code></td>
+    </tr>
+    <tr>
+      <th>Installed version (on disk)</th>
+      <td><code>{{ status.installed_version or 'unknown' }}</code></td>
+    </tr>
+    <tr>
+      <th>Latest version (PyPI)</th>
+      <td><code>{{ status.latest_version or '—' }}</code></td>
+    </tr>
+    <tr>
+      <th>Last checked</th>
+      <td>{{ status.last_checked_at or '—' }}</td>
+    </tr>
+    <tr>
+      <th>Last update attempt</th>
+      <td>{{ status.last_update_at or '—' }}</td>
+    </tr>
+    <tr>
+      <th>Status</th>
+      <td>
+        {% if status.last_error %}
+          <span class="text-error">Error: {{ status.last_error }}</span>
+        {% elif status.update_available %}
+          <span class="badge badge-warning">Update available</span>
+        {% else %}
+          <span class="text-success">Up to date</span>
+        {% endif %}
+        {% if status.restart_required %}
+          <span class="text-base-content/60">(restart required)</span>
+        {% endif %}
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="flex flex-wrap gap-2 items-center mt-4">
+  <button class="btn btn-sm btn-primary"
+    hx-post="/settings/ytdlp/check"
+    hx-target="#ytdlp-update-status"
+    hx-swap="innerHTML"
+    hx-indicator="#ytdlp-update-spinner">
+    Check for updates
+  </button>
+  <button class="btn btn-sm btn-secondary"
+    hx-post="/settings/ytdlp/update"
+    hx-target="#ytdlp-update-status"
+    hx-swap="innerHTML"
+    hx-indicator="#ytdlp-update-spinner"
+    {% if status.updating or status.checking %}disabled{% endif %}>
+    Update yt-dlp (pip)
+  </button>
+  <span id="ytdlp-update-spinner" class="htmx-indicator">Working…</span>
+  <span class="text-base-content/60 text-sm">
+    Tip: in Docker, you usually rebuild the image after confirming a newer version exists.
+  </span>
+</div>

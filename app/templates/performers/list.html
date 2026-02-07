@@ -1,49 +1,49 @@
 {% extends "base.html" %}
 {% block title %}Performers — ytdl-stash{% endblock %}
 {% block content %}
-<h1>Performers</h1>
-<p>Channels (performers) from your subscriptions. Link to Stash and toggle watch status.</p>
-<nav class="filter-bar" style="margin-bottom: 1rem;">
+<h1 class="text-2xl font-bold mb-2">Performers</h1>
+<p class="mb-4">Channels (performers) from your subscriptions. Link to Stash and toggle watch status.</p>
+<nav class="flex flex-wrap items-center gap-2 mb-4">
   <strong>Filter:</strong>
   <a href="/performers?filter=all&sort={{ sort }}"
      hx-get="/performers?filter=all&sort={{ sort }}"
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="{% if filter == 'all' %}primary{% endif %}">All</a>
+     class="btn btn-sm {{ 'btn-primary' if filter == 'all' else 'btn-ghost' }}">All</a>
   <a href="/performers?filter=watched&sort={{ sort }}"
      hx-get="/performers?filter=watched&sort={{ sort }}"
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="{% if filter == 'watched' %}primary{% endif %}">Watched</a>
+     class="btn btn-sm {{ 'btn-primary' if filter == 'watched' else 'btn-ghost' }}">Watched</a>
   <a href="/performers?filter=not_watched&sort={{ sort }}"
      hx-get="/performers?filter=not_watched&sort={{ sort }}"
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="{% if filter == 'not_watched' %}primary{% endif %}">Not Watched</a>
-  <strong style="margin-left: 1rem;">Sort:</strong>
+     class="btn btn-sm {{ 'btn-primary' if filter == 'not_watched' else 'btn-ghost' }}">Not Watched</a>
+  <strong class="ml-4">Sort:</strong>
   <a href="/performers?filter={{ filter }}&sort=name"
      hx-get="/performers?filter={{ filter }}&sort=name"
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="{% if sort == 'name' %}primary{% endif %}">Name</a>
+     class="btn btn-sm {{ 'btn-primary' if sort == 'name' else 'btn-ghost' }}">Name</a>
   <a href="/performers?filter={{ filter }}&sort=video_count"
      hx-get="/performers?filter={{ filter }}&sort=video_count"
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="{% if sort == 'video_count' %}primary{% endif %}">Videos</a>
+     class="btn btn-sm {{ 'btn-primary' if sort == 'video_count' else 'btn-ghost' }}">Videos</a>
   <a href="/performers?filter={{ filter }}&sort=last_checked"
      hx-get="/performers?filter={{ filter }}&sort=last_checked"
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="{% if sort == 'last_checked' %}primary{% endif %}">Last checked</a>
+     class="btn btn-sm {{ 'btn-primary' if sort == 'last_checked' else 'btn-ghost' }}">Last checked</a>
 </nav>
-<div id="performer-grid" class="performer-grid">
+<div id="performer-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
   {% for channel in channels %}
   {% include "performers/_card.html" %}
   {% endfor %}

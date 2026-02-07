@@ -2,14 +2,18 @@
 
 import asyncio
 import logging
+import time
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.download_control import download_control
+from app.download_progress import download_progress
 from app.downloader import (
     _parse_date,
+    DownloadCancelled,
     async_compute_oshash,
     async_download_video,
     async_scan_channel,
@@ -53,7 +57,7 @@ async def _process_channel_scan_locked(
 ) -> int:
     """Inner scan logic, called while holding the per-channel lock."""
     try:
-        scan_result = await async_scan_channel(channel.url, settings.cookies_file)
+        scan_result = await async_scan_channel(channel.url, settings)
     except RuntimeError as e:
         logger.warning("Channel scan failed for channel %s: %s", channel.id, e)
         raise
@@ -164,17 +168,39 @@ async def process_single_download(
 ) -> None:
     """Run the full lifecycle for one video: download -> oshash -> scan -> match -> tag."""
     try:
+        download_control.set_active(video.id)
         video.status = "downloading"
         video.error_message = None
+        download_progress.clear(video.id)
         await db.commit()
         logger.info("Video %s: downloading", video.id)
+
+        last_hook_ts = 0.0
+        last_hook_status: str | None = None
+
+        def _hook(d: dict) -> None:
+            # Called from the download worker thread. Throttle UI updates.
+            nonlocal last_hook_ts, last_hook_status
+            if download_control.is_cancel_requested(video.id):
+                raise DownloadCancelled("Download cancelled by user")
+            now = time.monotonic()
+            status = d.get("status")
+            if status != last_hook_status or (now - last_hook_ts) >= 0.25:
+                download_progress.update_from_ytdlp_hook(video.id, d)
+                last_hook_ts = now
+                last_hook_status = str(status) if status is not None else None
 
         result = await async_download_video(
             video.url,
             settings.download_dir,
             settings.ytdlp_output_template,
-            settings.cookies_file,
+            settings,
+            progress_hook=_hook,
         )
+
+        # Stop requested during the download (or right as it finished)
+        if download_control.is_cancel_requested(video.id):
+            raise DownloadCancelled("Download cancelled by user")
 
         video.original_filename = result["filename"]
         video.title = result["title"]
@@ -188,7 +214,11 @@ async def process_single_download(
         video.metadata_json = result.get("metadata_json")
         video.status = "downloaded"
         await db.commit()
+        download_progress.clear(video.id)
         logger.info("Video %s: downloaded", video.id)
+
+        if download_control.is_cancel_requested(video.id):
+            raise DownloadCancelled("Download cancelled by user")
 
         logger.info("Video %s: computing oshash for %s", video.id, result["filepath"])
         oshash = await async_compute_oshash(result["filepath"])
@@ -196,8 +226,14 @@ async def process_single_download(
         await db.commit()
         logger.info("Video %s: oshash=%s", video.id, oshash)
 
+        if download_control.is_cancel_requested(video.id):
+            raise DownloadCancelled("Download cancelled by user")
+
         video.status = "importing"
         await db.commit()
+
+        if download_control.is_cancel_requested(video.id):
+            raise DownloadCancelled("Download cancelled by user")
 
         scan_path = result["filepath"]
         if settings.stash_download_dir:
@@ -208,6 +244,9 @@ async def process_single_download(
                 scan_path = s + scan_path[len(d) :]
         logger.info("Video %s: triggering Stash scan for %s", video.id, scan_path)
         await stash.trigger_scan([scan_path])
+
+        if download_control.is_cancel_requested(video.id):
+            raise DownloadCancelled("Download cancelled by user")
 
         logger.info("Video %s: waiting for Stash scene (oshash=%s)", video.id, oshash)
         scene = await stash.wait_for_scene(oshash)
@@ -242,7 +281,21 @@ async def process_single_download(
         await db.commit()
         logger.info("Video %s: synced to Stash scene %s", video.id, scene["id"])
 
+    except DownloadCancelled as e:
+        download_progress.clear(video.id)
+        logger.info("Video %s cancelled: %s", video.id, e)
+        try:
+            await db.rollback()
+            refreshed = await db.get(Video, video.id)
+            if refreshed is not None:
+                refreshed.status = "cancelled"
+                refreshed.error_message = "Cancelled by user"
+                await db.commit()
+        except Exception:
+            logger.exception("Video %s: could not persist cancelled status", video.id)
+
     except Exception as e:
+        download_progress.clear(video.id)
         logger.exception("Video %s failed: %s", video.id, e)
         # The session may be in a dirty/broken state after the original error,
         # so rollback first to clear it, then mark the video as failed.
@@ -259,6 +312,10 @@ async def process_single_download(
                 "Video %s: could not persist failed status (will be recovered on restart)",
                 video.id,
             )
+    finally:
+        # Always clear the active marker (even if cancelled/failed)
+        download_control.clear_active(video.id)
+        download_control.clear_cancel(video.id)
 
 
 async def process_pending_downloads(

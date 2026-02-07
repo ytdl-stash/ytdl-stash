@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.models import Channel, Video
 from app.pipeline import process_channel_scan, process_pending_downloads
 from app.stash_client import StashClient
+from app.ytdlp_updates import check_for_update as ytdlp_check_for_update
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +54,17 @@ job_registry: dict[str, JobInfo] = {
     "process_downloads": JobInfo(
         id="process_downloads",
         name="Process Downloads",
-        description="Download and import the next pending video in the queue.",
+        description="Download and import pending videos in the queue (up to configured concurrency).",
     ),
     "retry_all_failed": JobInfo(
         id="retry_all_failed",
         name="Retry All Failed",
         description="Reset every failed video back to pending so the download processor retries them.",
+    ),
+    "check_ytdlp_updates": JobInfo(
+        id="check_ytdlp_updates",
+        name="Check yt-dlp Updates",
+        description="Check PyPI for a newer yt-dlp version (does not rebuild container).",
     ),
 }
 
@@ -66,28 +72,25 @@ job_registry: dict[str, JobInfo] = {
 async def _run_tracked(job_id: str, coro_fn) -> None:
     """Wrap a job coroutine with tracking: set running flag, record timing."""
     info = job_registry[job_id]
-    # Guard against duplicate triggers:
-    # - `info.running` is set eagerly for manual triggers so that a rapid double-click
-    #   doesn't enqueue multiple sequential runs before the lock is acquired.
-    # - `_lock.locked()` covers already-running jobs (manual or scheduled).
-    if info.running or info._lock.locked():
+    # Guard against already-running jobs.
+    # Note: manual triggers set `info.running` eagerly so the UI updates immediately,
+    # but we only use the lock to determine if the job is truly executing.
+    if info._lock.locked():
         logger.debug("Job %s already running, skipping", job_id)
         return
-    async with info._lock:
-        info.running = True
-        info.last_error = None
-        start = datetime.now(UTC)
-        try:
+    start = datetime.now(UTC)
+    info.running = True
+    info.last_error = None
+    try:
+        async with info._lock:
             await coro_fn()
-        except Exception as exc:
-            info.last_error = str(exc)[:500]
-            raise
-        finally:
-            info.running = False
-            info.last_run_at = datetime.now(UTC)
-            info.last_duration_seconds = (
-                info.last_run_at - start
-            ).total_seconds()
+    except Exception as exc:
+        info.last_error = str(exc)[:500]
+        raise
+    finally:
+        info.running = False
+        info.last_run_at = datetime.now(UTC)
+        info.last_duration_seconds = (info.last_run_at - start).total_seconds()
 
 
 # ---------------------------------------------------------------------------
@@ -138,20 +141,83 @@ async def _do_check_all_channels() -> None:
 
 
 async def _do_process_downloads() -> None:
-    """Core logic: process one pending video."""
+    """Core logic: process pending videos (sequential or concurrent)."""
     if db_module.async_session is None:
         logger.warning("Download processor skipped: database session not initialized")
         return
+
+    settings = get_settings()
+    max_concurrent = max(1, int(getattr(settings, "max_concurrent_downloads", 1) or 1))
+
+    # Preserve existing sequential behavior exactly when concurrency == 1.
+    if max_concurrent <= 1:
+        async with db_module.async_session() as db:
+            try:
+                async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+                    await process_pending_downloads(db, settings, stash)
+                await db.commit()
+            except Exception as e:
+                await db.rollback()
+                logger.exception("Download processor failed: %s", e)
+                raise
+        return
+
+    # Concurrent mode: pick up to N pending videos, then run each in its own
+    # DB session + Stash client (AsyncSession is not concurrency-safe).
     async with db_module.async_session() as db:
         try:
-            settings = get_settings()
-            async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
-                await process_pending_downloads(db, settings, stash)
-            await db.commit()
+            result = await db.execute(
+                select(Video.id)
+                .where(Video.status == "pending")
+                .order_by(Video.created_at)
+                .limit(max_concurrent)
+            )
+            video_ids = [row[0] for row in result.all()]
         except Exception as e:
             await db.rollback()
-            logger.exception("Download processor failed: %s", e)
+            logger.exception("Download processor failed while selecting pending videos: %s", e)
             raise
+
+    if not video_ids:
+        logger.debug("Download processor: no pending videos in queue")
+        return
+
+    logger.info(
+        "Download processor: starting up to %d download(s) (picked %d)",
+        max_concurrent,
+        len(video_ids),
+    )
+
+    async def _run_one(video_id: int) -> None:
+        if db_module.async_session is None:
+            return
+        async with db_module.async_session() as db2:
+            try:
+                async with StashClient(settings.stash_url, settings.stash_api_key) as stash2:
+                    from app.pipeline import process_single_download
+
+                    video = await db2.get(Video, video_id)
+                    if video is None:
+                        return
+                    # Video may have been cancelled/retried between selection and now.
+                    if video.status != "pending":
+                        return
+                    await process_single_download(video, db2, settings, stash2)
+                await db2.commit()
+            except Exception as e:
+                await db2.rollback()
+                # Do not fail the whole job if a single worker crashes unexpectedly.
+                logger.exception("Download worker failed for video %s: %s", video_id, e)
+
+    tasks: list[asyncio.Task] = []
+    for idx, vid in enumerate(video_ids):
+        tasks.append(asyncio.create_task(_run_one(vid)))
+        # Keep the existing "delay between downloads" knob useful by staggering
+        # starts. (If set to 0, starts immediately.)
+        if idx < len(video_ids) - 1 and settings.download_delay_seconds > 0:
+            await asyncio.sleep(settings.download_delay_seconds)
+
+    await asyncio.gather(*tasks)
 
 
 async def _do_retry_all_failed() -> None:
@@ -174,10 +240,21 @@ async def _do_retry_all_failed() -> None:
             raise
 
 
+# ---------------------------------------------------------------------------
+# yt-dlp update checks
+# ---------------------------------------------------------------------------
+
+
+async def _do_check_ytdlp_updates() -> None:
+    """Core logic: check whether yt-dlp has an update available."""
+    await ytdlp_check_for_update()
+
+
 # Wire coroutine functions into registry (defined above, registered here).
 job_registry["check_all_channels"].coro_fn = _do_check_all_channels
 job_registry["process_downloads"].coro_fn = _do_process_downloads
 job_registry["retry_all_failed"].coro_fn = _do_retry_all_failed
+job_registry["check_ytdlp_updates"].coro_fn = _do_check_ytdlp_updates
 
 
 # ---------------------------------------------------------------------------
@@ -191,8 +268,13 @@ async def _channel_checker() -> None:
 
 
 async def _download_processor() -> None:
-    """Run every 30s: process one pending video. max_instances=1."""
+    """Run every 30s: process pending downloads. max_instances=1."""
     await _run_tracked("process_downloads", _do_process_downloads)
+
+
+async def _ytdlp_update_checker() -> None:
+    """Run periodically: check whether yt-dlp has an update available."""
+    await _run_tracked("check_ytdlp_updates", _do_check_ytdlp_updates)
 
 
 # ---------------------------------------------------------------------------
@@ -201,11 +283,16 @@ async def _download_processor() -> None:
 
 # Hold strong references to background tasks so they aren't garbage-collected.
 _background_tasks: set[asyncio.Task] = set()
+_background_tasks_by_job_id: dict[str, asyncio.Task] = {}
 
 
 def _task_done(task: asyncio.Task) -> None:
     """Cleanup callback for background job tasks."""
     _background_tasks.discard(task)
+    # Remove from per-job map if it matches
+    for jid, t in list(_background_tasks_by_job_id.items()):
+        if t is task:
+            _background_tasks_by_job_id.pop(jid, None)
     if not task.cancelled() and task.exception() is not None:
         logger.error("Background job failed: %s", task.exception())
 
@@ -227,7 +314,22 @@ def trigger_job(job_id: str) -> bool:
 
     task = asyncio.create_task(_run_tracked(job_id, info.coro_fn))
     _background_tasks.add(task)
+    _background_tasks_by_job_id[job_id] = task
     task.add_done_callback(_task_done)
+    return True
+
+
+def stop_job(job_id: str) -> bool:
+    """Request a running job to stop by cancelling its background task.
+
+    Returns True if a running task was found and cancelled, False otherwise.
+    """
+    task = _background_tasks_by_job_id.get(job_id)
+    if task is None:
+        return False
+    if task.done():
+        return False
+    task.cancel()
     return True
 
 
@@ -238,6 +340,7 @@ def trigger_job(job_id: str) -> bool:
 
 def start_scheduler() -> None:
     """Start the scheduler. Call from FastAPI lifespan after init_db."""
+    settings = get_settings()
     scheduler.add_job(
         _channel_checker,
         "interval",
@@ -252,8 +355,18 @@ def start_scheduler() -> None:
         id="download_processor",
         max_instances=1,
     )
+    scheduler.add_job(
+        _ytdlp_update_checker,
+        "interval",
+        hours=max(1, int(settings.ytdlp_update_check_interval_hours)),
+        id="ytdlp_update_checker",
+        max_instances=1,
+    )
     scheduler.start()
-    logger.info("Scheduler started (channel_checker=60s, download_processor=30s)")
+    logger.info(
+        "Scheduler started (channel_checker=60s, download_processor=30s, ytdlp_update_checker=%sh)",
+        max(1, int(settings.ytdlp_update_check_interval_hours)),
+    )
 
 
 def stop_scheduler() -> None:

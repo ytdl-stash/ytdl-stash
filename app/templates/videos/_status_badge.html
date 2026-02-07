@@ -1,1 +1,30 @@
-<span id="video-status-{{ video.id }}" class="badge-{{ video.status }}">{{ video.status }}</span>
+{% set p = (download_progress or {}).get(video.id) %}
+{% set ns = namespace(badge_class='badge badge-ghost') %}
+{% if video.status == 'synced' %}{% set ns.badge_class = 'badge badge-success' %}
+{% elif video.status == 'pending' %}{% set ns.badge_class = 'badge badge-warning' %}
+{% elif video.status == 'cancelling' %}{% set ns.badge_class = 'badge badge-warning' %}
+{% elif video.status in ('downloaded', 'downloading', 'importing') %}{% set ns.badge_class = 'badge badge-primary' %}
+{% elif video.status == 'failed' %}{% set ns.badge_class = 'badge badge-error' %}
+{% elif video.status == 'cancelled' %}{% set ns.badge_class = 'badge badge-ghost' %}
+{% elif video.status == 'imported' %}{% set ns.badge_class = 'badge badge-secondary' %}
+{% endif %}
+<span id="video-status-{{ video.id }}"
+      class="video-status inline-flex flex-col gap-0.5 {{ ns.badge_class }}"
+      {% if poll_status_badge %}
+      hx-get="/videos/{{ video.id }}/status_badge"
+      hx-trigger="every 2s"
+      hx-swap="outerHTML"
+      {% endif %}>
+  <span class="video-status__text">{{ video.status }}</span>
+  {% if video.status == 'downloading' and p and p.percent is not none %}
+  <span class="video-status__progress">
+    <progress value="{{ p.percent }}" max="100" class="progress progress-primary w-40 max-w-full h-2"></progress>
+    <small class="block text-xs opacity-60 leading-tight">
+      {{ p.percent }}%
+      {% if p.downloaded and p.total %} • {{ p.downloaded }} / {{ p.total }}{% endif %}
+      {% if p.speed %} • {{ p.speed }}{% endif %}
+      {% if p.eta %} • ETA {{ p.eta }}{% endif %}
+    </small>
+  </span>
+  {% endif %}
+</span>

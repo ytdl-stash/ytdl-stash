@@ -20,7 +20,7 @@
   - `channel_meta`: dict `{name, thumbnail}` extracted from the same yt-dlp call
 - Does NOT download anything
 
-**`download_video(url, output_dir, output_template, cookies_file) -> dict`**
+**`download_video(url, output_dir, output_template, cookies_file, progress_hook=None) -> dict`**
 - Downloads a single video via yt-dlp
 - Returns dict: `{filepath, filename, title, upload_date, performers, studio, duration, thumbnail_url, metadata_json}`
 - Prefers `requested_downloads[0]["filepath"]` for the actual saved path (accounts for post-processing/muxing extension changes), falls back to `ydl.prepare_filename(info)`

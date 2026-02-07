@@ -6,7 +6,7 @@
 
 The app needs to periodically:
 1. Check each enabled channel for new videos (on a per-channel interval).
-2. Process the download queue (download pending videos one at a time).
+2. Process the download queue (download pending videos, with configurable concurrency).
 
 This requires a scheduler that runs inside the same Python process as the FastAPI app.
 
@@ -66,9 +66,9 @@ FastAPI lifespan startup
         |     Update last_checked_at.
         |
         +-> "download_processor" job (every 30 seconds)
-              Query one video with status="pending".
+              Query pending videos with status="pending" (up to configured concurrency).
               Run the download-to-Stash pipeline.
-              Wait download_delay_seconds before next iteration.
+              Apply download_delay_seconds as a throttle (between downloads or staggered starts).
 
 FastAPI lifespan shutdown
   |

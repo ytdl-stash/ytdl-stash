@@ -4,13 +4,21 @@
       hx-trigger="every 2s"
       hx-target="#job-inline-{{ job.id }}"
       hx-swap="innerHTML"
-      class="badge-downloading" aria-busy="true">
+      class="badge badge-primary inline-flex items-center gap-1">
+  <span class="loading loading-spinner loading-sm"></span>
   Running…
 </span>
+<button class="btn btn-sm btn-secondary"
+        hx-post="/jobs/{{ job.id }}/stop"
+        hx-target="#job-inline-{{ job.id }}"
+        hx-swap="innerHTML"
+        hx-confirm="Stop '{{ job.name|e }}'?">
+  Stop
+</button>
 {% else %}
 {# Job is idle — show the appropriate trigger button #}
 {% if job.id == 'retry_all_failed' %}
-<button class="job-btn secondary"
+<button class="btn btn-sm btn-secondary"
         hx-post="/jobs/{{ job.id }}/trigger"
         hx-target="#job-inline-{{ job.id }}"
         hx-swap="innerHTML"
@@ -18,14 +26,14 @@
   Retry All Failed
 </button>
 {% elif job.id == 'check_all_channels' %}
-<button class="job-btn"
+<button class="btn btn-sm btn-primary"
         hx-post="/jobs/{{ job.id }}/trigger"
         hx-target="#job-inline-{{ job.id }}"
         hx-swap="innerHTML">
   Check All Now
 </button>
 {% else %}
-<button class="job-btn"
+<button class="btn btn-sm btn-primary"
         hx-post="/jobs/{{ job.id }}/trigger"
         hx-target="#job-inline-{{ job.id }}"
         hx-swap="innerHTML">

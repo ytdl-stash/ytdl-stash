@@ -39,7 +39,7 @@ Monitor video channels, download new videos with [yt-dlp](https://github.com/yt-
 
 3. Add a channel (e.g. a creator page URL from a supported site). The app will:
    - Scan the channel periodically for new videos
-   - Download pending videos one at a time
+   - Download pending videos (default one at a time; configurable concurrency)
    - Compute oshash and trigger a Stash scan
    - Match the scene and apply title, performers, studio, date
 
@@ -49,6 +49,8 @@ Monitor video channels, download new videos with [yt-dlp](https://github.com/yt-
 
 All settings use environment variables with the `YTDL_` prefix. Example in `docker-compose.yml`:
 
+The **Settings** page (`/settings`) shows the **effective configuration read at startup** (read-only). To change values like `YTDL_MAX_CONCURRENT_DOWNLOADS`, update your environment and restart the container/app.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `YTDL_STASH_URL` | `http://localhost:9999` | Stash server URL |
@@ -57,6 +59,7 @@ All settings use environment variables with the `YTDL_` prefix. Example in `dock
 | `YTDL_STASH_DOWNLOAD_DIR` | — | Path to downloads **as Stash sees it** (see Folder mapping) |
 | `YTDL_DATA_DIR` | `/app/data` | Where SQLite DB is stored |
 | `YTDL_DEFAULT_CHECK_INTERVAL_HOURS` | `6` | Default hours between channel checks |
+| `YTDL_MAX_CONCURRENT_DOWNLOADS` | `1` | Max number of videos to download/import in parallel |
 | `YTDL_DOWNLOAD_DELAY_SECONDS` | `5` | Seconds between downloads |
 | `YTDL_COOKIES_FILE` | — | Optional path to cookies file (e.g. `/app/cookies.txt`) |
 | `YTDL_YTDLP_OUTPUT_TEMPLATE` | `%(uploader)s - %(title)s [%(id)s].%(ext)s` | yt-dlp filename template |

@@ -36,7 +36,7 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 | **Logging** | `app/logging_config.py` | Centralized logging: console + rotating file + in-memory ring buffer for web UI |
 | **Routes** | `app/routes/*.py` | FastAPI routers: dashboard, channels CRUD, videos, performers, jobs, logs, settings |
 | **Templates** | `app/templates/*.html` | Jinja2 + HTMX server-rendered UI |
-| **Static** | `app/static/` | CSS overrides |
+| **Static** | `app/static/` | Custom CSS (HTMX indicators, a few app-specific rules) |
 
 ## Tech Stack Summary
 
@@ -44,7 +44,7 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 |-------|-----------|-----|
 | Runtime | Python 3.12 | yt-dlp is a Python library; single language for everything |
 | Web framework | FastAPI + Uvicorn | Async-native, automatic OpenAPI docs, dependency injection |
-| Frontend | Jinja2 + HTMX | No build step, server-rendered, progressive enhancement |
+| Frontend | Jinja2 + HTMX + DaisyUI + Tailwind (CDN) | No build step, server-rendered, progressive enhancement; DaisyUI components and Tailwind utilities for layout and styling |
 | Database | SQLite + SQLAlchemy async + aiosqlite | Zero-config, single-file DB, async support via aiosqlite |
 | Downloader | yt-dlp (Python import) | Industry standard, supports hundreds of sites |
 | Scheduler | APScheduler 3.x | Lightweight, async-compatible, no external broker needed |
@@ -172,7 +172,7 @@ ytdl-stash/
 
 1. **Single container**: The entire app runs in one Docker container. No message queues, no Redis, no external DB.
 2. **Shared volume**: Downloads land in a directory that Stash also watches, enabling oshash-based scene matching.
-3. **Sequential downloads**: One video at a time with configurable delay to avoid rate limiting by source sites.
+3. **Configurable download concurrency**: Defaults to one video at a time with a configurable delay to avoid rate limiting; advanced users can opt into parallel downloads.
 4. **Idempotent operations**: Videos are tracked by `site_video_id`; re-scanning a channel skips already-known videos.
 5. **Graceful failure**: Each video has an independent status lifecycle. One failure does not block others.
 6. **Server-rendered UI**: No JavaScript build step. Jinja2 templates enhanced with HTMX for interactivity.
@@ -180,6 +180,8 @@ ytdl-stash/
 ## Configuration
 
 All config is via environment variables prefixed with `YTDL_`:
+
+The Settings page (`/settings`) displays the effective configuration **read at startup** (read-only). To change values like `YTDL_MAX_CONCURRENT_DOWNLOADS`, update your environment and restart the app.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -189,9 +191,22 @@ All config is via environment variables prefixed with `YTDL_`:
 | `YTDL_STASH_DOWNLOAD_DIR` | `None` | Path to downloads as Stash sees it (for path mapping) |
 | `YTDL_DATA_DIR` | `/app/data` | Where SQLite DB lives |
 | `YTDL_DEFAULT_CHECK_INTERVAL_HOURS` | `6` | Default hours between channel checks |
+| `YTDL_MAX_CONCURRENT_DOWNLOADS` | `1` | Maximum number of videos to download/import in parallel |
 | `YTDL_DOWNLOAD_DELAY_SECONDS` | `5` | Seconds to wait between downloads |
 | `YTDL_COOKIES_FILE` | `None` | Optional path to cookies.txt |
 | `YTDL_YTDLP_OUTPUT_TEMPLATE` | `%(uploader)s - %(title)s [%(id)s].%(ext)s` | yt-dlp filename template |
+| `YTDL_YTDLP_FORMAT` | `None` | Optional yt-dlp format selector (e.g. `bestvideo+bestaudio/best`) |
+| `YTDL_YTDLP_IMPERSONATE` | `None` | Optional yt-dlp impersonation target (varies by yt-dlp version) |
+| `YTDL_YTDLP_USER_AGENT` | `None` | Optional override for `User-Agent` header |
+| `YTDL_YTDLP_REFERER` | `None` | Optional override for `Referer` header |
+| `YTDL_YTDLP_PROXY` | `None` | Optional proxy URL (e.g. `socks5://127.0.0.1:9050`) |
+| `YTDL_YTDLP_SOCKET_TIMEOUT_SECONDS` | `None` | Optional socket/request timeout in seconds |
+| `YTDL_YTDLP_RETRIES` | `3` | yt-dlp retry count for downloads |
+| `YTDL_YTDLP_FRAGMENT_RETRIES` | `3` | yt-dlp fragment retry count (HLS/DASH) |
+| `YTDL_YTDLP_HTTP_HEADERS_JSON` | `{}` | JSON object merged into yt-dlp `http_headers` |
+| `YTDL_YTDLP_SCAN_OPTS_JSON` | `{}` | JSON object merged into yt-dlp options for channel scans / metadata extraction |
+| `YTDL_YTDLP_DOWNLOAD_OPTS_JSON` | `{}` | JSON object merged into yt-dlp options for downloads |
+| `YTDL_YTDLP_UPDATE_CHECK_INTERVAL_HOURS` | `24` | How often the scheduler checks PyPI for a newer yt-dlp version |
 | `YTDL_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 ## Logging

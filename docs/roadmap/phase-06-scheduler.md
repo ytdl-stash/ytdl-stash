@@ -24,7 +24,7 @@
 
 **Job 2: `download_processor`** (interval: 30 seconds)
 - Call `process_pending_downloads()`
-- `max_instances=1` to prevent parallel downloads
+- `max_instances=1` to prevent overlapping job runs (download concurrency is controlled separately)
 
 ### Lifespan integration
 
@@ -47,14 +47,14 @@ scheduler.shutdown(wait=False)
 
 - `max_instances=1` on both jobs prevents overlapping runs.
 - The channel checker runs every 60s but only scans channels that are actually due (based on their `check_interval_hours`).
-- The download processor picks up one pending video per cycle. The delay between downloads is handled inside the pipeline, not the scheduler.
+- The download processor picks up pending videos per cycle (up to `YTDL_MAX_CONCURRENT_DOWNLOADS`). The delay throttle is handled inside the pipeline/scheduler download processing, not the scheduler interval.
 - Scheduler must be gracefully shut down on app exit to avoid orphaned jobs.
 
 ## Acceptance Criteria
 
 - [x] `AsyncIOScheduler` starts on app startup
 - [x] `channel_checker` runs every 60s and scans due channels
-- [x] `download_processor` runs every 30s and processes one pending video
+- [x] `download_processor` runs every 30s and processes pending videos (up to configured concurrency)
 - [x] Both jobs have `max_instances=1`
 - [x] Scheduler shuts down cleanly on app shutdown
 - [x] `app/main.py` lifespan updated with scheduler start/stop

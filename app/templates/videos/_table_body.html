@@ -1,25 +1,40 @@
 {% for video in videos %}
 <tr id="video-row-{{ video.id }}">
-  <td><a href="/videos/{{ video.id }}">{{ video.title }}</a></td>
+  <td><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
   <td>{{ video.channel.name if video.channel else '—' }}</td>
   <td>{% include "videos/_status_badge.html" %}</td>
   <td>{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>
   <td>{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</td>
   <td>
-    <a href="/videos/{{ video.id }}">Detail</a>
-    {% if video.status == 'failed' %}
-    <button hx-post="/videos/{{ video.id }}/retry"
+    <a href="/videos/{{ video.id }}" class="btn btn-sm btn-ghost">Detail</a>
+    {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
+    <button class="btn btn-sm btn-warning"
+            hx-post="/videos/{{ video.id }}/stop"
+            hx-target="#video-status-{{ video.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Stop processing for '{{ video.title|e }}'? (If downloading, this may take a moment)">
+      Stop
+    </button>
+    {% elif video.status == 'cancelling' %}
+    <button class="btn btn-sm btn-ghost" disabled>
+      <span class="loading loading-spinner loading-sm"></span>
+      Stopping…
+    </button>
+    {% endif %}
+    {% if video.status in ['failed', 'cancelled'] %}
+    <button class="btn btn-sm btn-primary"
+            hx-post="/videos/{{ video.id }}/retry"
             hx-target="#video-status-{{ video.id }}"
             hx-swap="outerHTML"
             hx-confirm="Retry download for '{{ video.title|e }}'?">
       Retry
     </button>
     {% endif %}
-    <button hx-delete="/videos/{{ video.id }}"
+    <button class="btn btn-sm btn-error"
+            hx-delete="/videos/{{ video.id }}"
             hx-target="#video-row-{{ video.id }}"
             hx-swap="outerHTML swap:1s"
-            hx-confirm="Delete this video?"
-            class="secondary">
+            hx-confirm="Delete this video?">
       Delete
     </button>
   </td>
