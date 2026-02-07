@@ -64,7 +64,7 @@ job_registry: dict[str, JobInfo] = {
     "check_ytdlp_updates": JobInfo(
         id="check_ytdlp_updates",
         name="Check yt-dlp Updates",
-        description="Check PyPI for a newer yt-dlp version (does not rebuild container).",
+        description="Check GitHub nightly builds for a newer yt-dlp version (does not rebuild container).",
     ),
 }
 
@@ -111,6 +111,13 @@ async def _run_tracked(job_id: str, coro_fn) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _ensure_aware(dt: datetime) -> datetime:
+    """Ensure datetime is timezone-aware (UTC) for safe comparison with now(UTC)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 async def _do_check_all_channels() -> None:
     """Core logic: scan every due enabled channel."""
     if db_module.async_session is None:
@@ -133,14 +140,19 @@ async def _do_check_all_channels() -> None:
             due = [
                 ch
                 for ch in channels
-                if ch.last_checked_at is None
-                or ch.last_checked_at < now - timedelta(hours=ch.check_interval_hours)
+                if ch.url and ch.url.startswith(("http://", "https://"))
+                and (
+                    ch.last_checked_at is None
+                    or _ensure_aware(ch.last_checked_at)
+                    < now - timedelta(hours=ch.check_interval_hours)
+                )
             ]
             if not due:
                 logger.debug("Channel checker: no channels due for scanning")
                 return
             logger.info("Channel checker: %d channel(s) due for scanning", len(due))
             for channel in due:
+                channel_id = channel.id  # capture before possible rollback expires attrs
                 try:
                     await process_channel_scan(channel, db, settings)
                 except Exception as e:
@@ -148,7 +160,7 @@ async def _do_check_all_channels() -> None:
                     # commit) so the next channel scan starts with a clean session.
                     await db.rollback()
                     logger.exception(
-                        "Channel checker failed for channel %s: %s", channel.id, e
+                        "Channel checker failed for channel %s: %s", channel_id, e
                     )
             await db.commit()
         except Exception:

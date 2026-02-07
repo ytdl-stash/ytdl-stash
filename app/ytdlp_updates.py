@@ -104,8 +104,16 @@ async def get_status() -> YtdlpUpdateStatus:
         )
 
 
+YTDLP_NIGHTLY_RELEASES_URL = (
+    "https://api.github.com/repos/yt-dlp/yt-dlp-nightly-builds/releases/latest"
+)
+YTDLP_NIGHTLY_INSTALL_URL = (
+    "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.tar.gz"
+)
+
+
 async def check_for_update() -> YtdlpUpdateStatus:
-    """Fetch latest yt-dlp version from PyPI and update the in-memory status."""
+    """Fetch latest yt-dlp nightly version from GitHub and update the in-memory status."""
     global _status
     async with _lock:
         if _status.checking:
@@ -115,13 +123,13 @@ async def check_for_update() -> YtdlpUpdateStatus:
     latest: str | None = None
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get("https://pypi.org/pypi/yt-dlp/json")
+            resp = await client.get(YTDLP_NIGHTLY_RELEASES_URL)
             resp.raise_for_status()
             data: dict[str, Any] = resp.json()
-            info = data.get("info") or {}
-            if isinstance(info, dict):
-                v = info.get("version")
-                latest = str(v).strip() if v else None
+            tag = data.get("tag_name")
+            latest = str(tag).strip() if tag else None
+            if latest and latest.startswith("v"):
+                latest = latest[1:]
     except Exception as exc:
         logger.warning("yt-dlp update check failed: %s", exc)
         async with _lock:
@@ -144,7 +152,7 @@ async def check_for_update() -> YtdlpUpdateStatus:
 
 
 def _run_pip_update() -> tuple[int, str]:
-    """Run a pip update for yt-dlp. Returns (exit_code, combined_output)."""
+    """Run a pip update for yt-dlp from nightly builds. Returns (exit_code, combined_output)."""
     cmd = [
         sys.executable,
         "-m",
@@ -152,7 +160,7 @@ def _run_pip_update() -> tuple[int, str]:
         "install",
         "--no-cache-dir",
         "-U",
-        "yt-dlp",
+        f"yt-dlp @ {YTDLP_NIGHTLY_INSTALL_URL}",
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     out = (proc.stdout or "") + ("\n" if proc.stdout and proc.stderr else "") + (proc.stderr or "")

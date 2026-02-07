@@ -15,6 +15,7 @@ This directory contains Architecture Decision Records (ADRs) for ytdl-stash. ADR
 | [007](007-apscheduler.md) | Use APScheduler for periodic jobs | Accepted |
 | [008](008-sequential-downloads.md) | Sequential downloads with rate limiting | Accepted |
 | [009](009-docker-first.md) | Docker-first single-container deployment | Accepted |
+| [010](010-tzdatetime-bind-result.md) | TZDateTime bind and result consistency for SQLite | Accepted |
 
 ## Format
 

@@ -2,6 +2,8 @@
 
 Reference patterns for how this project uses yt-dlp as a Python library. Read this before modifying the downloader module.
 
+**Version**: The project tracks yt-dlp **nightly builds** (not stable PyPI). The Dockerfile installs from `yt-dlp/yt-dlp-nightly-builds`; the Settings page checks GitHub nightly releases and the "Update yt-dlp" button installs from the same source.
+
 ---
 
 ## Core Import

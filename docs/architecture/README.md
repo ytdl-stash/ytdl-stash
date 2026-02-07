@@ -206,7 +206,7 @@ The Settings page (`/settings`) displays the effective configuration **read at s
 | `YTDL_YTDLP_HTTP_HEADERS_JSON` | `{}` | JSON object merged into yt-dlp `http_headers` |
 | `YTDL_YTDLP_SCAN_OPTS_JSON` | `{}` | JSON object merged into yt-dlp options for channel scans / metadata extraction |
 | `YTDL_YTDLP_DOWNLOAD_OPTS_JSON` | `{}` | JSON object merged into yt-dlp options for downloads |
-| `YTDL_YTDLP_UPDATE_CHECK_INTERVAL_HOURS` | `24` | How often the scheduler checks PyPI for a newer yt-dlp version |
+| `YTDL_YTDLP_UPDATE_CHECK_INTERVAL_HOURS` | `24` | How often the scheduler checks GitHub nightly builds for a newer yt-dlp version |
 | `YTDL_STASH_SCRAPE_AFTER_SYNC` | `False` | Run Stash URL scraper on the scene after sync (best-effort) |
 | `YTDL_STASH_GENERATE_AFTER_SYNC` | `False` | Trigger Stash metadata generation (covers, previews, etc.) after sync |
 | `YTDL_STASH_GENERATE_COVERS` | `True` | Generate cover images (only when generate is enabled) |
@@ -244,6 +244,10 @@ To avoid creating duplicate performers in Stash when multiple code paths (channe
 - **Alias fallback**: Before creating a performer, the client checks Stash for an existing performer whose `alias_list` contains the given name (`find_performer_by_alias`); if found, that performer ID is reused.
 - **Channel cross-reference in pipeline**: The pipeline queries all channels and builds a case-insensitive name to channel lookup. If a performer name matches a known channel, it uses `find_or_create_performer_by_url(name, channel.url, channel.performer_image_url)` so the performer gets the channel URL and image in Stash. This applies to both primary performers (the video channel owner) and secondary performers (guests/co-stars who are also monitored channels).
 - **URL/image gap-fill**: When `find_or_create_performer_by_url` finds an existing performer by name or alias (but not by URL), it gap-fills the performer in Stash: if the channel URL is not already in the performer URL list, it appends it; if the performer has no image and the channel provides `performer_image_url`, it pushes the image. This back-fills metadata for performers that were previously created with name only (e.g. by an earlier pipeline run or post-sync scraper).
+
+## Datetime handling (TZDateTime)
+
+All datetime columns use the custom `TZDateTime` type in `app/models.py`. SQLite does not store timezone info; `TZDateTime` ensures values are written in a consistent form and re-attached to UTC when read, so Python-side comparisons (e.g. in the channel checker) never raise "naive vs aware" errors. See ADR-010.
 
 ## Schema (Channel)
 
