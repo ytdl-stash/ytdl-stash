@@ -1,7 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Videos — ytdl-stash{% endblock %}
 {% block content %}
-<h1>Videos</h1>
+<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+  <h1 style="margin-bottom: 0;">Videos</h1>
+  <span id="job-inline-retry_all_failed">
+    <button class="job-btn secondary"
+            hx-post="/jobs/retry_all_failed/trigger"
+            hx-target="#job-inline-retry_all_failed"
+            hx-swap="innerHTML"
+            hx-confirm="Reset ALL failed videos to pending?">
+      Retry All Failed
+    </button>
+  </span>
+</div>
 <form id="filter-form" method="get" action="/videos" class="inline">
   <div class="grid" style="align-items: end;">
     <label>

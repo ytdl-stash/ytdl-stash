@@ -42,7 +42,9 @@ async def process_channel_scan(
     Returns the count of newly inserted videos.
     """
     lock = _get_channel_lock(channel.id)
+    logger.info("Acquiring scan lock for channel %s", channel.id)
     async with lock:
+        logger.info("Scan lock acquired for channel %s, starting scan", channel.id)
         return await _process_channel_scan_locked(channel, db, settings)
 
 
@@ -51,21 +53,44 @@ async def _process_channel_scan_locked(
 ) -> int:
     """Inner scan logic, called while holding the per-channel lock."""
     try:
-        entries = await async_scan_channel(channel.url, settings.cookies_file)
+        scan_result = await async_scan_channel(channel.url, settings.cookies_file)
     except RuntimeError as e:
         logger.warning("Channel scan failed for channel %s: %s", channel.id, e)
         raise
 
+    entries = scan_result["entries"]
+    channel_meta = scan_result.get("channel_meta") or {}
+
+    # Update channel name if it's still the domain fallback (i.e. metadata
+    # extraction failed when the channel was first added).
+    meta_name = channel_meta.get("name")
+    if meta_name and channel.name == channel.site:
+        logger.info(
+            "Channel %s: updating name from fallback '%s' to '%s'",
+            channel.id, channel.name, meta_name,
+        )
+        channel.name = meta_name
+
+    # Back-fill thumbnail if we didn't have one before.
+    meta_thumb = channel_meta.get("thumbnail")
+    if meta_thumb and not channel.performer_image_url:
+        logger.info("Channel %s: updating thumbnail from scan metadata", channel.id)
+        channel.performer_image_url = meta_thumb
+
     if not entries:
+        logger.info("Channel %s: yt-dlp returned no entries", channel.id)
         channel.last_checked_at = datetime.now(UTC)
         await db.commit()
         return 0
 
     site_ids = [str(e["id"]) for e in entries if e.get("id") is not None]
     if not site_ids:
+        logger.info("Channel %s: yt-dlp returned %d entries but none had valid IDs", channel.id, len(entries))
         channel.last_checked_at = datetime.now(UTC)
         await db.commit()
         return 0
+
+    logger.info("Channel %s: yt-dlp returned %d entries, %d with valid IDs", channel.id, len(entries), len(site_ids))
 
     result = await db.execute(
         select(Video.site_video_id).where(Video.site_video_id.in_(site_ids))
@@ -165,13 +190,14 @@ async def process_single_download(
         await db.commit()
         logger.info("Video %s: downloaded", video.id)
 
+        logger.info("Video %s: computing oshash for %s", video.id, result["filepath"])
         oshash = await async_compute_oshash(result["filepath"])
         video.oshash = oshash
         await db.commit()
+        logger.info("Video %s: oshash=%s", video.id, oshash)
 
         video.status = "importing"
         await db.commit()
-        logger.info("Video %s: triggering Stash scan", video.id)
 
         scan_path = result["filepath"]
         if settings.stash_download_dir:
@@ -180,22 +206,28 @@ async def process_single_download(
             s = settings.stash_download_dir.rstrip("/")
             if scan_path == d or scan_path.startswith(d + "/"):
                 scan_path = s + scan_path[len(d) :]
+        logger.info("Video %s: triggering Stash scan for %s", video.id, scan_path)
         await stash.trigger_scan([scan_path])
 
+        logger.info("Video %s: waiting for Stash scene (oshash=%s)", video.id, oshash)
         scene = await stash.wait_for_scene(oshash)
         if scene is None:
             raise RuntimeError("Scene not found after scan timeout")
+        logger.info("Video %s: Stash scene found (id=%s)", video.id, scene["id"])
 
         performer_ids: list[str] = []
         for name in video.performers or []:
             pid = await stash.find_or_create_performer(name)
+            logger.info("Video %s: performer '%s' -> Stash id %s", video.id, name, pid)
             performer_ids.append(pid)
 
         studio_id: str | None = None
         if video.studio:
             studio_id = await stash.find_or_create_studio(video.studio)
+            logger.info("Video %s: studio '%s' -> Stash id %s", video.id, video.studio, studio_id)
 
         date_str = video.upload_date.isoformat() if video.upload_date else None
+        logger.info("Video %s: updating Stash scene %s with metadata", video.id, scene["id"])
         await stash.update_scene(
             scene_id=scene["id"],
             title=video.title,
@@ -241,7 +273,9 @@ async def process_pending_downloads(
     )
     video = result.scalar_one_or_none()
     if video is None:
+        logger.debug("Download processor: no pending videos in queue")
         return
 
+    logger.info("Download processor: picked up video %s (%s)", video.id, video.title)
     await process_single_download(video, db, settings, stash)
     await asyncio.sleep(settings.download_delay_seconds)

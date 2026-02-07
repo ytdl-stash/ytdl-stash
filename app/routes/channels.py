@@ -210,18 +210,25 @@ async def check_now(
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
 
+    logger.info("Manual 'Check Now' triggered for channel %s (%s)", channel.id, channel.name)
+
     async def _run_scan() -> None:
         if db_module.async_session is None:
+            logger.error("Background scan aborted for channel %s: database session not initialized", channel_id)
             return
         async with db_module.async_session() as session:
             ch = await session.get(Channel, channel_id)
-            if ch:
-                try:
-                    await process_channel_scan(ch, session, settings)
-                except Exception:
-                    logger.exception(
-                        "Background scan failed for channel %s", channel_id
-                    )
+            if not ch:
+                logger.warning("Background scan aborted: channel %s not found in new session", channel_id)
+                return
+            try:
+                logger.info("Background scan starting for channel %s (%s)", ch.id, ch.name)
+                await process_channel_scan(ch, session, settings)
+                logger.info("Background scan completed for channel %s (%s)", ch.id, ch.name)
+            except Exception:
+                logger.exception(
+                    "Background scan failed for channel %s", channel_id
+                )
 
     task = asyncio.create_task(_run_scan())
     _background_tasks.add(task)

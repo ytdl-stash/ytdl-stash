@@ -30,11 +30,11 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 | **Downloader** | `app/downloader.py` | yt-dlp wrapper: scan channels (with nested-entry flattening), download videos, compute oshash |
 | **Stash Client** | `app/stash_client.py` | Async httpx GraphQL client for Stash API |
 | **Pipeline** | `app/pipeline.py` | Orchestration: download -> oshash -> scan -> match -> tag |
-| **Scheduler** | `app/scheduler.py` | APScheduler periodic channel checks + download processing |
+| **Scheduler** | `app/scheduler.py` | APScheduler periodic channel checks + download processing; job registry with status tracking and manual trigger support |
 | **Performer Sync** | `app/performer_sync.py` | Bidirectional sync: pulls full Stash performer data locally, pushes source metadata (image, URL) to Stash when missing |
 | **YTDLM Import** | `app/ytdlm_import.py` | Import channels and videos from YoutubeDL-Material `local_db.json` |
 | **Logging** | `app/logging_config.py` | Centralized logging: console + rotating file + in-memory ring buffer for web UI |
-| **Routes** | `app/routes/*.py` | FastAPI routers: dashboard, channels CRUD, videos, performers, logs, settings |
+| **Routes** | `app/routes/*.py` | FastAPI routers: dashboard, channels CRUD, videos, performers, jobs, logs, settings |
 | **Templates** | `app/templates/*.html` | Jinja2 + HTMX server-rendered UI |
 | **Static** | `app/static/` | CSS overrides |
 

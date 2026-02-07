@@ -19,7 +19,7 @@ yt-dlp is used as a library, NOT as a CLI subprocess. See [ADR-003](../adr/003-y
 List all videos on a channel without downloading anything:
 
 ```python
-def scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
+def scan_channel(url: str, cookies_file: str | None = None) -> dict:
     opts = {
         "extract_flat": True,       # Do NOT resolve each video, just list them
         "quiet": True,              # Suppress console output
@@ -31,8 +31,8 @@ def scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
 
-    entries = info.get("entries", [])
-    return [
+    flat_entries = info.get("entries", [])
+    entries = [
         {
             "id": entry.get("id"),
             "title": entry.get("title"),
@@ -42,9 +42,30 @@ def scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
             "duration": entry.get("duration"),
             "thumbnail": entry.get("thumbnail"),
         }
-        for entry in entries
+        for entry in flat_entries
         if entry  # Some extractors yield None entries
     ]
+
+    # Channel-level metadata is extracted from the same response ("free").
+    channel_name = (
+        info.get("channel")
+        or info.get("uploader")
+        or info.get("title")
+        or info.get("playlist_title")
+        or ""
+    )
+    channel_thumbnail = info.get("thumbnail")
+    if not channel_thumbnail and isinstance(info.get("thumbnails"), list) and info["thumbnails"]:
+        last_thumb = info["thumbnails"][-1]
+        channel_thumbnail = last_thumb.get("url") if isinstance(last_thumb, dict) else None
+
+    return {
+        "entries": entries,
+        "channel_meta": {
+            "name": str(channel_name).strip(),
+            "thumbnail": channel_thumbnail,
+        },
+    }
 ```
 
 **Key points:**
@@ -52,6 +73,9 @@ def scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
 - `download=False` is redundant with `extract_flat` but explicit for safety.
 - Some extractors return `url` while others use `webpage_url`. Check both.
 - `upload_date` is a string in `YYYYMMDD` format or `None`.
+- This function returns a dict with:
+  - `entries`: list of video dicts
+  - `channel_meta`: `{name, thumbnail}` from the same yt-dlp call
 
 ---
 
@@ -111,7 +135,7 @@ import asyncio
 async def async_compute_oshash(filepath: str) -> str:
     return await asyncio.to_thread(compute_oshash, filepath)
 
-async def async_scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
+async def async_scan_channel(url: str, cookies_file: str | None = None) -> dict:
     return await asyncio.to_thread(scan_channel, url, cookies_file)
 
 async def async_download_video(url: str, output_dir: str, ...) -> dict:

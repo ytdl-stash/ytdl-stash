@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Channels — ytdl-stash{% endblock %}
 {% block content %}
-<h1>Channels</h1>
+<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+  <h1 style="margin-bottom: 0;">Channels</h1>
+  <span id="job-inline-check_all_channels">
+    <button class="job-btn"
+            hx-post="/jobs/check_all_channels/trigger"
+            hx-target="#job-inline-check_all_channels"
+            hx-swap="innerHTML">
+      Check All Now
+    </button>
+  </span>
+</div>
 <form hx-post="/channels"
       hx-target="#channel-list"
       hx-swap="beforeend"

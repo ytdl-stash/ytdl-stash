@@ -226,6 +226,7 @@ class StashClient:
 
     async def trigger_scan(self, paths: list[str]) -> None:
         """Tell Stash to scan the given file paths. Disables cover/preview/sprite/phash generation."""
+        logger.info("Stash: triggering scan for %d path(s): %s", len(paths), paths)
         variables = {
             "input": {
                 "paths": paths,
@@ -256,15 +257,20 @@ class StashClient:
         self, oshash: str, timeout: float = 30, interval: float = 2
     ) -> dict | None:
         """Poll Stash for a scene matching the oshash. Returns scene dict or None on timeout."""
+        logger.info("Stash: waiting for scene with oshash=%s (timeout=%ss)", oshash, timeout)
         deadline = time.monotonic() + timeout
+        poll_count = 0
         while time.monotonic() < deadline:
             scene = await self.find_scene_by_oshash(oshash)
+            poll_count += 1
             if scene:
+                logger.info("Stash: scene found after %d poll(s) for oshash=%s", poll_count, oshash)
                 return scene
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
             await asyncio.sleep(min(interval, remaining))
+        logger.warning("Stash: scene not found after %d poll(s) for oshash=%s (timed out)", poll_count, oshash)
         return None
 
     async def find_performer(self, name: str) -> str | None:
@@ -291,7 +297,9 @@ class StashClient:
         """Find performer by name or create. Returns performer ID."""
         performer_id = await self.find_performer(name)
         if performer_id:
+            logger.debug("Stash: found existing performer '%s' (id=%s)", name, performer_id)
             return performer_id
+        logger.info("Stash: creating new performer '%s'", name)
         return await self.create_performer(name)
 
     async def find_performer_by_url(self, url: str) -> dict | None:
@@ -389,7 +397,9 @@ class StashClient:
         """Find studio by name or create. Returns studio ID."""
         studio_id = await self.find_studio(name)
         if studio_id:
+            logger.debug("Stash: found existing studio '%s' (id=%s)", name, studio_id)
             return studio_id
+        logger.info("Stash: creating new studio '%s'", name)
         return await self.create_studio(name)
 
     async def update_scene(

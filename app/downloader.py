@@ -73,6 +73,29 @@ def compute_oshash(filepath: str) -> str:
     return f"{hash_value:016x}"
 
 
+def _extract_channel_name(info: dict) -> str:
+    """Extract the channel/uploader name from a yt-dlp info dict.
+
+    Tries several fields that different extractors populate, in priority order.
+    """
+    raw = (
+        info.get("channel")
+        or info.get("uploader")
+        or info.get("title")
+        or info.get("playlist_title")
+    )
+    return str(raw).strip() if raw else ""
+
+
+def _extract_thumbnail(info: dict) -> str | None:
+    """Extract the best thumbnail URL from a yt-dlp info dict."""
+    thumb = info.get("thumbnail")
+    if not thumb and isinstance(info.get("thumbnails"), list) and info["thumbnails"]:
+        entry = info["thumbnails"][-1]
+        thumb = entry.get("url") if isinstance(entry, dict) else None
+    return thumb
+
+
 def extract_channel_metadata(url: str, cookies_file: str | None = None) -> dict:
     """Extract channel-level metadata (name, thumbnail, description) from a channel URL.
 
@@ -101,20 +124,8 @@ def extract_channel_metadata(url: str, cookies_file: str | None = None) -> dict:
     if not info:
         return {"name": "", "thumbnail": None, "description": None}
 
-    # Extract name — try several fields that different extractors populate
-    raw_name = (
-        info.get("channel")
-        or info.get("uploader")
-        or info.get("title")
-        or info.get("playlist_title")
-    )
-    name = str(raw_name).strip() if raw_name else ""
-
-    # Extract thumbnail
-    thumbnail = info.get("thumbnail")
-    if not thumbnail and isinstance(info.get("thumbnails"), list) and info["thumbnails"]:
-        thumb = info["thumbnails"][-1]
-        thumbnail = thumb.get("url") if isinstance(thumb, dict) else None
+    name = _extract_channel_name(info)
+    thumbnail = _extract_thumbnail(info)
 
     # If no thumbnail from flat mode, try non-flat with no video entries
     if not thumbnail:
@@ -131,17 +142,9 @@ def extract_channel_metadata(url: str, cookies_file: str | None = None) -> dict:
             with yt_dlp.YoutubeDL(nf_opts) as ydl:
                 nf_info = ydl.extract_info(url, download=False)
             if nf_info:
-                thumbnail = nf_info.get("thumbnail")
-                if not thumbnail and isinstance(nf_info.get("thumbnails"), list) and nf_info["thumbnails"]:
-                    thumb = nf_info["thumbnails"][-1]
-                    thumbnail = thumb.get("url") if isinstance(thumb, dict) else None
+                thumbnail = _extract_thumbnail(nf_info)
                 if not name:
-                    raw_name = (
-                        nf_info.get("channel")
-                        or nf_info.get("uploader")
-                        or nf_info.get("title")
-                    )
-                    name = str(raw_name).strip() if raw_name else ""
+                    name = _extract_channel_name(nf_info)
         except Exception:
             logger.debug("Non-flat metadata fallback failed for %s", url, exc_info=True)
 
@@ -187,8 +190,14 @@ def _derive_video_id(entry: dict) -> str | None:
     return None
 
 
-def scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
-    """List video entries from a channel URL without downloading. Returns list of dicts with id, title, url, upload_date, uploader, duration, thumbnail."""
+def scan_channel(url: str, cookies_file: str | None = None) -> dict:
+    """Scan a channel URL and return video entries plus channel-level metadata.
+
+    Returns a dict with:
+      - ``entries``: list[dict] — individual video entries (id, title, url, …)
+      - ``channel_meta``: dict — channel-level info (name, thumbnail) extracted
+        from the same yt-dlp call so no extra request is needed.
+    """
     opts: dict = {
         "extract_flat": True,
         "quiet": True,
@@ -198,7 +207,7 @@ def scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
         opts["cookiefile"] = cookies_file
 
     try:
-        logger.debug("Scanning channel: %s", url)
+        logger.info("yt-dlp scanning channel URL: %s", url)
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -211,6 +220,13 @@ def scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
     except DownloadError as e:
         logger.warning("Channel scan failed for %s: %s", url, e)
         raise RuntimeError(f"Channel scan failed for {url!r}: {e}") from e
+
+    logger.info("yt-dlp scan complete for %s: %d raw entries found", url, len(flat_entries))
+
+    # Extract channel-level metadata from the top-level info dict.
+    # This is "free" — the data comes from the same yt-dlp call.
+    channel_name = _extract_channel_name(info) if info else ""
+    channel_thumbnail = _extract_thumbnail(info) if info else None
 
     results: list[dict] = []
     for entry in flat_entries:
@@ -231,7 +247,14 @@ def scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
                 "thumbnail": entry.get("thumbnail"),
             }
         )
-    return results
+    logger.info("yt-dlp scan for %s: %d usable video entries", url, len(results))
+    return {
+        "entries": results,
+        "channel_meta": {
+            "name": channel_name,
+            "thumbnail": channel_thumbnail,
+        },
+    }
 
 
 def download_video(
@@ -293,8 +316,11 @@ async def async_extract_channel_metadata(
     return await asyncio.to_thread(extract_channel_metadata, url, cookies_file)
 
 
-async def async_scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
-    """Async wrapper for scan_channel. Use this from async code to avoid blocking the event loop."""
+async def async_scan_channel(url: str, cookies_file: str | None = None) -> dict:
+    """Async wrapper for scan_channel. Use this from async code to avoid blocking the event loop.
+
+    Returns dict with ``entries`` (list[dict]) and ``channel_meta`` (dict).
+    """
     return await asyncio.to_thread(scan_channel, url, cookies_file)
 
 

@@ -1,0 +1,35 @@
+{% if job.running %}
+{# Self-poll every 2s until the job finishes, then restore the button #}
+<span hx-get="/jobs/{{ job.id }}/inline-status"
+      hx-trigger="every 2s"
+      hx-target="#job-inline-{{ job.id }}"
+      hx-swap="innerHTML"
+      class="badge-downloading" aria-busy="true">
+  Running…
+</span>
+{% else %}
+{# Job is idle — show the appropriate trigger button #}
+{% if job.id == 'retry_all_failed' %}
+<button class="job-btn secondary"
+        hx-post="/jobs/{{ job.id }}/trigger"
+        hx-target="#job-inline-{{ job.id }}"
+        hx-swap="innerHTML"
+        hx-confirm="Reset ALL failed videos to pending?">
+  Retry All Failed
+</button>
+{% elif job.id == 'check_all_channels' %}
+<button class="job-btn"
+        hx-post="/jobs/{{ job.id }}/trigger"
+        hx-target="#job-inline-{{ job.id }}"
+        hx-swap="innerHTML">
+  Check All Now
+</button>
+{% else %}
+<button class="job-btn"
+        hx-post="/jobs/{{ job.id }}/trigger"
+        hx-target="#job-inline-{{ job.id }}"
+        hx-swap="innerHTML">
+  Run Now
+</button>
+{% endif %}
+{% endif %}

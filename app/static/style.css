@@ -327,6 +327,27 @@
 .log-badge-error { background: #c62828; color: #ffebee; }
 .log-badge-critical { background: #b71c1c; color: #fff; }
 
+/* ========== Job Buttons ========== */
+
+.job-btn {
+  padding: 0.4rem 1rem;
+  font-size: 0.875rem;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.job-btn-running {
+  cursor: wait;
+}
+
+.job-action-cell {
+  min-width: 7rem;
+}
+
+.muted {
+  color: var(--pico-muted-color);
+}
+
 /* Row tinting for warnings/errors */
 .log-level-warning td { background: rgba(245, 127, 23, 0.06); }
 .log-level-error td,

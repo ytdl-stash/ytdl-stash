@@ -139,14 +139,19 @@ For each enabled channel:
 **What happens**:
 1. Call `scan_channel(channel.url, settings.cookies_file)` via `asyncio.to_thread()`.
 2. yt-dlp uses `extract_flat=True` to fetch the channel page and list all video entries.
-3. For each entry returned by yt-dlp:
+3. Channel-level metadata (name, thumbnail) is extracted from the same yt-dlp response at no extra cost.
+4. If the channel name is still the domain fallback (e.g. `"youtube.com"` because initial metadata extraction failed), update it with the real channel name from yt-dlp. Similarly, back-fill the performer thumbnail if it was missing.
+5. For each entry returned by yt-dlp:
    a. Check if `site_video_id` already exists in the `videos` table.
    b. If YES: skip (already known).
    c. If NO: insert a new `Video` row with `status="pending"`.
 
 **Data flow**:
 ```
-yt-dlp flat extract -> list of {id, title, url, upload_date, uploader, duration, thumbnail}
+yt-dlp flat extract -> {entries: [...], channel_meta: {name, thumbnail}}
+                            |
+                            v
+                    Update channel name/thumbnail if still domain fallback
                             |
                             v
                     For each video entry:
@@ -158,7 +163,8 @@ yt-dlp flat extract -> list of {id, title, url, upload_date, uploader, duration,
                     Skip     INSERT INTO videos (site_video_id, title, url, channel_id, status='pending', ...)
 ```
 
-**Data created**:
+**Data created/updated**:
+- `channels` table: `name` and `performer_image_url` updated if previously stuck on fallback values
 - `videos` table rows: `{site_video_id, title, url, channel_id, upload_date, status="pending"}`
 
 ---
@@ -367,3 +373,33 @@ When a user clicks "Retry" on a failed video:
 1. `POST /videos/{id}/retry` handler sets `video.status = "pending"` and clears `video.error_message`.
 2. The `download_processor` job picks it up in its next cycle.
 3. The pipeline runs from step 4 onward (or step 5/6 if the file was already downloaded).
+
+---
+
+## Jobs Page & Manual Triggers
+
+The **Jobs** page (`/jobs`) provides a central control panel for all background operations. Each job shows its current status (idle/running), last run time, and duration. The page auto-refreshes via HTMX polling every 3 seconds.
+
+### Available Jobs
+
+| Job | Endpoint | Description |
+|-----|----------|-------------|
+| **Check All Channels** | `POST /jobs/check_all_channels/trigger` | Scans all enabled channels that are due for new videos (same as the scheduled `channel_checker`). |
+| **Process Downloads** | `POST /jobs/process_downloads/trigger` | Downloads and imports the next pending video in the queue (same as the scheduled `download_processor`). |
+| **Retry All Failed** | `POST /jobs/retry_all_failed/trigger` | Resets every `status=failed` video back to `status=pending` so the download processor retries them. |
+
+### Contextual Triggers
+
+In addition to the Jobs page, trigger buttons appear in context:
+
+- **"Check All Now"** button on the **Channels** list page — triggers the Check All Channels job.
+- **"Retry All Failed"** button on the **Videos** list page — triggers the Retry All Failed job.
+
+### Job Tracking
+
+Jobs are tracked via a `JobInfo` registry in `app/scheduler.py`. Each entry stores:
+- `running` flag (protected by an `asyncio.Lock` to prevent concurrent execution)
+- `last_run_at` timestamp
+- `last_duration_seconds`
+
+When a job is triggered (manually or by the scheduler), it acquires the lock, sets `running=True`, runs, and then records timing data. If the lock is already held, the trigger is skipped to prevent overlap.

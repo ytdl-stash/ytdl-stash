@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Jobs — ytdl-stash{% endblock %}
+{% block content %}
+<h1>Jobs</h1>
+<p>Background jobs run on a schedule. Use <strong>Run Now</strong> to trigger one immediately.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Job</th>
+      <th>Status</th>
+      <th>Last Run</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody id="job-list"
+         hx-get="/jobs/status"
+         hx-trigger="every 3s"
+         hx-swap="innerHTML">
+    {% include "jobs/_job_rows.html" %}
+  </tbody>
+</table>
+{% endblock %}

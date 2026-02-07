@@ -13,9 +13,11 @@
 
 ### Functions to implement
 
-**`scan_channel(url, cookies_file) -> list[dict]`**
+**`scan_channel(url, cookies_file) -> dict`**
 - Uses `yt_dlp.YoutubeDL` with `extract_flat=True`
-- Returns list of dicts: `{id, title, url, upload_date, uploader, duration, thumbnail}`
+- Returns dict with:
+  - `entries`: list of dicts `{id, title, url, upload_date, uploader, duration, thumbnail}`
+  - `channel_meta`: dict `{name, thumbnail}` extracted from the same yt-dlp call
 - Does NOT download anything
 
 **`download_video(url, output_dir, output_template, cookies_file) -> dict`**
@@ -53,7 +55,7 @@ async_compute_oshash()    -> asyncio.to_thread(compute_oshash, ...)
 
 ## Acceptance Criteria
 
-- [x] `scan_channel()` returns a list of video dicts from a channel URL
+- [x] `scan_channel()` returns `{entries, channel_meta}` from a channel URL
 - [x] `download_video()` downloads a file and returns metadata dict
 - [x] `compute_oshash()` returns a 16-char hex string matching Stash's algorithm
 - [x] `_extract_performers()` handles cast, actors, and uploader fallback

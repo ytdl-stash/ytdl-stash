@@ -1,0 +1,44 @@
+<tr id="job-row-{{ job.id }}">
+  <td>
+    <strong>{{ job.name }}</strong>
+    <br><small class="muted">{{ job.description }}</small>
+  </td>
+  <td>
+    {% if job.running %}
+      <span class="badge-downloading">Running</span>
+    {% elif job.last_error %}
+      <span class="badge-failed">Error</span>
+    {% else %}
+      <span class="badge-synced">Idle</span>
+    {% endif %}
+  </td>
+  <td>
+    {% if job.last_run_at %}
+      {{ job.last_run_at.strftime('%Y-%m-%d %H:%M:%S') }}
+      {% if job.last_duration_seconds is not none %}
+        <br><small class="muted">took {{ '%.1f'|format(job.last_duration_seconds) }}s</small>
+      {% endif %}
+      {% if job.last_error %}
+        <br><small class="error">{{ job.last_error[:120] }}</small>
+      {% endif %}
+    {% else %}
+      —
+    {% endif %}
+  </td>
+  <td>
+    <div class="job-action-cell">
+      {% if job.running %}
+        <button class="job-btn job-btn-running" disabled aria-busy="true">
+          Running…
+        </button>
+      {% else %}
+        <button class="job-btn"
+                hx-post="/jobs/{{ job.id }}/trigger"
+                hx-target="#job-row-{{ job.id }}"
+                hx-swap="outerHTML">
+          Run Now
+        </button>
+      {% endif %}
+    </div>
+  </td>
+</tr>

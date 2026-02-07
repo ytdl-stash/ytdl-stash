@@ -112,7 +112,7 @@ Test the downloader in isolation:
 python -c "
 from app.downloader import scan_channel
 results = scan_channel('https://example.com/channel')
-for v in results:
+for v in results['entries']:
     print(v['id'], v['title'])
 "
 ```
