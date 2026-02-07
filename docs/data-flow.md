@@ -47,6 +47,9 @@ User adds channel URL
        |
        v
   [Optional] Trigger Stash generate (covers, phashes, etc.)
+       |
+       v
+  Re-sync scene from Stash (verify scraper results)
 ```
 
 ---
@@ -435,6 +438,33 @@ video.status = "synced"
 
 ---
 
+### 12. Post-Sync: Re-sync Scene from Stash
+
+**Trigger**: After scraping and/or generating (step 10/11), or manually via the "Re-sync" button on the Videos page.
+
+**What happens (automatic — after scraper runs)**:
+1. Call `stash_client.find_scene_by_id(video.stash_scene_id)` to fetch the latest scene data from Stash.
+2. Log the scene's current state (title, performer count, tag count) to confirm scraper results were applied.
+3. Thumbnails are served dynamically from Stash at `{stash_url}/scene/{id}/screenshot`, so no local field update is needed.
+
+**What happens (manual — via "Re-sync from Stash" button)**:
+1. `POST /videos/{id}/resync` verifies the scene exists in Stash.
+2. Re-scrapes the video URL via Stash's scrapers and applies any new/updated metadata.
+3. Triggers Stash generate (if enabled in settings).
+4. The Stash screenshot thumbnail in the UI automatically reflects any cover image changes.
+
+**Manual re-sync always scrapes** regardless of the `YTDL_STASH_SCRAPE_AFTER_SYNC` setting, since it's an explicit user action.
+
+**Error handling**: Best-effort. Failures are logged as warnings but do not change the video's `synced` status.
+
+---
+
+## Thumbnails
+
+The videos page displays scene thumbnails from Stash for synced videos. The thumbnail URL is constructed as `{stash_url}/scene/{scene_id}/screenshot` (with `?apikey={key}` appended when Stash API authentication is enabled). This URL always serves the latest cover/screenshot from Stash. For videos that are not yet synced, the yt-dlp thumbnail URL (if available) is shown as a fallback.
+
+---
+
 ## Error Handling Summary
 
 | Step | Error | Handling |
@@ -450,8 +480,9 @@ video.status = "synced"
 | 9 - Update | Stash API error | `status=failed`, `error_message` saved |
 | 10 - Scrape | No scraper / scrape error | Logged as warning, video stays `synced` |
 | 11 - Generate | Stash API error | Logged as warning, video stays `synced` |
+| 12 - Re-sync | Stash scene not found | Logged as warning (auto), or HTTP 404 (manual) |
 
-All failures in steps 1–9 result in `status=failed` with the error message saved to the database. The user can retry from the UI, which resets the video to `status=pending`. Steps 10–11 are best-effort and never change the video status.
+All failures in steps 1–9 result in `status=failed` with the error message saved to the database. The user can retry from the UI, which resets the video to `status=pending`. Steps 10–12 are best-effort and never change the video status.
 
 ---
 
@@ -486,6 +517,7 @@ In addition to the Jobs page, trigger buttons appear in context:
 
 - **"Check All Now"** button on the **Channels** list page — triggers the Check All Channels job.
 - **"Retry All Failed"** button on the **Videos** list page — triggers the Retry All Failed job.
+- **"Re-sync"** / **"Re-sync from Stash"** button on the **Videos** list and detail pages — re-scrapes and re-generates a synced scene (only shown for videos with a `stash_scene_id`).
 
 ### Job Tracking
 

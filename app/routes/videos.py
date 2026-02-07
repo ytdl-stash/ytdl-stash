@@ -1,4 +1,4 @@
-"""Video routes: list with filters, detail, retry, delete."""
+"""Video routes: list with filters, detail, retry, delete, resync."""
 
 import logging
 
@@ -14,6 +14,7 @@ from app.download_control import download_control
 from app.download_progress import download_progress
 from app.main import templates
 from app.models import Channel, Video
+from app.stash_client import StashClient
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/videos", tags=["videos"])
@@ -25,6 +26,7 @@ async def list_videos(
     channel_id: str | None = None,
     status: str | None = None,
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """List videos with optional filter by channel_id and status. HTMX returns _table_body.html."""
     channel_id_int: int | None = None
@@ -52,7 +54,12 @@ async def list_videos(
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
             "videos/_table_body.html",
-            {"request": request, "videos": videos, "download_progress": progress_map},
+            {
+                "request": request,
+                "videos": videos,
+                "download_progress": progress_map,
+                "settings": settings,
+            },
         )
 
     channels = list(
@@ -67,6 +74,7 @@ async def list_videos(
             "selected_channel_id": channel_id_int,
             "selected_status": status_clean,
             "download_progress": progress_map,
+            "settings": settings,
         },
     )
 
@@ -217,3 +225,90 @@ async def delete_video(
             headers={"HX-Redirect": "/videos"},
         )
     return RedirectResponse(url="/videos", status_code=303)
+
+
+@router.post("/{video_id}/resync")
+async def resync_video(
+    video_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Re-sync a synced video's scene from Stash: scrape, apply, generate.
+
+    Always scrapes regardless of the ``stash_scrape_after_sync`` setting because
+    this is an explicit user action.  Scraped performers/studio are applied without
+    preserving yt-dlp originals so the scraper can fully refresh the scene.
+
+    Returns HTMX _status_badge or redirect.
+    """
+    video = await db.get(Video, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if not video.stash_scene_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Video has no Stash scene ID — sync must complete first",
+        )
+
+    async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+        # Verify scene still exists in Stash
+        scene = await stash.find_scene_by_id(video.stash_scene_id)
+        if not scene:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Scene {video.stash_scene_id} not found in Stash",
+            )
+
+        # Re-scrape and apply
+        try:
+            scraped = await stash.scrape_scene_url(video.url)
+            if scraped:
+                await stash.apply_scraped_scene(
+                    scene_id=video.stash_scene_id,
+                    scraped=scraped,
+                )
+                logger.info(
+                    "Video %s: re-sync scraped and applied for scene %s",
+                    video_id,
+                    video.stash_scene_id,
+                )
+            else:
+                logger.info(
+                    "Video %s: re-sync scrape returned no data for scene %s",
+                    video_id,
+                    video.stash_scene_id,
+                )
+        except Exception as e:
+            logger.warning(
+                "Video %s: re-sync scrape failed: %s", video_id, e
+            )
+
+        # Re-generate
+        if settings.stash_generate_after_sync:
+            try:
+                await stash.trigger_generate(
+                    scene_ids=[video.stash_scene_id],
+                    covers=settings.stash_generate_covers,
+                    previews=settings.stash_generate_previews,
+                    sprites=settings.stash_generate_sprites,
+                    phashes=settings.stash_generate_phashes,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Video %s: re-sync generate failed: %s", video_id, e
+                )
+
+    logger.info("Video %s: re-sync complete", video_id)
+
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            "videos/_status_badge.html",
+            {
+                "request": request,
+                "video": video,
+                "download_progress": download_progress.snapshot(),
+                "poll_status_badge": True,
+            },
+        )
+    return RedirectResponse(url=f"/videos/{video_id}", status_code=303)

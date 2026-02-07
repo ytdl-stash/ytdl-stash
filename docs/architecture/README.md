@@ -28,8 +28,8 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 | **App Entry** | `app/main.py` | FastAPI factory, lifespan, static/template mounts |
 | **Database** | `app/database.py`, `app/models.py` | SQLAlchemy async engine, Channel + Video models |
 | **Downloader** | `app/downloader.py` | yt-dlp wrapper: scan channels (with nested-entry flattening), download videos, compute oshash |
-| **Stash Client** | `app/stash_client.py` | Async httpx GraphQL client for Stash API |
-| **Pipeline** | `app/pipeline.py` | Orchestration: download -> oshash -> scan -> match -> tag |
+| **Stash Client** | `app/stash_client.py` | Async httpx GraphQL client for Stash API (find/create scenes, performers, studios, tags; scraping; generate) |
+| **Pipeline** | `app/pipeline.py` | Orchestration: download -> oshash -> scan -> match -> tag -> scrape -> re-sync |
 | **Scheduler** | `app/scheduler.py` | APScheduler periodic channel checks + download processing; job registry with status tracking and manual trigger support |
 | **Performer Sync** | `app/performer_sync.py` | Bidirectional sync: pulls full Stash performer data locally, pushes source metadata (image, URL) to Stash when missing |
 | **YTDLM Import** | `app/ytdlm_import.py` | Import channels and videos from YoutubeDL-Material `local_db.json` |

@@ -1,0 +1,22 @@
+<div class="overflow-x-auto">
+  <table class="table table-responsive">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Site</th>
+        <th>Videos</th>
+        <th>Interval</th>
+        <th>Max Age</th>
+        <th>Min Duration</th>
+        <th>Last Checked</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="channel-list">
+      {% for channel in channels %}
+      {% include "channels/_row.html" %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

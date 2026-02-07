@@ -161,6 +161,47 @@ Add a new channel via a form:
 
 ---
 
+## Pattern: Bulk Edit with Global Save
+
+Channels page bulk edit: swap the entire table with an editable form, then save all at once:
+
+```html
+<!-- Header: enter bulk edit mode -->
+<button hx-get="/channels/bulk-edit"
+        hx-target="#channel-table-wrap"
+        hx-swap="innerHTML">
+  Bulk Edit
+</button>
+
+<!-- In _bulk_edit.html: single form wrapping all rows -->
+<form hx-put="/channels/bulk"
+      hx-target="#channel-table-wrap"
+      hx-swap="innerHTML">
+  <button type="submit">Save All</button>
+  <button type="button"
+          hx-get="/channels/table"
+          hx-target="#channel-table-wrap"
+          hx-swap="innerHTML">
+    Cancel
+  </button>
+  <table>
+    {% for channel in channels %}
+    <tr>
+      <td>
+        <input name="name__{{ channel.id }}" value="{{ channel.name }}">
+        <input name="enabled__{{ channel.id }}" type="hidden" value="false">
+        <input name="enabled__{{ channel.id }}" type="checkbox" value="true" ...>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</form>
+```
+
+Fields are namespaced by ID (`name__5`, `enabled__5`). The backend parses keys with `rsplit("__", 1)` to group by channel and batch-update. Checkbox uses hidden+checkbox trick: hidden submits `false`, checkbox submits `true` when checked; last value wins.
+
+---
+
 ## Server-Side: Detecting HTMX Requests
 
 Check for the `HX-Request` header to decide whether to return a full page or a partial:
@@ -192,6 +233,8 @@ templates/
   channels/
     list.html                  # Extends base.html
     add.html                   # Extends base.html
+    _table.html                # Partial: read-only channel table
+    _bulk_edit.html            # Partial: bulk edit form (all rows editable)
     _row.html                  # Partial: single channel table row
   videos/
     list.html                  # Extends base.html

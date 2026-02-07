@@ -39,7 +39,39 @@ query FindScenes($filter: FindFilterType!, $scene_filter: SceneFilterType!) {
                     value
                 }
             }
+            paths {
+                screenshot
+            }
         }
+    }
+}
+"""
+
+_FIND_SCENE_BY_ID_QUERY = """
+query FindScene($id: ID!) {
+    findScene(id: $id) {
+        id
+        title
+        details
+        date
+        code
+        urls
+        paths {
+            screenshot
+        }
+        studio {
+            id
+            name
+        }
+        performers {
+            id
+            name
+        }
+        tags {
+            id
+            name
+        }
+        cover
     }
 }
 """
@@ -338,6 +370,11 @@ class StashClient:
             await asyncio.sleep(min(interval, remaining))
         logger.warning("Stash: scene not found after %d poll(s) for oshash=%s (timed out)", poll_count, oshash)
         return None
+
+    async def find_scene_by_id(self, scene_id: str) -> dict | None:
+        """Fetch a scene by Stash ID. Returns full scene dict or None."""
+        data = await self._query(_FIND_SCENE_BY_ID_QUERY, {"id": scene_id})
+        return data.get("findScene")
 
     def _performer_dict(self, p: dict) -> dict:
         """Build {id, name, urls, image_path} from GraphQL performer result."""

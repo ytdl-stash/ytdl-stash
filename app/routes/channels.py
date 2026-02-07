@@ -67,6 +67,97 @@ async def list_channels(
     )
 
 
+async def _load_channels_for_table(db: AsyncSession) -> list[Channel]:
+    """Load all channels with relationships needed by table partials."""
+    result = await db.execute(
+        select(Channel)
+        .options(selectinload(Channel.videos))
+        .order_by(Channel.name)
+    )
+    return list(result.scalars().all())
+
+
+@router.get("/table")
+async def channel_table(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """HTMX partial: render the read-only channel table."""
+    channels = await _load_channels_for_table(db)
+    return templates.TemplateResponse(
+        "channels/_table.html",
+        {"request": request, "channels": channels},
+    )
+
+
+@router.get("/bulk-edit")
+async def bulk_edit_channels(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """HTMX partial: render the bulk edit form."""
+    channels = await _load_channels_for_table(db)
+    return templates.TemplateResponse(
+        "channels/_bulk_edit.html",
+        {"request": request, "channels": channels},
+    )
+
+
+@router.put("/bulk")
+async def bulk_update_channels(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update multiple channels from bulk edit form. Returns _table.html partial."""
+    form = await request.form()
+
+    # Parse keys like "name__5", "enabled__5" -> {5: {"name": "...", "enabled": "true"}}
+    updates: dict[int, dict[str, str]] = {}
+    for key, value in form.items():
+        if "__" not in key:
+            continue
+        parts = key.rsplit("__", 1)
+        if len(parts) != 2:
+            continue
+        field_name, id_str = parts
+        try:
+            channel_id = int(id_str)
+        except ValueError:
+            continue
+        if channel_id not in updates:
+            updates[channel_id] = {}
+        updates[channel_id][field_name] = value if isinstance(value, str) else str(value)
+
+    for channel_id, data in updates.items():
+        channel = await db.get(Channel, channel_id)
+        if not channel:
+            continue
+        if "name" in data:
+            name = data["name"].strip()
+            if name:
+                channel.name = name
+        if "enabled" in data:
+            channel.enabled = data["enabled"].lower() not in ("false", "0", "off")
+        if "check_interval_hours" in data:
+            try:
+                channel.check_interval_hours = max(1, int(data["check_interval_hours"]))
+            except (ValueError, TypeError):
+                pass
+        if "max_video_age_days" in data:
+            channel.max_video_age_days = _parse_optional_int(data["max_video_age_days"])
+        if "min_duration_seconds" in data:
+            channel.min_duration_seconds = _parse_optional_int(data["min_duration_seconds"])
+
+    channels = await _load_channels_for_table(db)
+
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            "channels/_table.html",
+            {"request": request, "channels": channels},
+        )
+    return RedirectResponse(url="/channels", status_code=303)
+
+
 async def _load_channel_for_row(db: AsyncSession, channel_id: int) -> Channel | None:
     """Load a channel with relationships needed by row templates."""
     result = await db.execute(

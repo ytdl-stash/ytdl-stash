@@ -166,6 +166,34 @@ async def _process_channel_scan_locked(
     return new_count
 
 
+async def _resync_scene_from_stash(video: Video, stash: StashClient) -> None:
+    """Fetch the latest scene data from Stash to verify scraper results were applied.
+
+    Called automatically after scraping. The scene's thumbnail is served
+    dynamically from Stash via URL, so no local field update is needed.
+    Note: generate is fire-and-forget so its results won't be visible yet.
+    """
+    if not video.stash_scene_id:
+        return
+    scene = await stash.find_scene_by_id(video.stash_scene_id)
+    if not scene:
+        logger.warning(
+            "Video %s: scene %s not found in Stash during re-sync",
+            video.id,
+            video.stash_scene_id,
+        )
+        return
+
+    logger.info(
+        "Video %s: re-synced scene %s from Stash (title=%r, performers=%d, tags=%d)",
+        video.id,
+        video.stash_scene_id,
+        scene.get("title", ""),
+        len(scene.get("performers") or []),
+        len(scene.get("tags") or []),
+    )
+
+
 async def process_single_download(
     video: Video, db: AsyncSession, settings: Settings, stash: StashClient
 ) -> None:
@@ -422,6 +450,12 @@ async def process_single_download(
                 )
             except Exception as e:
                 logger.warning("Video %s: post-sync generate failed (non-fatal): %s", video.id, e)
+
+        # 3. Re-sync scene from Stash to confirm scraper results were applied
+        try:
+            await _resync_scene_from_stash(video, stash)
+        except Exception as e:
+            logger.warning("Video %s: post-sync scene re-sync failed (non-fatal): %s", video.id, e)
 
     except DownloadCancelled as e:
         download_progress.clear(video.id)

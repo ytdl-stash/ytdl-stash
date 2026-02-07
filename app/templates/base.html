@@ -10,29 +10,37 @@
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
 <body>
-  <div class="navbar bg-base-200">
-    <div class="container mx-auto px-4">
-      <div class="navbar-start">
-        <div class="dropdown lg:hidden">
-          <button type="button" tabindex="0" class="btn btn-ghost" aria-label="Open menu">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-[1] mt-2 w-52 p-2 shadow">
-            <li><a href="/">Dashboard</a></li>
-            <li><a href="/channels">Channels</a></li>
-            <li><a href="/performers">Performers</a></li>
-            <li><a href="/videos">Videos</a></li>
-            <li><a href="/jobs">Jobs</a></li>
-            <li><a href="/logs">Logs</a></li>
-            <li><a href="/settings">Settings</a></li>
-          </ul>
-        </div>
-        <a href="/" class="btn btn-ghost text-lg font-bold">ytdl-stash</a>
-      </div>
-      <div class="navbar-end hidden lg:flex">
-        <ul class="menu menu-horizontal px-1 gap-1">
+  <header class="bg-base-200 border-b border-base-300">
+    <div class="container mx-auto px-4 flex items-center h-14 gap-4">
+      <!-- Brand -->
+      <a href="/" class="text-lg font-bold tracking-tight whitespace-nowrap shrink-0 hover:opacity-80 transition-opacity">
+        ytdl-stash
+      </a>
+
+      <!-- Desktop nav -->
+      <nav class="hidden lg:flex items-center ml-2">
+        <ul class="menu menu-horizontal gap-0.5 p-0 [&_a]:text-sm">
+          <li><a href="/">Dashboard</a></li>
+          <li><a href="/channels">Channels</a></li>
+          <li><a href="/performers">Performers</a></li>
+          <li><a href="/videos">Videos</a></li>
+          <li><a href="/jobs">Jobs</a></li>
+          <li><a href="/logs">Logs</a></li>
+          <li><a href="/settings">Settings</a></li>
+        </ul>
+      </nav>
+
+      <!-- Spacer -->
+      <div class="flex-1"></div>
+
+      <!-- Mobile hamburger -->
+      <div class="dropdown dropdown-end lg:hidden">
+        <button type="button" tabindex="0" class="btn btn-ghost btn-sm btn-square" aria-label="Open menu">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-50 mt-2 w-48 p-2 shadow-lg">
           <li><a href="/">Dashboard</a></li>
           <li><a href="/channels">Channels</a></li>
           <li><a href="/performers">Performers</a></li>
@@ -43,7 +51,7 @@
         </ul>
       </div>
     </div>
-  </div>
+  </header>
   <main class="container mx-auto px-4 py-6">
     {% block content %}{% endblock %}
   </main>
