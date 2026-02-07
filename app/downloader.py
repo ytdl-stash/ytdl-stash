@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import struct
 from datetime import date
 from typing import Any
@@ -32,8 +33,50 @@ def _parse_date(date_str: str | None) -> date | None:
         return None
 
 
+# Matches bare domain names like "pornhub.com", "redtube.net", "site.co.uk".
+# Uses a broad TLD list to catch real domains while allowing dotted names like
+# "Mr.Beast" or "Dr.Wolf" through.
+_DOMAIN_RE = re.compile(
+    r"^[\w-]+"                          # second-level label
+    r"(?:\.[\w-]+)*"                    # optional sub-labels (e.g. ".co")
+    r"\."                               # mandatory dot before TLD
+    r"(?:com|net|org|co|io|tv|xxx|adult|porn|sex|tube|me|info|biz|us|uk|de|fr|ru|jp|br|in|au|ca|nl|se|no|fi|dk|pl|cz|ch|at|be|es|it|pt)$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_site_name(value: str, info: dict) -> bool:
+    """Return True if *value* appears to be a site/domain name rather than a real channel name.
+
+    Heuristics:
+    - Matches the yt-dlp extractor key (e.g. "PornHub", "RedTube") case-insensitively.
+    - Looks like a bare domain (e.g. "pornhub.com") based on TLD matching.
+    """
+    v = value.strip().lower()
+    if not v:
+        return True
+
+    # Compare against the extractor name (e.g. "PornHub", "PornHubUser")
+    extractor = (info.get("extractor_key") or info.get("extractor") or "").strip().lower()
+    if extractor and v == extractor:
+        return True
+    # e.g. "Pornhub.com" vs extractor "PornHub"
+    if extractor and v.replace(".", "").replace(" ", "") == extractor.replace(" ", ""):
+        return True
+
+    # Bare domain with a recognized TLD (e.g. "pornhub.com")
+    if _DOMAIN_RE.match(v):
+        return True
+
+    return False
+
+
 def _extract_performers(info: dict) -> list[str]:
-    """Extract performer names from yt-dlp info_dict. Deduplicates (case-insensitive), preserves order."""
+    """Extract performer names from yt-dlp info_dict. Deduplicates (case-insensitive), preserves order.
+
+    Falls back to ``uploader`` only when no ``cast``/``actors`` fields exist
+    *and* the uploader doesn't look like a site/domain name.
+    """
     performers: list[str] = []
 
     for field in ("cast", "actors"):
@@ -44,7 +87,9 @@ def _extract_performers(info: dict) -> list[str]:
             performers.append(str(val))
 
     if not performers and info.get("uploader"):
-        performers.append(str(info["uploader"]))
+        uploader = str(info["uploader"])
+        if not _looks_like_site_name(uploader, info):
+            performers.append(uploader)
 
     seen: set[str] = set()
     unique: list[str] = []
@@ -85,14 +130,15 @@ def _extract_channel_name(info: dict) -> str:
     """Extract the channel/uploader name from a yt-dlp info dict.
 
     Tries several fields that different extractors populate, in priority order.
+    Skips values that look like a site or domain name (e.g. "Pornhub.com").
     """
-    raw = (
-        info.get("channel")
-        or info.get("uploader")
-        or info.get("title")
-        or info.get("playlist_title")
-    )
-    return str(raw).strip() if raw else ""
+    for field in ("channel", "uploader", "title", "playlist_title"):
+        raw = info.get(field)
+        if raw:
+            candidate = str(raw).strip()
+            if candidate and not _looks_like_site_name(candidate, info):
+                return candidate
+    return ""
 
 
 def _extract_thumbnail(info: dict) -> str | None:

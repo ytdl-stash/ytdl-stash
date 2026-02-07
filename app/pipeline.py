@@ -19,6 +19,7 @@ from app.downloader import (
     async_scan_channel,
 )
 from app.models import Channel, Video
+from app.performer_sync import is_placeholder_name
 from app.stash_client import StashClient
 
 logger = logging.getLogger(__name__)
@@ -65,12 +66,12 @@ async def _process_channel_scan_locked(
     entries = scan_result["entries"]
     channel_meta = scan_result.get("channel_meta") or {}
 
-    # Update channel name if it's still the domain fallback (i.e. metadata
-    # extraction failed when the channel was first added).
+    # Update channel name if it's still a placeholder (domain, "unknown", etc.)
+    # — metadata extraction may have failed when the channel was first added.
     meta_name = channel_meta.get("name")
-    if meta_name and channel.name == channel.site:
+    if meta_name and is_placeholder_name(channel.name):
         logger.info(
-            "Channel %s: updating name from fallback '%s' to '%s'",
+            "Channel %s: updating name from placeholder '%s' to '%s'",
             channel.id, channel.name, meta_name,
         )
         channel.name = meta_name
@@ -280,6 +281,39 @@ async def process_single_download(
         video.status = "synced"
         await db.commit()
         logger.info("Video %s: synced to Stash scene %s", video.id, scene["id"])
+
+        # ------------------------------------------------------------------
+        # Post-sync actions (best-effort — failures are logged, not raised)
+        # ------------------------------------------------------------------
+
+        # 1. Scrape the video URL via Stash's configured scrapers
+        if settings.stash_scrape_after_sync:
+            try:
+                logger.info("Video %s: scraping URL %s via Stash", video.id, video.url)
+                scraped = await stash.scrape_scene_url(video.url)
+                if scraped:
+                    await stash.apply_scraped_scene(
+                        scene_id=scene["id"],
+                        scraped=scraped,
+                        existing_performer_ids=performer_ids or None,
+                        existing_studio_id=studio_id,
+                    )
+            except Exception as e:
+                logger.warning("Video %s: post-sync scrape failed (non-fatal): %s", video.id, e)
+
+        # 2. Trigger Stash generate (covers, previews, sprites, phashes)
+        if settings.stash_generate_after_sync:
+            try:
+                logger.info("Video %s: triggering Stash generate for scene %s", video.id, scene["id"])
+                await stash.trigger_generate(
+                    scene_ids=[scene["id"]],
+                    covers=settings.stash_generate_covers,
+                    previews=settings.stash_generate_previews,
+                    sprites=settings.stash_generate_sprites,
+                    phashes=settings.stash_generate_phashes,
+                )
+            except Exception as e:
+                logger.warning("Video %s: post-sync generate failed (non-fatal): %s", video.id, e)
 
     except DownloadCancelled as e:
         download_progress.clear(video.id)

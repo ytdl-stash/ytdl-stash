@@ -78,12 +78,22 @@ async def _run_tracked(job_id: str, coro_fn) -> None:
     if info._lock.locked():
         logger.debug("Job %s already running, skipping", job_id)
         return
+
+    # Store the current asyncio task so stop_job() can cancel it regardless
+    # of whether this was started by APScheduler or a manual trigger.
+    current_task = asyncio.current_task()
+    if current_task is not None:
+        _background_tasks_by_job_id[job_id] = current_task
+
     start = datetime.now(UTC)
     info.running = True
     info.last_error = None
     try:
         async with info._lock:
             await coro_fn()
+    except asyncio.CancelledError:
+        info.last_error = "Stopped by user"
+        logger.info("Job %s cancelled", job_id)
     except Exception as exc:
         info.last_error = str(exc)[:500]
         raise
@@ -91,6 +101,9 @@ async def _run_tracked(job_id: str, coro_fn) -> None:
         info.running = False
         info.last_run_at = datetime.now(UTC)
         info.last_duration_seconds = (info.last_run_at - start).total_seconds()
+        # Clean up task reference if it still points to us.
+        if _background_tasks_by_job_id.get(job_id) is current_task:
+            _background_tasks_by_job_id.pop(job_id, None)
 
 
 # ---------------------------------------------------------------------------

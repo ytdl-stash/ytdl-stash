@@ -17,6 +17,49 @@
   </tbody>
 </table>
 
+<h2 class="text-xl font-semibold mb-2">Post-sync Stash actions</h2>
+<p class="mb-4 text-sm opacity-70">
+  These actions run automatically after a video is synced to Stash. They are best-effort — failures are logged but do not affect the sync status.
+  Set via <code>YTDL_STASH_*</code> environment variables.
+</p>
+<table class="table mb-6">
+  <tbody>
+    <tr>
+      <th>Scrape scene URL after sync</th>
+      <td>
+        {% if settings.stash_scrape_after_sync %}
+          <span class="badge badge-success">Enabled</span>
+        {% else %}
+          <span class="badge badge-ghost">Disabled</span>
+        {% endif %}
+        <span class="text-xs opacity-60 ml-2">YTDL_STASH_SCRAPE_AFTER_SYNC</span>
+      </td>
+    </tr>
+    <tr>
+      <th>Generate after sync</th>
+      <td>
+        {% if settings.stash_generate_after_sync %}
+          <span class="badge badge-success">Enabled</span>
+        {% else %}
+          <span class="badge badge-ghost">Disabled</span>
+        {% endif %}
+        <span class="text-xs opacity-60 ml-2">YTDL_STASH_GENERATE_AFTER_SYNC</span>
+      </td>
+    </tr>
+    {% if settings.stash_generate_after_sync %}
+    <tr>
+      <th>Generate options</th>
+      <td>
+        <span class="badge {{ 'badge-info' if settings.stash_generate_covers else 'badge-ghost' }} mr-1">Covers</span>
+        <span class="badge {{ 'badge-info' if settings.stash_generate_previews else 'badge-ghost' }} mr-1">Previews</span>
+        <span class="badge {{ 'badge-info' if settings.stash_generate_sprites else 'badge-ghost' }} mr-1">Sprites</span>
+        <span class="badge {{ 'badge-info' if settings.stash_generate_phashes else 'badge-ghost' }}">Phashes</span>
+      </td>
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+
 <h2 class="text-xl font-semibold mb-2">yt-dlp options</h2>
 <p class="mb-4">
   These values come from <code>YTDL_*</code> environment variables (read at startup). Use the form

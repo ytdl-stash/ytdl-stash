@@ -150,6 +150,57 @@ mutation SceneUpdate($input: SceneUpdateInput!) {
 }
 """
 
+_SCRAPE_SCENE_URL_QUERY = """
+query ScrapeSceneURL($url: String!) {
+    scrapeSceneURL(url: $url) {
+        title
+        code
+        details
+        url
+        urls
+        date
+        image
+        studio {
+            stored_id
+            name
+        }
+        tags {
+            stored_id
+            name
+        }
+        performers {
+            stored_id
+            name
+        }
+    }
+}
+"""
+
+_METADATA_GENERATE_MUTATION = """
+mutation MetadataGenerate($input: GenerateMetadataInput!) {
+    metadataGenerate(input: $input)
+}
+"""
+
+_FIND_TAGS_QUERY = """
+query FindTags($filter: FindFilterType!, $tag_filter: TagFilterType!) {
+    findTags(filter: $filter, tag_filter: $tag_filter) {
+        tags {
+            id
+            name
+        }
+    }
+}
+"""
+
+_TAG_CREATE_MUTATION = """
+mutation TagCreate($input: TagCreateInput!) {
+    tagCreate(input: $input) {
+        id
+    }
+}
+"""
+
 
 class StashClient:
     """Async client for Stash's GraphQL API. Uses ApiKey header and 30s timeout.
@@ -410,6 +461,9 @@ class StashClient:
         date: str | None = None,
         studio_id: str | None = None,
         performer_ids: list[str] | None = None,
+        tag_ids: list[str] | None = None,
+        details: str | None = None,
+        cover_image: str | None = None,
     ) -> None:
         """Update scene metadata. Only non-None fields are sent (Stash clears nulls)."""
         scene_input: dict = {"id": scene_id}
@@ -423,4 +477,162 @@ class StashClient:
             scene_input["studio_id"] = studio_id
         if performer_ids is not None:
             scene_input["performer_ids"] = performer_ids
+        if tag_ids is not None:
+            scene_input["tag_ids"] = tag_ids
+        if details is not None:
+            scene_input["details"] = details
+        if cover_image is not None:
+            scene_input["cover_image"] = cover_image
         await self._query(_SCENE_UPDATE_MUTATION, {"input": scene_input})
+
+    # ------------------------------------------------------------------
+    # Tags
+    # ------------------------------------------------------------------
+
+    async def find_tag(self, name: str) -> str | None:
+        """Find a tag by exact name. Returns tag ID or None."""
+        variables = {
+            "filter": {"per_page": 1},
+            "tag_filter": {
+                "name": {
+                    "value": name,
+                    "modifier": "EQUALS",
+                }
+            },
+        }
+        data = await self._query(_FIND_TAGS_QUERY, variables)
+        tags = data["findTags"]["tags"]
+        return tags[0]["id"] if tags else None
+
+    async def create_tag(self, name: str) -> str:
+        """Create a tag. Returns the new tag's ID."""
+        data = await self._query(_TAG_CREATE_MUTATION, {"input": {"name": name}})
+        return data["tagCreate"]["id"]
+
+    async def find_or_create_tag(self, name: str) -> str:
+        """Find tag by name or create. Returns tag ID."""
+        tag_id = await self.find_tag(name)
+        if tag_id:
+            logger.debug("Stash: found existing tag '%s' (id=%s)", name, tag_id)
+            return tag_id
+        logger.info("Stash: creating new tag '%s'", name)
+        return await self.create_tag(name)
+
+    # ------------------------------------------------------------------
+    # Scraping
+    # ------------------------------------------------------------------
+
+    async def scrape_scene_url(self, url: str) -> dict | None:
+        """Scrape scene metadata from a URL using Stash's configured scrapers.
+
+        Returns the scraped scene dict or None if no scraper matched / no data returned.
+        """
+        try:
+            data = await self._query(_SCRAPE_SCENE_URL_QUERY, {"url": url})
+            scraped = data.get("scrapeSceneURL")
+            if not scraped:
+                logger.info("Stash: no scraper returned data for URL %s", url)
+                return None
+            logger.info("Stash: scraper returned data for URL %s", url)
+            return scraped
+        except RuntimeError as e:
+            # GraphQL errors (e.g. no matching scraper) are non-fatal
+            logger.warning("Stash: scrapeSceneURL failed for %s: %s", url, e)
+            return None
+
+    async def apply_scraped_scene(
+        self,
+        scene_id: str,
+        scraped: dict,
+        existing_performer_ids: list[str] | None = None,
+        existing_studio_id: str | None = None,
+    ) -> None:
+        """Apply scraped metadata to an existing scene (gap-fill only).
+
+        Only sets fields the scraper returned. Tags are resolved (find-or-create).
+        Performers and studio from the scraper are only applied if we don't already
+        have them set from yt-dlp.
+        """
+        update_kwargs: dict = {}
+
+        # Details / description — we never set this from yt-dlp, so always apply
+        if scraped.get("details"):
+            update_kwargs["details"] = scraped["details"]
+
+        # Cover image
+        if scraped.get("image"):
+            update_kwargs["cover_image"] = scraped["image"]
+
+        # Tags — resolve each to a Stash tag ID
+        scraped_tags = scraped.get("tags") or []
+        if scraped_tags:
+            tag_ids: list[str] = []
+            for tag in scraped_tags:
+                if tag.get("stored_id"):
+                    tag_ids.append(tag["stored_id"])
+                elif tag.get("name"):
+                    tid = await self.find_or_create_tag(tag["name"])
+                    tag_ids.append(tid)
+            if tag_ids:
+                update_kwargs["tag_ids"] = tag_ids
+
+        # Performers — only add from scraper if we don't already have them
+        if not existing_performer_ids:
+            scraped_performers = scraped.get("performers") or []
+            if scraped_performers:
+                pids: list[str] = []
+                for perf in scraped_performers:
+                    if perf.get("stored_id"):
+                        pids.append(perf["stored_id"])
+                    elif perf.get("name"):
+                        pid = await self.find_or_create_performer(perf["name"])
+                        pids.append(pid)
+                if pids:
+                    update_kwargs["performer_ids"] = pids
+
+        # Studio — only set from scraper if we don't already have one
+        if not existing_studio_id:
+            scraped_studio = scraped.get("studio")
+            if scraped_studio:
+                if scraped_studio.get("stored_id"):
+                    update_kwargs["studio_id"] = scraped_studio["stored_id"]
+                elif scraped_studio.get("name"):
+                    sid = await self.find_or_create_studio(scraped_studio["name"])
+                    update_kwargs["studio_id"] = sid
+
+        if update_kwargs:
+            logger.info(
+                "Stash: applying scraped data to scene %s (fields: %s)",
+                scene_id, list(update_kwargs.keys()),
+            )
+            await self.update_scene(scene_id=scene_id, **update_kwargs)
+        else:
+            logger.info("Stash: scraper returned no new data to apply for scene %s", scene_id)
+
+    # ------------------------------------------------------------------
+    # Generate
+    # ------------------------------------------------------------------
+
+    async def trigger_generate(
+        self,
+        scene_ids: list[str],
+        covers: bool = True,
+        previews: bool = False,
+        sprites: bool = False,
+        phashes: bool = True,
+    ) -> None:
+        """Trigger Stash metadata generation for specific scenes."""
+        logger.info(
+            "Stash: triggering generate for %d scene(s) (covers=%s, previews=%s, sprites=%s, phashes=%s)",
+            len(scene_ids), covers, previews, sprites, phashes,
+        )
+        variables = {
+            "input": {
+                "sceneIDs": scene_ids,
+                "covers": covers,
+                "previews": previews,
+                "sprites": sprites,
+                "phashes": phashes,
+            }
+        }
+        await self._query(_METADATA_GENERATE_MUTATION, variables)

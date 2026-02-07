@@ -41,6 +41,12 @@ User adds channel URL
        |
        v
   Video status = synced
+       |
+       v
+  [Optional] Scrape scene URL via Stash scrapers
+       |
+       v
+  [Optional] Trigger Stash generate (covers, phashes, etc.)
 ```
 
 ---
@@ -67,38 +73,49 @@ User adds channel URL
 **Trigger**: Immediately after a channel is inserted in step 1 (non-blocking background task).
 
 **What happens**:
-1. Check if `channel.stash_performer_id` is already set. If so, skip.
-2. Call `stash_client.find_performer_by_url(channel.url)` — searches Stash for a performer whose URL list includes this channel URL.
-3. If found: link the existing performer by setting `channel.stash_performer_id = performer.id`.
-4. If not found by URL: fall back to `stash_client.find_performer(channel.name)` — try matching by name.
-5. If still not found: create a new performer in Stash with `name=channel.name`, `urls=[channel.url]`, and `image=channel.performer_image_url` (if available).
-6. Set `channel.stash_performer_id` to the found or newly created performer ID.
-7. Commit to DB.
+1. Enrich from source: if the channel name is a placeholder (bare domain, "unknown", or empty), attempt to re-extract metadata from yt-dlp to get a real name and thumbnail.
+2. Check if `channel.stash_performer_id` is already set. If so, skip to pull/push.
+3. **Guard**: if the channel name is still a placeholder after enrichment (e.g. yt-dlp returned the site name instead of a real channel name), skip performer creation entirely. The performer will be created on a later sync once a real name is available.
+4. Call `stash_client.find_performer_by_url(channel.url)` — searches Stash for a performer whose URL list includes this channel URL.
+5. If found: link the existing performer by setting `channel.stash_performer_id = performer.id`.
+6. If not found by URL: fall back to `stash_client.find_performer(channel.name)` — try matching by name.
+7. If still not found: create a new performer in Stash with `name=channel.name`, `urls=[channel.url]`, and `image=channel.performer_image_url` (if available).
+8. Set `channel.stash_performer_id` to the found or newly created performer ID.
+9. Pull full performer data from Stash and push any source data Stash is missing.
+10. Commit to DB.
 
 **Data flow**:
 ```
 Channel just added (stash_performer_id=None)
     |
     v
-  Find performer by URL in Stash
+  Enrich from yt-dlp (name, thumbnail) if missing
     |
-  Found?
+    v
+  Name still a placeholder (domain, "unknown", empty)?
    /    \
   Yes    No
   |       |
   v       v
-Link    Find performer by name in Stash
-  |       |
-  |     Found?
-  |      /    \
-  |    Yes     No
-  |    |        |
-  |    v        v
-  |  Link     Create performer in Stash (name, urls, image)
-  |    |        |
-  |    |        v
-  |    |      Link
-  v    v        v
+Skip    Find performer by URL in Stash
+(defer)   |
+        Found?
+         /    \
+       Yes    No
+        |       |
+        v       v
+      Link    Find performer by name in Stash
+        |       |
+        |     Found?
+        |      /    \
+        |    Yes     No
+        |    |        |
+        |    v        v
+        |  Link     Create performer in Stash (name, urls, image)
+        |    |        |
+        |    |        v
+        |    |      Link
+        v    v        v
 channel.stash_performer_id = performer.id
 ```
 
@@ -140,7 +157,7 @@ For each enabled channel:
 1. Call `scan_channel(channel.url, settings.cookies_file)` via `asyncio.to_thread()`.
 2. yt-dlp uses `extract_flat=True` to fetch the channel page and list all video entries.
 3. Channel-level metadata (name, thumbnail) is extracted from the same yt-dlp response at no extra cost.
-4. If the channel name is still the domain fallback (e.g. `"youtube.com"` because initial metadata extraction failed), update it with the real channel name from yt-dlp. Similarly, back-fill the performer thumbnail if it was missing.
+4. If the channel name is still a placeholder (bare domain like `"youtube.com"`, `"unknown"`, or empty — because initial metadata extraction failed), update it with the real channel name from yt-dlp. Similarly, back-fill the performer thumbnail if it was missing. Names that look like site/domain names (e.g. values matching the yt-dlp extractor key or bare domains) are filtered out during extraction.
 5. For each entry returned by yt-dlp:
    a. Check if `site_video_id` already exists in the `videos` table.
    b. If YES: skip (already known).
@@ -151,7 +168,7 @@ For each enabled channel:
 yt-dlp flat extract -> {entries: [...], channel_meta: {name, thumbnail}}
                             |
                             v
-                    Update channel name/thumbnail if still domain fallback
+                    Update channel name/thumbnail if still placeholder
                             |
                             v
                     For each video entry:
@@ -357,6 +374,39 @@ video.status = "synced"
 
 ---
 
+### 10. Post-Sync: Scrape Scene URL (Optional)
+
+**Trigger**: Scene synced in step 9, and `YTDL_STASH_SCRAPE_AFTER_SYNC=true`.
+
+**What happens**:
+1. Call `stash_client.scrape_scene_url(video.url)` — uses Stash's configured scrapers to fetch metadata from the video's source URL.
+2. If a scraper returns data, apply gap-fill fields to the scene:
+   - `details` (description) — always applied since yt-dlp doesn't provide this.
+   - `tags` — each tag is resolved via find-or-create, then added to the scene.
+   - `cover_image` — the scraped cover image URL.
+   - `performers` / `studio` — only applied if we didn't already set them from yt-dlp.
+3. If no scraper matches the URL, or the scraper returns empty data, the step is silently skipped.
+
+**Error handling**: Best-effort. Failures are logged as warnings but do not change the video's `synced` status.
+
+---
+
+### 11. Post-Sync: Trigger Generate (Optional)
+
+**Trigger**: Scene synced in step 9, and `YTDL_STASH_GENERATE_AFTER_SYNC=true`.
+
+**What happens**:
+1. Call `stash_client.trigger_generate(scene_ids=[scene.id])` with the configured generation options:
+   - `covers` (default: true) — generate cover/thumbnail images.
+   - `previews` (default: false) — generate video preview clips (slow).
+   - `sprites` (default: false) — generate sprite sheets for scrubbing.
+   - `phashes` (default: true) — generate perceptual hashes for duplicate detection.
+2. Stash runs the generation asynchronously in the background.
+
+**Error handling**: Best-effort. Failures are logged as warnings but do not change the video's `synced` status.
+
+---
+
 ## Error Handling Summary
 
 | Step | Error | Handling |
@@ -369,8 +419,10 @@ video.status = "synced"
 | 7 - Poll | Timeout (scene not found) | `status=failed`, retry possible |
 | 8 - Performers | Stash API error | `status=failed`, `error_message` saved |
 | 9 - Update | Stash API error | `status=failed`, `error_message` saved |
+| 10 - Scrape | No scraper / scrape error | Logged as warning, video stays `synced` |
+| 11 - Generate | Stash API error | Logged as warning, video stays `synced` |
 
-All failures result in `status=failed` with the error message saved to the database. The user can retry from the UI, which resets the video to `status=pending`.
+All failures in steps 1–9 result in `status=failed` with the error message saved to the database. The user can retry from the UI, which resets the video to `status=pending`. Steps 10–11 are best-effort and never change the video status.
 
 ---
 

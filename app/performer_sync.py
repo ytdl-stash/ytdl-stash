@@ -7,7 +7,7 @@ Push: If our source (yt-dlp) has data Stash lacks (image, URL), send it to Stash
 import logging
 from typing import TYPE_CHECKING
 
-from app.downloader import async_extract_channel_metadata
+from app.downloader import _DOMAIN_RE, async_extract_channel_metadata
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,10 +19,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _is_placeholder_name(name: str) -> bool:
-    """Return True if the channel name looks like a bare domain placeholder (e.g. 'pornhub.com')."""
+def is_placeholder_name(name: str) -> bool:
+    """Return True if the channel name looks like a placeholder (bare domain, 'unknown', or empty)."""
     stripped = name.strip().lower()
-    return ("." in stripped and "/" not in stripped) or stripped == "unknown" or stripped == ""
+    if not stripped or stripped == "unknown":
+        return True
+    return bool(_DOMAIN_RE.match(stripped))
 
 
 async def _enrich_from_source(
@@ -30,7 +32,7 @@ async def _enrich_from_source(
     settings: "Settings",
 ) -> None:
     """Fill in channel name and thumbnail from yt-dlp when missing."""
-    needs_name = _is_placeholder_name(channel.name)
+    needs_name = is_placeholder_name(channel.name)
     needs_thumb = not channel.performer_image_url
 
     if not needs_name and not needs_thumb:
@@ -119,7 +121,7 @@ async def _push_to_stash(
 
     # Name: if Stash performer has a placeholder/empty name and we have a real one
     stash_name = (stash_performer.get("name") or "").strip()
-    if not stash_name and channel.name and not _is_placeholder_name(channel.name):
+    if not stash_name and channel.name and not is_placeholder_name(channel.name):
         updates["name"] = channel.name
 
     if updates:
@@ -152,6 +154,15 @@ async def sync_channel_performer(
 
         # --- Step 2: Find or create Stash performer ---
         if not channel.stash_performer_id:
+            if is_placeholder_name(channel.name):
+                logger.info(
+                    "Skipping Stash performer creation for channel %s — "
+                    "name %r looks like a site/domain placeholder. "
+                    "It will be created once a real name is available.",
+                    channel.id,
+                    channel.name,
+                )
+                return
             performer_id = await stash.find_or_create_performer_by_url(
                 name=channel.name,
                 url=channel.url,
