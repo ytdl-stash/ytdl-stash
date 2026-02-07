@@ -1,0 +1,27 @@
+{% if records %}
+<div class="log-count">Showing {{ records|length }} entries (newest first)</div>
+<div class="log-table-wrap">
+<table class="log-table" role="grid">
+  <thead>
+    <tr>
+      <th class="log-col-time">Time</th>
+      <th class="log-col-level">Level</th>
+      <th class="log-col-logger">Logger</th>
+      <th class="log-col-message">Message</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for record in records %}
+    <tr class="log-row log-level-{{ record.level|lower }}">
+      <td class="log-col-time"><code>{{ record.timestamp }}</code></td>
+      <td class="log-col-level"><span class="log-badge log-badge-{{ record.level|lower }}">{{ record.level }}</span></td>
+      <td class="log-col-logger"><code>{{ record.logger }}</code></td>
+      <td class="log-col-message"><pre class="log-message-pre">{{ record.message }}</pre></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p>No log entries.</p>
+{% endif %}

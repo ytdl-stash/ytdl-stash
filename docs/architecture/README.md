@@ -27,13 +27,14 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 | **Config** | `app/config.py` | Pydantic BaseSettings, reads `YTDL_*` env vars |
 | **App Entry** | `app/main.py` | FastAPI factory, lifespan, static/template mounts |
 | **Database** | `app/database.py`, `app/models.py` | SQLAlchemy async engine, Channel + Video models |
-| **Downloader** | `app/downloader.py` | yt-dlp wrapper: scan channels, download videos, compute oshash |
+| **Downloader** | `app/downloader.py` | yt-dlp wrapper: scan channels (with nested-entry flattening), download videos, compute oshash |
 | **Stash Client** | `app/stash_client.py` | Async httpx GraphQL client for Stash API |
 | **Pipeline** | `app/pipeline.py` | Orchestration: download -> oshash -> scan -> match -> tag |
 | **Scheduler** | `app/scheduler.py` | APScheduler periodic channel checks + download processing |
-| **Performer Sync** | `app/performer_sync.py` | Auto-link channel performers to Stash on channel add |
+| **Performer Sync** | `app/performer_sync.py` | Bidirectional sync: pulls full Stash performer data locally, pushes source metadata (image, URL) to Stash when missing |
 | **YTDLM Import** | `app/ytdlm_import.py` | Import channels and videos from YoutubeDL-Material `local_db.json` |
-| **Routes** | `app/routes/*.py` | FastAPI routers: dashboard, channels CRUD, videos, performers, settings |
+| **Logging** | `app/logging_config.py` | Centralized logging: console + rotating file + in-memory ring buffer for web UI |
+| **Routes** | `app/routes/*.py` | FastAPI routers: dashboard, channels CRUD, videos, performers, logs, settings |
 | **Templates** | `app/templates/*.html` | Jinja2 + HTMX server-rendered UI |
 | **Static** | `app/static/` | CSS overrides |
 
@@ -141,7 +142,7 @@ ytdl-stash/
       channels.py               # Channels CRUD
       videos.py                 # Videos list/detail/retry
       health.py                 # GET /health (Phase 10)
-      performers.py             # Performer Browser + detail (Phase 11)
+      performers.py             # Performer Browser + detail + delete (Phase 11)
       settings.py               # Settings + Stash connectivity test
     templates/
       base.html
@@ -193,9 +194,29 @@ All config is via environment variables prefixed with `YTDL_`:
 | `YTDL_YTDLP_OUTPUT_TEMPLATE` | `%(uploader)s - %(title)s [%(id)s].%(ext)s` | yt-dlp filename template |
 | `YTDL_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
+## Logging
+
+Logging is configured centrally in `app/logging_config.py` via the `setup_logging()` function, called once during FastAPI lifespan startup. Three handlers are attached to the root logger:
+
+| Handler | Destination | Purpose |
+|---------|------------|---------|
+| **Console** | stdout | Standard container output, visible via `docker logs` |
+| **RotatingFile** | `{data_dir}/ytdl-stash.log` | Persistent log file, 5 MB max with 3 backups |
+| **MemoryRingBuffer** | In-memory deque (2000 entries) | Powers the `/logs` web UI viewer |
+
+The web UI log viewer (`/logs`) supports:
+- Filtering by minimum level (DEBUG / INFO / WARNING / ERROR)
+- Free-text search across all log fields
+- Configurable entry limit (50 / 200 / 500 / 1000)
+- Auto-refresh every 5 seconds (toggleable)
+- Clear in-memory buffer
+- Download the persistent log file
+
+Each module creates its own logger with `logging.getLogger(__name__)`. Noisy third-party loggers (httpx, httpcore, apscheduler, uvicorn.access) are quieted to WARNING level.
+
 ## Schema (Channel)
 
-The `Channel` model includes: `id`, `name`, `url`, `site`, `enabled`, `check_interval_hours`, `last_checked_at`, `created_at`, `updated_at`, `stash_performer_id` (nullable, linked Stash performer ID), and `performer_image_url` (nullable, cached avatar/thumbnail URL from the tube site).
+The `Channel` model includes: `id`, `name`, `url`, `site`, `enabled`, `check_interval_hours`, `last_checked_at`, `created_at`, `updated_at`, `stash_performer_id` (nullable, linked Stash performer ID), `performer_image_url` (nullable, cached avatar/thumbnail URL from the tube site), `stash_performer_data` (nullable JSON, full Stash performer record pulled during sync — gender, birthdate, ethnicity, measurements, bio, etc.), `max_video_age_days` (nullable, only download videos uploaded within this many days), and `min_duration_seconds` (nullable, only download videos longer than this many seconds).
 
 ## Video Status Lifecycle
 
@@ -214,3 +235,5 @@ pending -> downloading -> downloaded -> importing -> synced
 - **synced**: Scene found in Stash, metadata (title, performers, studio, date) applied.
 - **imported**: Video imported from YoutubeDL-Material; not downloaded by ytdl-stash. Treated as already-downloaded (not re-downloaded).
 - **failed**: Error at any stage. `error_message` column stores the reason. Can be retried.
+
+**Stuck-video recovery**: On startup, `init_db()` resets any videos left in intermediate states (`downloading`, `downloaded`, `importing`) back to `pending`. This handles cases where the server crashed or was restarted mid-pipeline.

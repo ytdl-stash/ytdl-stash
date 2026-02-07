@@ -1,4 +1,4 @@
-"""Performer browser routes: list performers (channels), detail, sync, toggle watch."""
+"""Performer browser routes: list performers (channels), detail, sync, toggle watch, delete."""
 
 import logging
 from datetime import date, datetime, timezone
@@ -154,4 +154,22 @@ async def performer_toggle(
             "performers/_card.html",
             {"request": request, "channel": channel},
         )
+    return RedirectResponse(url="/performers", status_code=303)
+
+
+@router.delete("/{channel_id}")
+async def delete_performer(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a performer (channel) and all its videos. Returns empty 200 for HTMX or redirect."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Performer not found")
+
+    await db.delete(channel)
+
+    if request.headers.get("HX-Request"):
+        return HTMLResponse(status_code=200)
     return RedirectResponse(url="/performers", status_code=303)

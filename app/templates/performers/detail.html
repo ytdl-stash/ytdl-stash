@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ channel.name }} — Performers — ytdl-stash{% endblock %}
 {% block content %}
+{% set p = channel.stash_performer_data or {} %}
 <p><a href="/performers">← Back to Performers</a></p>
 <article>
   <header class="performer-detail-header">
@@ -10,19 +11,26 @@
     <div class="performer-detail-placeholder"></div>
     {% endif %}
     <div>
-      <h2>{{ channel.name }}</h2>
+      <h2>{{ channel.name }}{% if p.disambiguation %} <small style="opacity:.6">({{ p.disambiguation }})</small>{% endif %}</h2>
       <p><span class="performer-site-badge">{{ channel.site }}</span></p>
       <p><a href="{{ channel.url }}" target="_blank" rel="noopener">{{ channel.url }}</a></p>
+      {% if p.alias_list %}
+      <p><strong>Aliases:</strong> {{ p.alias_list | join(', ') }}</p>
+      {% endif %}
       <p>
         {% if channel.stash_performer_id %}
         <span class="stash-linked"></span>
         <a href="{{ stash_url }}/performers/{{ channel.stash_performer_id }}" target="_blank" rel="noopener">Open in Stash</a>
+        {% if p.scene_count is defined and p.scene_count is not none %}
+        &nbsp;· {{ p.scene_count }} scene{{ p.scene_count != 1 and 's' or '' }} in Stash
+        {% endif %}
         {% else %}
         <span class="stash-unlinked"></span>
         {% endif %}
       </p>
     </div>
   </header>
+
   <div class="performer-detail-actions" style="margin: 1rem 0;">
     <form action="/performers/{{ channel.id }}/toggle" method="post" style="display: inline;">
       <button type="submit" class="{% if not channel.enabled %}secondary{% endif %}">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
@@ -30,12 +38,92 @@
     <form action="/performers/{{ channel.id }}/sync" method="post" style="display: inline;">
       <button type="submit">Sync to Stash</button>
     </form>
+    <form hx-delete="/performers/{{ channel.id }}"
+          hx-confirm="Delete performer '{{ channel.name|e }}' and all its videos?"
+          hx-on::after-request="if(event.detail.successful) window.location='/performers'"
+          style="display: inline;">
+      <button type="submit" class="secondary">Delete</button>
+    </form>
   </div>
+
+  {# ── Performer metadata from Stash ── #}
+  {% if p %}
+  <details open class="performer-meta-section">
+    <summary><strong>Performer Details</strong></summary>
+    <div class="performer-meta-grid">
+      {% if p.gender %}
+      <div class="performer-meta-item"><span class="meta-label">Gender</span><span class="meta-value">{{ p.gender | capitalize }}</span></div>
+      {% endif %}
+      {% if p.birthdate %}
+      <div class="performer-meta-item"><span class="meta-label">Birthdate</span><span class="meta-value">{{ p.birthdate }}</span></div>
+      {% endif %}
+      {% if p.death_date %}
+      <div class="performer-meta-item"><span class="meta-label">Death date</span><span class="meta-value">{{ p.death_date }}</span></div>
+      {% endif %}
+      {% if p.ethnicity %}
+      <div class="performer-meta-item"><span class="meta-label">Ethnicity</span><span class="meta-value">{{ p.ethnicity }}</span></div>
+      {% endif %}
+      {% if p.country %}
+      <div class="performer-meta-item"><span class="meta-label">Country</span><span class="meta-value">{{ p.country }}</span></div>
+      {% endif %}
+      {% if p.hair_color %}
+      <div class="performer-meta-item"><span class="meta-label">Hair</span><span class="meta-value">{{ p.hair_color }}</span></div>
+      {% endif %}
+      {% if p.eye_color %}
+      <div class="performer-meta-item"><span class="meta-label">Eyes</span><span class="meta-value">{{ p.eye_color }}</span></div>
+      {% endif %}
+      {% if p.height_cm %}
+      <div class="performer-meta-item"><span class="meta-label">Height</span><span class="meta-value">{{ p.height_cm }} cm</span></div>
+      {% endif %}
+      {% if p.weight %}
+      <div class="performer-meta-item"><span class="meta-label">Weight</span><span class="meta-value">{{ p.weight }} kg</span></div>
+      {% endif %}
+      {% if p.measurements %}
+      <div class="performer-meta-item"><span class="meta-label">Measurements</span><span class="meta-value">{{ p.measurements }}</span></div>
+      {% endif %}
+      {% if p.fake_tits %}
+      <div class="performer-meta-item"><span class="meta-label">Fake tits</span><span class="meta-value">{{ p.fake_tits }}</span></div>
+      {% endif %}
+      {% if p.career_length %}
+      <div class="performer-meta-item"><span class="meta-label">Career</span><span class="meta-value">{{ p.career_length }}</span></div>
+      {% endif %}
+      {% if p.tattoos %}
+      <div class="performer-meta-item"><span class="meta-label">Tattoos</span><span class="meta-value">{{ p.tattoos }}</span></div>
+      {% endif %}
+      {% if p.piercings %}
+      <div class="performer-meta-item"><span class="meta-label">Piercings</span><span class="meta-value">{{ p.piercings }}</span></div>
+      {% endif %}
+      {% if p.rating100 %}
+      <div class="performer-meta-item"><span class="meta-label">Rating</span><span class="meta-value">{{ (p.rating100 / 20) | round(1) }} / 5</span></div>
+      {% endif %}
+    </div>
+    {% if p.details %}
+    <div class="performer-bio">
+      <strong>Bio</strong>
+      <p>{{ p.details }}</p>
+    </div>
+    {% endif %}
+    {% if p.urls %}
+    <div class="performer-urls">
+      <strong>URLs</strong>
+      <ul>
+        {% for url in p.urls %}
+        <li><a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </details>
+  {% else %}
+  <p style="color: var(--pico-muted-color); margin: 1rem 0;">No Stash data yet. Click <strong>Sync to Stash</strong> to pull performer details.</p>
+  {% endif %}
+
   <h3>Videos ({{ videos|length }})</h3>
   <table>
     <thead>
       <tr>
         <th>Title</th>
+        <th>Channel</th>
         <th>Status</th>
         <th>Upload Date</th>
         <th>Duration</th>

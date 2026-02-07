@@ -10,6 +10,8 @@
     <label>URL <input type="url" name="url" placeholder="Channel URL" required></label>
     <label>Name <input type="text" name="name" placeholder="Display name"></label>
     <label>Interval (hours) <input type="number" name="check_interval_hours" value="6" min="1"></label>
+    <label>Max Age (days) <input type="number" name="max_video_age_days" placeholder="No limit" min="1"></label>
+    <label>Min Duration (sec) <input type="number" name="min_duration_seconds" placeholder="No limit" min="1"></label>
   </div>
   <button type="submit">Add Channel</button>
 </form>
@@ -20,6 +22,8 @@
       <th>Site</th>
       <th>Videos</th>
       <th>Interval</th>
+      <th>Max Age</th>
+      <th>Min Duration</th>
       <th>Last Checked</th>
       <th>Status</th>
       <th>Actions</th>

@@ -42,6 +42,9 @@ class Channel(Base):
     )
     stash_performer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     performer_image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    stash_performer_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    max_video_age_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     videos: Mapped[list["Video"]] = relationship(
         back_populates="channel", cascade="all, delete-orphan"

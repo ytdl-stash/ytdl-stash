@@ -10,8 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app import database as db_module
 from app.config import Settings, get_settings
-from app.database import async_session, get_db
+from app.database import get_db
+from app.downloader import async_extract_channel_metadata
 from app.main import templates
 from app.models import Channel
 from app.performer_sync import sync_channel_performer
@@ -21,6 +23,17 @@ from app.stash_client import StashClient
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/channels", tags=["channels"])
+
+
+def _parse_optional_int(value: str | None) -> int | None:
+    """Parse a form value to an optional positive int. Returns None for blank/zero/negative."""
+    if value is None or value == "":
+        return None
+    try:
+        n = int(value)
+        return n if n > 0 else None
+    except (ValueError, TypeError):
+        return None
 
 # Hold strong references to background tasks so they aren't garbage-collected.
 _background_tasks: set[asyncio.Task] = set()
@@ -69,23 +82,44 @@ async def add_channel(
     url: str = Form(...),
     name: str = Form(""),
     check_interval_hours: int | None = Form(None),
+    max_video_age_days: str = Form(""),
+    min_duration_seconds: str = Form(""),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """Add a new channel. Derives site from URL. Returns HTMX partial _row.html or redirect."""
-    display_name = name.strip() or _derive_site(url)
+    """Add a new channel. Extracts real name from yt-dlp if not provided. Returns HTMX partial _row.html or redirect."""
+    user_name = name.strip()
     site = _derive_site(url)
     interval = (
         check_interval_hours
         if check_interval_hours is not None
         else settings.default_check_interval_hours
     )
+    parsed_max_age = _parse_optional_int(max_video_age_days)
+    parsed_min_duration = _parse_optional_int(min_duration_seconds)
+
+    # If the user didn't type a name, ask yt-dlp for the real channel name
+    display_name = user_name
+    thumbnail_url: str | None = None
+    if not display_name:
+        try:
+            meta = await async_extract_channel_metadata(url, settings.cookies_file)
+            display_name = meta.get("name") or ""
+            thumbnail_url = meta.get("thumbnail")
+        except Exception:
+            logger.debug("Could not extract channel metadata for %s", url, exc_info=True)
+    # Final fallback: use the domain
+    if not display_name:
+        display_name = site
 
     channel = Channel(
         name=display_name,
         url=url,
         site=site,
         check_interval_hours=interval,
+        performer_image_url=thumbnail_url,
+        max_video_age_days=parsed_max_age,
+        min_duration_seconds=parsed_min_duration,
     )
     db.add(channel)
     await db.flush()
@@ -117,6 +151,8 @@ async def update_channel(
     name: str = Form(""),
     enabled: str = Form("true"),
     check_interval_hours: int = Form(6),
+    max_video_age_days: str = Form(""),
+    min_duration_seconds: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
     """Update channel. Returns HTMX partial _row.html or redirect."""
@@ -127,6 +163,8 @@ async def update_channel(
     channel.name = name.strip() or channel.name
     channel.enabled = enabled.lower() not in ("false", "0", "off")
     channel.check_interval_hours = check_interval_hours
+    channel.max_video_age_days = _parse_optional_int(max_video_age_days)
+    channel.min_duration_seconds = _parse_optional_int(min_duration_seconds)
 
     if request.headers.get("HX-Request"):
         result = await db.execute(
@@ -173,9 +211,9 @@ async def check_now(
         raise HTTPException(status_code=404, detail="Channel not found")
 
     async def _run_scan() -> None:
-        if async_session is None:
+        if db_module.async_session is None:
             return
-        async with async_session() as session:
+        async with db_module.async_session() as session:
             ch = await session.get(Channel, channel_id)
             if ch:
                 try:

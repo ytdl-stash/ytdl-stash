@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,14 +19,37 @@ from app.stash_client import StashClient
 
 logger = logging.getLogger(__name__)
 
+# Per-channel asyncio locks to prevent concurrent scans of the same channel
+# (e.g. manual "Check Now" racing with the scheduled channel checker).
+_channel_locks: dict[int, asyncio.Lock] = {}
+
+
+def _get_channel_lock(channel_id: int) -> asyncio.Lock:
+    """Return (and lazily create) an asyncio.Lock for the given channel."""
+    if channel_id not in _channel_locks:
+        _channel_locks[channel_id] = asyncio.Lock()
+    return _channel_locks[channel_id]
+
 
 async def process_channel_scan(
     channel: Channel, db: AsyncSession, settings: Settings
 ) -> int:
     """Scan a channel for new videos, insert them as pending, update last_checked_at.
 
+    Acquires a per-channel lock to prevent concurrent scans (e.g. a manual
+    "Check Now" racing with the scheduled channel checker).
+
     Returns the count of newly inserted videos.
     """
+    lock = _get_channel_lock(channel.id)
+    async with lock:
+        return await _process_channel_scan_locked(channel, db, settings)
+
+
+async def _process_channel_scan_locked(
+    channel: Channel, db: AsyncSession, settings: Settings
+) -> int:
+    """Inner scan logic, called while holding the per-channel lock."""
     try:
         entries = await async_scan_channel(channel.url, settings.cookies_file)
     except RuntimeError as e:
@@ -49,7 +72,14 @@ async def process_channel_scan(
     )
     existing_ids = set(result.scalars().all())
 
+    # Pre-compute filter thresholds from channel settings
+    min_upload_date: date | None = None
+    if channel.max_video_age_days is not None:
+        min_upload_date = (datetime.now(UTC) - timedelta(days=channel.max_video_age_days)).date()
+
     new_count = 0
+    skipped_age = 0
+    skipped_duration = 0
     for entry in entries:
         site_video_id = (
             str(entry["id"]) if entry.get("id") is not None else None
@@ -65,6 +95,18 @@ async def process_channel_scan(
         )
         duration = entry.get("duration")
         duration_seconds = int(duration) if duration is not None else None
+
+        # Filter: skip videos older than max_video_age_days
+        if min_upload_date is not None and upload_date is not None:
+            if upload_date < min_upload_date:
+                skipped_age += 1
+                continue
+
+        # Filter: skip videos shorter than min_duration_seconds
+        if channel.min_duration_seconds is not None and duration_seconds is not None:
+            if duration_seconds < channel.min_duration_seconds:
+                skipped_duration += 1
+                continue
 
         video = Video(
             channel_id=channel.id,
@@ -82,7 +124,13 @@ async def process_channel_scan(
 
     channel.last_checked_at = datetime.now(UTC)
     await db.commit()
-    logger.info("Channel %s: found %d new videos", channel.id, new_count)
+    if skipped_age or skipped_duration:
+        logger.info(
+            "Channel %s: found %d new videos (skipped %d too old, %d too short)",
+            channel.id, new_count, skipped_age, skipped_duration,
+        )
+    else:
+        logger.info("Channel %s: found %d new videos", channel.id, new_count)
     return new_count
 
 
@@ -164,9 +212,21 @@ async def process_single_download(
 
     except Exception as e:
         logger.exception("Video %s failed: %s", video.id, e)
-        video.status = "failed"
-        video.error_message = str(e)
-        await db.commit()
+        # The session may be in a dirty/broken state after the original error,
+        # so rollback first to clear it, then mark the video as failed.
+        try:
+            await db.rollback()
+            # Re-fetch the video to get a clean ORM object after rollback
+            refreshed = await db.get(Video, video.id)
+            if refreshed is not None:
+                refreshed.status = "failed"
+                refreshed.error_message = str(e)[:2000]  # cap to avoid huge tracebacks
+                await db.commit()
+        except Exception:
+            logger.exception(
+                "Video %s: could not persist failed status (will be recovered on restart)",
+                video.id,
+            )
 
 
 async def process_pending_downloads(

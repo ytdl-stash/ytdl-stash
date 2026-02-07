@@ -3,6 +3,8 @@
   <td>{{ channel.site }}</td>
   <td>{{ channel.videos|length }}</td>
   <td>{{ channel.check_interval_hours }}h</td>
+  <td>{{ channel.max_video_age_days ~ 'd' if channel.max_video_age_days else '—' }}</td>
+  <td>{{ channel.min_duration_seconds ~ 's' if channel.min_duration_seconds else '—' }}</td>
   <td>{{ channel.last_checked_at.strftime('%Y-%m-%d %H:%M') if channel.last_checked_at else 'Never' }}</td>
   <td>
     <form hx-put="/channels/{{ channel.id }}"
@@ -12,6 +14,8 @@
       <input type="hidden" name="name" value="{{ channel.name|e }}">
       <input type="hidden" name="enabled" value="{{ 'false' if channel.enabled else 'true' }}">
       <input type="hidden" name="check_interval_hours" value="{{ channel.check_interval_hours }}">
+      {% if channel.max_video_age_days %}<input type="hidden" name="max_video_age_days" value="{{ channel.max_video_age_days }}">{% endif %}
+      {% if channel.min_duration_seconds %}<input type="hidden" name="min_duration_seconds" value="{{ channel.min_duration_seconds }}">{% endif %}
       <button type="submit" class="{{ 'secondary' if not channel.enabled else '' }}">{{ 'Enabled' if channel.enabled else 'Disabled' }}</button>
     </form>
   </td>

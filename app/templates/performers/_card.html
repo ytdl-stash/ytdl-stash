@@ -26,5 +26,12 @@
       <button type="submit">Sync to Stash</button>
       <span id="spinner-sync-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
     </form>
+    <button hx-delete="/performers/{{ channel.id }}"
+            hx-target="#performer-card-{{ channel.id }}"
+            hx-swap="outerHTML swap:1s"
+            hx-confirm="Delete performer '{{ channel.name|e }}' and all its videos?"
+            class="secondary">
+      Delete
+    </button>
   </div>
 </article>

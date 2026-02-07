@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Logs — ytdl-stash{% endblock %}
+{% block content %}
+<h1>Logs</h1>
+
+<div class="log-controls">
+  <form id="log-filter-form" class="log-filter-row">
+    <select name="level" id="log-level-filter" aria-label="Minimum level">
+      <option value="" {% if not current_level %}selected{% endif %}>All levels</option>
+      <option value="DEBUG" {% if current_level == "DEBUG" %}selected{% endif %}>DEBUG</option>
+      <option value="INFO" {% if current_level == "INFO" %}selected{% endif %}>INFO</option>
+      <option value="WARNING" {% if current_level == "WARNING" %}selected{% endif %}>WARNING</option>
+      <option value="ERROR" {% if current_level == "ERROR" %}selected{% endif %}>ERROR</option>
+    </select>
+    <input type="search" name="search" placeholder="Search logs…"
+           value="{{ current_search }}" aria-label="Search logs">
+    <select name="limit" aria-label="Entries to show">
+      <option value="50" {% if current_limit == 50 %}selected{% endif %}>50 entries</option>
+      <option value="200" {% if current_limit == 200 %}selected{% endif %}>200 entries</option>
+      <option value="500" {% if current_limit == 500 %}selected{% endif %}>500 entries</option>
+      <option value="1000" {% if current_limit == 1000 %}selected{% endif %}>1000 entries</option>
+    </select>
+    <button type="submit"
+            hx-get="/logs/entries"
+            hx-include="#log-filter-form"
+            hx-target="#log-entries"
+            hx-swap="innerHTML">
+      Filter
+    </button>
+  </form>
+  <div class="log-actions">
+    <button class="secondary"
+            hx-post="/logs/clear"
+            hx-target="#log-entries"
+            hx-swap="innerHTML"
+            hx-confirm="Clear in-memory log buffer?">
+      Clear
+    </button>
+    <a href="/logs/download" role="button" class="secondary outline">Download log file</a>
+    <label class="log-auto-refresh">
+      <input type="checkbox" id="auto-refresh-toggle" checked>
+      Auto-refresh
+    </label>
+  </div>
+</div>
+
+<div id="log-entries"
+     hx-get="/logs/entries"
+     hx-include="#log-filter-form"
+     hx-trigger="every 5s [document.getElementById('auto-refresh-toggle').checked]"
+     hx-swap="innerHTML">
+  {% include "logs/_entries.html" %}
+</div>
+
+<script>
+// Preserve scroll position during auto-refresh unless user scrolled to top
+document.body.addEventListener('htmx:beforeSwap', function(evt) {
+  if (evt.detail.target && evt.detail.target.id === 'log-entries') {
+    evt.detail.target.dataset.scrollTop = evt.detail.target.scrollTop;
+  }
+});
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+  if (evt.detail.target && evt.detail.target.id === 'log-entries') {
+    var prev = parseInt(evt.detail.target.dataset.scrollTop || '0', 10);
+    if (prev > 0) {
+      evt.detail.target.scrollTop = prev;
+    }
+  }
+});
+</script>
+{% endblock %}

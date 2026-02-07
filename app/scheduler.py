@@ -6,8 +6,8 @@ from datetime import UTC, datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import or_, select
 
+from app import database as db_module
 from app.config import get_settings
-from app.database import async_session
 from app.models import Channel
 from app.pipeline import process_channel_scan, process_pending_downloads
 from app.stash_client import StashClient
@@ -19,9 +19,9 @@ scheduler = AsyncIOScheduler()
 
 async def _channel_checker() -> None:
     """Run every 60s: scan due channels for new videos. max_instances=1."""
-    if async_session is None:
+    if db_module.async_session is None:
         return
-    async with async_session() as db:
+    async with db_module.async_session() as db:
         try:
             settings = get_settings()
             now = datetime.now(UTC)
@@ -55,9 +55,9 @@ async def _channel_checker() -> None:
 
 async def _download_processor() -> None:
     """Run every 30s: process one pending video. max_instances=1."""
-    if async_session is None:
+    if db_module.async_session is None:
         return
-    async with async_session() as db:
+    async with db_module.async_session() as db:
         try:
             settings = get_settings()
             async with StashClient(settings.stash_url, settings.stash_api_key) as stash:

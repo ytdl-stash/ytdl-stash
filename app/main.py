@@ -10,7 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
-from app.database import engine, init_db
+from app.database import init_db
+from app.logging_config import setup_logging
 from app.scheduler import start_scheduler, stop_scheduler
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -22,11 +23,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Async lifespan handler for startup and shutdown events."""
     settings = get_settings()
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)-8s %(name)s  %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    setup_logging(log_level=settings.log_level, data_dir=settings.data_dir)
     Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
     Path(settings.download_dir).mkdir(parents=True, exist_ok=True)
     await init_db(settings)
@@ -35,8 +32,10 @@ async def lifespan(app: FastAPI):
     # === SHUTDOWN ===
     logger.info("Shutting down...")
     stop_scheduler()
-    if engine is not None:
-        await engine.dispose()
+    from app import database as _db  # late import to get current module-level value
+
+    if _db.engine is not None:
+        await _db.engine.dispose()
     logger.info("Shutdown complete")
 
 
@@ -99,6 +98,7 @@ def create_app() -> FastAPI:
         dashboard,
         channels,
         health as health_routes,
+        logs as logs_routes,
         performers,
         videos,
         settings as settings_routes,
@@ -110,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(performers.router)
     app.include_router(videos.router)
     app.include_router(settings_routes.router)
+    app.include_router(logs_routes.router)
 
     return app
 

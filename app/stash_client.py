@@ -85,6 +85,44 @@ mutation PerformerCreate($input: PerformerCreateInput!) {
 }
 """
 
+_FIND_PERFORMER_BY_ID_QUERY = """
+query FindPerformer($id: ID!) {
+    findPerformer(id: $id) {
+        id
+        name
+        disambiguation
+        urls
+        gender
+        birthdate
+        ethnicity
+        country
+        eye_color
+        hair_color
+        height_cm
+        weight
+        measurements
+        fake_tits
+        career_length
+        tattoos
+        piercings
+        alias_list
+        details
+        death_date
+        image_path
+        rating100
+        scene_count
+    }
+}
+"""
+
+_PERFORMER_UPDATE_MUTATION = """
+mutation PerformerUpdate($input: PerformerUpdateInput!) {
+    performerUpdate(input: $input) {
+        id
+    }
+}
+"""
+
 _FIND_STUDIOS_QUERY = """
 query FindStudios($filter: FindFilterType!, $studio_filter: StudioFilterType!) {
     findStudios(filter: $filter, studio_filter: $studio_filter) {
@@ -305,6 +343,27 @@ class StashClient:
             urls=[url],
             image_url=image_url,
         )
+
+    async def get_performer(self, performer_id: str) -> dict | None:
+        """Fetch full performer data by Stash ID. Returns the full performer dict or None."""
+        data = await self._query(_FIND_PERFORMER_BY_ID_QUERY, {"id": performer_id})
+        return data.get("findPerformer")
+
+    async def update_performer(self, performer_id: str, **fields: object) -> None:
+        """Update a Stash performer. Only non-None keyword args are sent.
+
+        Supported fields match PerformerUpdateInput: name, disambiguation, urls,
+        gender, birthdate, ethnicity, country, eye_color, hair_color, height_cm,
+        weight, measurements, fake_tits, career_length, tattoos, piercings,
+        alias_list, details, death_date, image (url string), rating100.
+        """
+        input_dict: dict = {"id": performer_id}
+        for key, value in fields.items():
+            if value is not None:
+                input_dict[key] = value
+        if len(input_dict) <= 1:
+            return  # Nothing to update
+        await self._query(_PERFORMER_UPDATE_MUTATION, {"input": input_dict})
 
     async def find_studio(self, name: str) -> str | None:
         """Find a studio by exact name. Returns studio ID or None."""

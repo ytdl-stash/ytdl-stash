@@ -75,19 +75,23 @@ def compute_oshash(filepath: str) -> str:
 
 def extract_channel_metadata(url: str, cookies_file: str | None = None) -> dict:
     """Extract channel-level metadata (name, thumbnail, description) from a channel URL.
-    Uses non-flat extract so avatar/thumbnail is available. Returns dict with name, thumbnail, description keys.
+
+    Uses flat extraction first (fast) so we get playlist/channel-level info
+    without downloading metadata for every video.  Falls back to non-flat
+    with ``playlistend=0`` only if the thumbnail is missing.
+
+    Returns dict with name, thumbnail, description keys.
     """
     opts: dict = {
-        "extract_flat": False,
+        "extract_flat": True,
         "quiet": True,
         "no_warnings": True,
-        "playlist_items": "0",  # Only channel page, no video entries
     }
     if cookies_file:
         opts["cookiefile"] = cookies_file
 
     try:
-        logger.debug("Extracting channel metadata: %s", url)
+        logger.debug("Extracting channel metadata (flat): %s", url)
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except DownloadError as e:
@@ -97,16 +101,90 @@ def extract_channel_metadata(url: str, cookies_file: str | None = None) -> dict:
     if not info:
         return {"name": "", "thumbnail": None, "description": None}
 
-    raw_name = info.get("uploader") or info.get("channel")
-    name = str(raw_name) if raw_name else ""
+    # Extract name — try several fields that different extractors populate
+    raw_name = (
+        info.get("channel")
+        or info.get("uploader")
+        or info.get("title")
+        or info.get("playlist_title")
+    )
+    name = str(raw_name).strip() if raw_name else ""
+
+    # Extract thumbnail
     thumbnail = info.get("thumbnail")
     if not thumbnail and isinstance(info.get("thumbnails"), list) and info["thumbnails"]:
         thumb = info["thumbnails"][-1]
         thumbnail = thumb.get("url") if isinstance(thumb, dict) else None
+
+    # If no thumbnail from flat mode, try non-flat with no video entries
+    if not thumbnail:
+        try:
+            nf_opts: dict = {
+                "extract_flat": False,
+                "quiet": True,
+                "no_warnings": True,
+                "playlistend": 0,  # Do not process any video entries
+            }
+            if cookies_file:
+                nf_opts["cookiefile"] = cookies_file
+            logger.debug("Re-extracting channel metadata (non-flat): %s", url)
+            with yt_dlp.YoutubeDL(nf_opts) as ydl:
+                nf_info = ydl.extract_info(url, download=False)
+            if nf_info:
+                thumbnail = nf_info.get("thumbnail")
+                if not thumbnail and isinstance(nf_info.get("thumbnails"), list) and nf_info["thumbnails"]:
+                    thumb = nf_info["thumbnails"][-1]
+                    thumbnail = thumb.get("url") if isinstance(thumb, dict) else None
+                if not name:
+                    raw_name = (
+                        nf_info.get("channel")
+                        or nf_info.get("uploader")
+                        or nf_info.get("title")
+                    )
+                    name = str(raw_name).strip() if raw_name else ""
+        except Exception:
+            logger.debug("Non-flat metadata fallback failed for %s", url, exc_info=True)
+
     description = info.get("description")
     if description is not None and not isinstance(description, str):
         description = str(description) if description else None
     return {"name": name or "", "thumbnail": thumbnail, "description": description}
+
+
+def _flatten_entries(entries) -> list[dict]:
+    """Recursively flatten nested playlist/tab entries into individual video entries.
+
+    Some sites return channel -> sub-playlist -> videos. This ensures we
+    always get the leaf video entries regardless of nesting depth.
+    """
+    result: list[dict] = []
+    for entry in entries:
+        if not entry or not isinstance(entry, dict):
+            continue
+        sub = entry.get("entries")
+        if sub:
+            # This entry is a sub-playlist / tab — recurse into it
+            result.extend(_flatten_entries(sub))
+        else:
+            result.append(entry)
+    return result
+
+
+def _derive_video_id(entry: dict) -> str | None:
+    """Derive a usable video ID from an entry dict.
+
+    Prefers the explicit ``id`` field. Falls back to extracting an
+    identifier from the URL so entries without ``id`` are not silently
+    dropped.
+    """
+    vid = entry.get("id")
+    if vid is not None:
+        return str(vid)
+    # Fallback: use the URL itself as a unique key
+    raw_url = entry.get("url") or entry.get("webpage_url")
+    if raw_url:
+        return str(raw_url)
+    return None
 
 
 def scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
@@ -123,27 +201,37 @@ def scan_channel(url: str, cookies_file: str | None = None) -> list[dict]:
         logger.debug("Scanning channel: %s", url)
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
+
+            # Consume entries INSIDE the context manager so lazy generators
+            # are fully evaluated while the ydl instance is still alive.
+            raw_entries = info.get("entries") or []
+            if isinstance(raw_entries, dict):
+                raw_entries = [raw_entries]
+            flat_entries = _flatten_entries(raw_entries)
     except DownloadError as e:
         logger.warning("Channel scan failed for %s: %s", url, e)
         raise RuntimeError(f"Channel scan failed for {url!r}: {e}") from e
 
-    raw_entries = info.get("entries") or []
-    if isinstance(raw_entries, dict):
-        raw_entries = [raw_entries]
-
-    return [
-        {
-            "id": entry.get("id"),
-            "title": entry.get("title"),
-            "url": entry.get("url") or entry.get("webpage_url"),
-            "upload_date": entry.get("upload_date"),
-            "uploader": entry.get("uploader"),
-            "duration": entry.get("duration"),
-            "thumbnail": entry.get("thumbnail"),
-        }
-        for entry in raw_entries
-        if entry
-    ]
+    results: list[dict] = []
+    for entry in flat_entries:
+        if not entry:
+            continue
+        video_id = _derive_video_id(entry)
+        video_url = entry.get("url") or entry.get("webpage_url")
+        if not video_id or not video_url:
+            continue
+        results.append(
+            {
+                "id": video_id,
+                "title": entry.get("title"),
+                "url": video_url,
+                "upload_date": entry.get("upload_date"),
+                "uploader": entry.get("uploader"),
+                "duration": entry.get("duration"),
+                "thumbnail": entry.get("thumbnail"),
+            }
+        )
+    return results
 
 
 def download_video(

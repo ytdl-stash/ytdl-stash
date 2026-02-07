@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 _CHANNEL_MIGRATION_COLUMNS: list[tuple[str, str]] = [
     ("stash_performer_id", "VARCHAR(50)"),
     ("performer_image_url", "VARCHAR(2048)"),
+    ("stash_performer_data", "JSON"),
+    ("max_video_age_days", "INTEGER"),
+    ("min_duration_seconds", "INTEGER"),
 ]
 
 
@@ -51,6 +54,7 @@ async def init_db(settings: "Settings") -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _migrate_channels_columns(conn)
+        await _recover_stuck_videos(conn)
     logger.info("Database initialized at %s", db_path)
 
 
@@ -64,6 +68,27 @@ async def _migrate_channels_columns(conn) -> None:
                 text(f"ALTER TABLE channels ADD COLUMN {col_name} {col_type}")
             )
             logger.info("Added column channels.%s", col_name)
+
+
+async def _recover_stuck_videos(conn) -> None:
+    """Reset videos stuck in intermediate states back to pending on startup.
+
+    If the server crashed mid-download or mid-import, videos may be left in
+    'downloading' or 'importing' status with no running task to complete them.
+    """
+    _STUCK_STATUSES = ("downloading", "downloaded", "importing")
+    result = await conn.execute(
+        text(
+            "UPDATE videos SET status = 'pending', error_message = NULL "
+            "WHERE status IN (:s1, :s2, :s3)"
+        ),
+        {"s1": _STUCK_STATUSES[0], "s2": _STUCK_STATUSES[1], "s3": _STUCK_STATUSES[2]},
+    )
+    if result.rowcount:
+        logger.info(
+            "Recovered %d video(s) stuck in intermediate status back to pending",
+            result.rowcount,
+        )
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

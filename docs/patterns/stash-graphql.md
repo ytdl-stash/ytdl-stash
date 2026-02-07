@@ -167,6 +167,52 @@ async def find_or_create_performer(self, name: str) -> str:
 
 ---
 
+## Get Full Performer by ID
+
+Fetch all performer metadata from Stash (used by bidirectional sync):
+
+```python
+async def get_performer(self, performer_id: str) -> dict | None:
+    query = """
+    query FindPerformer($id: ID!) {
+        findPerformer(id: $id) {
+            id name disambiguation urls gender birthdate ethnicity country
+            eye_color hair_color height_cm weight measurements fake_tits
+            career_length tattoos piercings alias_list details death_date
+            image_path rating100 scene_count
+        }
+    }
+    """
+    data = await self._query(query, {"id": performer_id})
+    return data.get("findPerformer")
+```
+
+---
+
+## Update Performer
+
+Push data to an existing Stash performer (fill-gaps pattern — only send non-None fields):
+
+```python
+async def update_performer(self, performer_id: str, **fields) -> None:
+    query = """
+    mutation PerformerUpdate($input: PerformerUpdateInput!) {
+        performerUpdate(input: $input) { id }
+    }
+    """
+    input_dict = {"id": performer_id}
+    for key, value in fields.items():
+        if value is not None:
+            input_dict[key] = value
+    if len(input_dict) <= 1:
+        return
+    await self._query(query, {"input": input_dict})
+```
+
+**Key fields for PerformerUpdateInput**: `name`, `disambiguation`, `urls`, `gender`, `birthdate`, `ethnicity`, `country`, `eye_color`, `hair_color`, `height_cm`, `weight`, `measurements`, `fake_tits`, `career_length`, `tattoos`, `piercings`, `alias_list`, `details`, `death_date`, `image` (URL string), `rating100`.
+
+---
+
 ## Find or Create Studio
 
 Same pattern as performers:

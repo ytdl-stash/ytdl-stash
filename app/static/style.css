@@ -154,5 +154,180 @@
   background: var(--pico-muted-background);
 }
 
+/* Performer metadata grid (detail page) */
+.performer-meta-section {
+  margin: 1.5rem 0;
+}
+
+.performer-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 1rem 0;
+}
+
+.performer-meta-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.meta-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pico-muted-color);
+  margin-bottom: 0.1rem;
+}
+
+.meta-value {
+  font-size: 0.95rem;
+}
+
+.performer-bio {
+  margin: 1rem 0;
+}
+
+.performer-bio p {
+  white-space: pre-line;
+  margin-top: 0.25rem;
+}
+
+.performer-urls {
+  margin: 1rem 0;
+}
+
+.performer-urls ul {
+  margin-top: 0.25rem;
+  padding-left: 1.5rem;
+}
+
+.performer-urls li {
+  word-break: break-all;
+  font-size: 0.9rem;
+}
+
 /* Phase 12: imported video status (from YTDLM import) */
 .badge-imported { color: #7b1fa2; font-weight: 600; }
+
+/* ========== Log Viewer ========== */
+
+.log-controls {
+  margin-bottom: 1rem;
+}
+
+.log-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.log-filter-row select,
+.log-filter-row input[type="search"] {
+  margin-bottom: 0;
+  max-width: 14rem;
+}
+
+.log-filter-row button {
+  margin-bottom: 0;
+}
+
+.log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.log-actions button,
+.log-actions a[role="button"] {
+  margin-bottom: 0;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.875rem;
+}
+
+.log-auto-refresh {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  margin-bottom: 0;
+}
+
+.log-auto-refresh input {
+  margin: 0;
+}
+
+.log-count {
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+  margin-bottom: 0.5rem;
+}
+
+.log-table-wrap {
+  overflow-x: auto;
+  max-height: 70vh;
+  overflow-y: auto;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+}
+
+.log-table {
+  margin-bottom: 0;
+  font-size: 0.8rem;
+  width: 100%;
+}
+
+.log-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.log-table th,
+.log-table td {
+  padding: 0.3rem 0.5rem;
+  vertical-align: top;
+}
+
+.log-col-time { white-space: nowrap; width: 11rem; }
+.log-col-level { width: 5.5rem; }
+.log-col-logger { width: 12rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 14rem; }
+.log-col-message { word-break: break-word; }
+
+.log-message-pre {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: inherit;
+  overflow: visible;
+}
+
+/* Level badges */
+.log-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.log-badge-debug { background: #37474f; color: #b0bec5; }
+.log-badge-info { background: #1565c0; color: #e3f2fd; }
+.log-badge-warning { background: #f57f17; color: #fff8e1; }
+.log-badge-error { background: #c62828; color: #ffebee; }
+.log-badge-critical { background: #b71c1c; color: #fff; }
+
+/* Row tinting for warnings/errors */
+.log-level-warning td { background: rgba(245, 127, 23, 0.06); }
+.log-level-error td,
+.log-level-critical td { background: rgba(198, 40, 40, 0.08); }

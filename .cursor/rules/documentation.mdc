@@ -5,17 +5,17 @@ alwaysApply: true
 
 # Documentation-Driven Development
 
-Docs live in `docs/`. Read only what you need — the roadmap tells you what that is.
+Docs live in `docs/`. Read them only when you genuinely need context you don't already have.
 
-## Before Starting Work
+## When to Read Docs
 
-1. Read `docs/roadmap/README.md` to find the **current phase** (first non-COMPLETE phase).
-2. Read that phase file (e.g. `docs/roadmap/phase-07-routes.md`). It lists deliverables and which pattern/recipe docs to follow.
-3. Read **only** the pattern/recipe docs the phase file references. Do NOT read every doc up front.
-4. If the task isn't tied to a phase, read only the specific doc relevant to the task (architecture, data-flow, glossary, etc.).
+- **Do NOT** read docs as a mandatory first step on every task. Jump straight into the code for small/clear requests.
+- **Do** check the roadmap (`docs/roadmap/README.md` → current phase file) when you need to know what phase the project is in or what deliverables remain.
+- **Do** check a pattern/recipe doc when you're unsure how this project does something specific (e.g. adding a route, a DB field, a Stash query).
 
 ### Available docs (read on-demand, not all at once)
 
+- `docs/roadmap/README.md` -- current phase and deliverables
 - `docs/architecture/README.md` -- system overview, component map, config reference, status lifecycle
 - `docs/adr/` -- architectural decision records
 - `docs/patterns/` -- code patterns (FastAPI, SQLAlchemy, yt-dlp, Stash GraphQL, HTMX)

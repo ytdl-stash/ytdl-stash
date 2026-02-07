@@ -7,6 +7,14 @@
   <label>URL <input type="url" name="url" placeholder="Channel URL" required></label>
   <label>Name <input type="text" name="name" placeholder="Display name"></label>
   <label>Interval (hours) <input type="number" name="check_interval_hours" value="6" min="1"></label>
+  <label>Max Video Age (days)
+    <input type="number" name="max_video_age_days" placeholder="No limit (download all)" min="1">
+    <small>Only download videos uploaded within this many days. Leave blank for no limit.</small>
+  </label>
+  <label>Min Duration (seconds)
+    <input type="number" name="min_duration_seconds" placeholder="No limit (download all)" min="1">
+    <small>Only download videos longer than this many seconds. Leave blank for no limit.</small>
+  </label>
   <button type="submit">Add Channel</button>
 </form>
 {% endblock %}
