@@ -11,6 +11,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install latest yt-dlp nightly (overrides stable from requirements.txt)
 RUN pip install --no-cache-dir -U "yt-dlp @ https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.tar.gz"
 
+ARG APP_VERSION=dev
+RUN echo "$APP_VERSION" > /app/VERSION
+
 COPY app/ app/
 
 EXPOSE 8000

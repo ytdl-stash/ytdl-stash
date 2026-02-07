@@ -10,25 +10,34 @@
     <h3 class="card-title text-base m-0 mb-1">{{ channel.name }}</h3>
     <span class="badge badge-ghost badge-sm mr-2">{{ channel.site }}</span>
     <span class="text-sm text-base-content/60">{{ channel.videos|length }} video{{ channel.videos|length != 1 and 's' or '' }}</span>
-    <span class="{% if channel.enabled %}watched-indicator{% else %}not-watched-indicator{% endif %}" title="{% if channel.enabled %}Watching{% else %}Not watching{% endif %}"></span>
-    <span class="{% if channel.stash_performer_id %}stash-linked{% else %}stash-unlinked{% endif %}" title="{% if channel.stash_performer_id %}Linked to Stash{% else %}Not in Stash{% endif %}"></span>
+    <span class="{% if channel.enabled %}watched-indicator{% else %}not-watched-indicator{% endif %} tooltip tooltip-bottom" data-tip="{% if channel.enabled %}Watching{% else %}Not watching{% endif %}" aria-label="{% if channel.enabled %}Watching{% else %}Not watching{% endif %}"></span>
+    <span class="{% if channel.stash_performer_id %}stash-linked{% else %}stash-unlinked{% endif %} tooltip tooltip-bottom" data-tip="Performer: {% if channel.stash_performer_id %}Linked{% else %}Not linked{% endif %}" aria-label="Performer: {% if channel.stash_performer_id %}Linked{% else %}Not linked{% endif %}"></span>
+    <span class="{% if channel.stash_studio_id %}stash-linked{% else %}stash-unlinked{% endif %} tooltip tooltip-bottom" data-tip="Studio: {% if channel.stash_studio_id %}Linked{% else %}Not linked{% endif %}" aria-label="Studio: {% if channel.stash_studio_id %}Linked{% else %}Not linked{% endif %}"></span>
   </a>
   <div class="card-actions px-4 pb-4 flex flex-wrap gap-2">
     <form hx-post="/performers/{{ channel.id }}/toggle"
           hx-target="#performer-card-{{ channel.id }}"
           hx-swap="outerHTML"
           class="inline">
-      <button type="submit" class="btn btn-sm {{ 'btn-ghost' if not channel.enabled else 'btn-primary' }}">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
+      <button type="submit" class="btn btn-sm {{ 'btn-ghost' if not channel.enabled else 'btn-primary' }} tooltip tooltip-top" data-tip="Toggle auto-scanning for this channel">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
     </form>
     <form hx-post="/performers/{{ channel.id }}/sync"
           hx-target="#performer-card-{{ channel.id }}"
           hx-swap="outerHTML"
           hx-indicator="#spinner-sync-{{ channel.id }}"
           class="inline">
-      <button type="submit" class="btn btn-sm btn-primary">Sync to Stash</button>
+      <button type="submit" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Create or update this performer in Stash">Sync to Stash</button>
       <span id="spinner-sync-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
     </form>
-    <button class="btn btn-sm btn-error"
+    <form hx-post="/performers/{{ channel.id }}/sync-studio"
+          hx-target="#performer-card-{{ channel.id }}"
+          hx-swap="outerHTML"
+          hx-indicator="#spinner-sync-studio-{{ channel.id }}"
+          class="inline">
+      <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-top" data-tip="Link this channel's site to a Stash studio">Sync Studio</button>
+      <span id="spinner-sync-studio-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
+    </form>
+    <button class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Remove this performer and all videos"
             hx-delete="/performers/{{ channel.id }}"
             hx-target="#performer-card-{{ channel.id }}"
             hx-swap="outerHTML swap:1s"

@@ -34,16 +34,16 @@
 
     <div class="flex flex-wrap gap-2 my-4">
       <form action="/performers/{{ channel.id }}/toggle" method="post" class="inline">
-        <button type="submit" class="btn btn-sm {{ 'btn-ghost' if not channel.enabled else 'btn-primary' }}">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
+        <button type="submit" class="btn btn-sm {{ 'btn-ghost' if not channel.enabled else 'btn-primary' }} tooltip tooltip-bottom" data-tip="Toggle auto-scanning for this channel">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
       </form>
       <form action="/performers/{{ channel.id }}/sync" method="post" class="inline">
-        <button type="submit" class="btn btn-sm btn-primary">Sync to Stash</button>
+        <button type="submit" class="btn btn-sm btn-primary tooltip tooltip-bottom" data-tip="Create or update this performer in Stash">Sync to Stash</button>
       </form>
       <form hx-delete="/performers/{{ channel.id }}"
             hx-confirm="Delete performer '{{ channel.name|e }}' and all its videos?"
             hx-on::after-request="if(event.detail.successful) window.location='/performers'"
             class="inline">
-        <button type="submit" class="btn btn-sm btn-error">Delete</button>
+        <button type="submit" class="btn btn-sm btn-error tooltip tooltip-bottom" data-tip="Remove this performer and all videos">Delete</button>
       </form>
     </div>
 
@@ -118,6 +118,53 @@
     {% else %}
     <p class="text-base-content/60 my-4">No Stash data yet. Click <strong>Sync to Stash</strong> to pull performer details.</p>
     {% endif %}
+
+    {# ── Studio metadata from Stash ── #}
+    {% set s = channel.stash_studio_data or {} %}
+    <details class="my-6">
+      <summary class="cursor-pointer font-bold">Studio</summary>
+      <p class="mt-2">
+        {% if channel.stash_studio_id %}
+        <span class="stash-linked"></span>
+        <a href="{{ stash_url }}/studios/{{ channel.stash_studio_id }}" target="_blank" rel="noopener" class="link link-hover">Open in Stash</a>
+        {% if s.scene_count is defined and s.scene_count is not none %}
+        &nbsp;· {{ s.scene_count }} scene{{ s.scene_count != 1 and 's' or '' }} in Stash
+        {% endif %}
+        {% else %}
+        <span class="stash-unlinked"></span>
+        <span class="text-base-content/60">Not linked to Stash</span>
+        {% endif %}
+      </p>
+      {% if s %}
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 my-4">
+        {% if s.name %}
+        <div class="flex flex-col"><span class="text-xs uppercase tracking-wide text-base-content/60 mb-0.5">Name</span><span class="text-base">{{ s.name }}</span></div>
+        {% endif %}
+      </div>
+      {% if s.urls %}
+      <div class="my-4">
+        <strong>URLs</strong>
+        <ul class="mt-1 pl-6 list-disc">
+          {% for url in s.urls %}
+          <li class="break-all text-sm"><a href="{{ url }}" target="_blank" rel="noopener" class="link link-hover">{{ url }}</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if s.details %}
+      <div class="my-4">
+        <strong>Details</strong>
+        <p class="whitespace-pre-line mt-1">{{ s.details }}</p>
+      </div>
+      {% endif %}
+      {% endif %}
+      <form action="/performers/{{ channel.id }}/sync-studio" method="post" class="inline mt-2">
+        <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-bottom" data-tip="Find or create the studio in Stash by channel URL">Sync Studio</button>
+      </form>
+      {% if not s and not channel.stash_studio_id %}
+      <p class="text-base-content/60 text-sm mt-2">Click <strong>Sync Studio</strong> to find or create the studio in Stash by channel URL.</p>
+      {% endif %}
+    </details>
 
     <h3 class="text-lg font-semibold mt-6">Videos ({{ videos|length }})</h3>
     <div class="overflow-x-auto">

@@ -40,6 +40,9 @@ downloads/
 # Logs
 *.log
 
+# Version (baked into Docker image at build time)
+VERSION
+
 # Coverage / Testing
 htmlcov/
 .coverage

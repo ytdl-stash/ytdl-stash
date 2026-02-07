@@ -1,10 +1,11 @@
 """Video routes: list with filters, detail, retry, delete, resync."""
 
 import logging
+import math
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -19,16 +20,20 @@ from app.stash_client import StashClient
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/videos", tags=["videos"])
 
+ACTIVE_DOWNLOAD_STATUSES = ("downloading", "cancelling", "downloaded", "importing")
+
 
 @router.get("")
 async def list_videos(
     request: Request,
     channel_id: str | None = None,
     status: str | None = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """List videos with optional filter by channel_id and status. HTMX returns _table_body.html."""
+    """List videos with optional filter by channel_id and status. HTMX returns _video_list.html."""
     channel_id_int: int | None = None
     if channel_id and channel_id.strip():
         try:
@@ -37,42 +42,89 @@ async def list_videos(
             pass
     status_clean = status.strip() if status else None
 
-    stmt = (
-        select(Video)
-        .options(selectinload(Video.channel))
-        .order_by(Video.created_at.desc())
-    )
+    base_stmt = select(Video).order_by(Video.created_at.desc())
     if channel_id_int is not None:
-        stmt = stmt.where(Video.channel_id == channel_id_int)
+        base_stmt = base_stmt.where(Video.channel_id == channel_id_int)
     if status_clean:
-        stmt = stmt.where(Video.status == status_clean)
+        base_stmt = base_stmt.where(Video.status == status_clean)
 
-    result = await db.execute(stmt)
+    count_stmt = select(func.count()).select_from(Video)
+    if channel_id_int is not None:
+        count_stmt = count_stmt.where(Video.channel_id == channel_id_int)
+    if status_clean:
+        count_stmt = count_stmt.where(Video.status == status_clean)
+    total = (await db.execute(count_stmt)).scalar_one() or 0
+    total_pages = math.ceil(total / per_page) if total else 1
+    if page > total_pages:
+        page = total_pages
+
+    data_stmt = (
+        base_stmt.options(selectinload(Video.channel))
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    )
+    result = await db.execute(data_stmt)
     videos = list(result.scalars().all())
     progress_map = download_progress.snapshot()
 
+    ctx = {
+        "request": request,
+        "videos": videos,
+        "download_progress": progress_map,
+        "settings": settings,
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "total_pages": total_pages,
+    }
+
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse(
-            "videos/_table_body.html",
-            {
-                "request": request,
-                "videos": videos,
-                "download_progress": progress_map,
-                "settings": settings,
-            },
-        )
+        return templates.TemplateResponse("videos/_video_list.html", ctx)
 
     channels = list(
         (await db.execute(select(Channel).order_by(Channel.name))).scalars().all()
     )
+    active_stmt = (
+        select(Video)
+        .where(Video.status.in_(ACTIVE_DOWNLOAD_STATUSES))
+        .options(selectinload(Video.channel))
+        .order_by(Video.created_at.desc())
+    )
+    active_result = await db.execute(active_stmt)
+    active_videos = list(active_result.scalars().all())
     return templates.TemplateResponse(
         "videos/list.html",
         {
-            "request": request,
-            "videos": videos,
+            **ctx,
             "channels": channels,
             "selected_channel_id": channel_id_int,
             "selected_status": status_clean,
+            "active_videos": active_videos,
+        },
+    )
+
+
+@router.get("/active_downloads")
+async def active_downloads(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """HTMX partial: active downloads panel (videos in transitional status with progress)."""
+    stmt = (
+        select(Video)
+        .where(Video.status.in_(ACTIVE_DOWNLOAD_STATUSES))
+        .options(selectinload(Video.channel))
+        .order_by(Video.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    active_videos = list(result.scalars().all())
+    progress_map = download_progress.snapshot()
+    return templates.TemplateResponse(
+        "videos/_active_downloads.html",
+        {
+            "request": request,
+            "active_videos": active_videos,
             "download_progress": progress_map,
             "settings": settings,
         },
@@ -162,6 +214,7 @@ async def stop_video(
     video_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """Request a pending/in-flight video to stop.
 
@@ -193,6 +246,26 @@ async def stop_video(
         )
 
     if request.headers.get("HX-Request"):
+        # Avoid duplicate DOM IDs: the active downloads panel targets `#active-downloads`,
+        # so return the full panel HTML when it's the swap target.
+        if request.headers.get("HX-Target") == "active-downloads":
+            stmt = (
+                select(Video)
+                .where(Video.status.in_(ACTIVE_DOWNLOAD_STATUSES))
+                .options(selectinload(Video.channel))
+                .order_by(Video.created_at.desc())
+            )
+            result = await db.execute(stmt)
+            active_videos = list(result.scalars().all())
+            return templates.TemplateResponse(
+                "videos/_active_downloads.html",
+                {
+                    "request": request,
+                    "active_videos": active_videos,
+                    "download_progress": download_progress.snapshot(),
+                    "settings": settings,
+                },
+            )
         return templates.TemplateResponse(
             "videos/_status_badge.html",
             {

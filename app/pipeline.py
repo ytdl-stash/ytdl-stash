@@ -22,6 +22,7 @@ from app.downloader import (
 )
 from app.models import Channel, Video
 from app.performer_sync import is_placeholder_name
+from app.studio_sync import sync_channel_studio
 from app.stash_client import StashClient, _normalize_performer_name
 
 logger = logging.getLogger(__name__)
@@ -193,6 +194,22 @@ async def _resync_scene_from_stash(video: Video, stash: StashClient) -> None:
         len(scene.get("tags") or []),
     )
 
+    if scene.get("organized") is not True:
+        try:
+            await stash.update_scene(scene_id=video.stash_scene_id, organized=True)
+            logger.info(
+                "Video %s: marked scene %s as organized in Stash",
+                video.id,
+                video.stash_scene_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "Video %s: failed to mark scene %s as organized (non-fatal): %s",
+                video.id,
+                video.stash_scene_id,
+                e,
+            )
+
 
 async def process_single_download(
     video: Video, db: AsyncSession, settings: Settings, stash: StashClient
@@ -318,6 +335,8 @@ async def process_single_download(
             return
 
         video.status = "downloaded"
+        if video.downloaded_at is None:
+            video.downloaded_at = datetime.now(UTC)
         await db.commit()
         download_progress.clear(video.id)
         logger.info("Video %s: downloaded", video.id)
@@ -398,9 +417,19 @@ async def process_single_download(
             performer_ids.append(pid)
 
         studio_id: str | None = None
-        if video.studio:
-            studio_id = await stash.find_or_create_studio(video.studio)
-            logger.info("Video %s: studio '%s' -> Stash id %s", video.id, video.studio, studio_id)
+        if channel and not channel.stash_studio_id:
+            try:
+                await sync_channel_studio(channel, db, stash, settings)
+            except Exception as e:
+                logger.warning(
+                    "Video %s: studio sync failed for channel %s (non-fatal): %s",
+                    video.id,
+                    channel.id,
+                    e,
+                )
+        if channel and channel.stash_studio_id:
+            studio_id = channel.stash_studio_id
+            logger.info("Video %s: studio from channel -> Stash id %s", video.id, studio_id)
 
         date_str = video.upload_date.isoformat() if video.upload_date else None
         logger.info("Video %s: updating Stash scene %s with metadata", video.id, scene["id"])
@@ -415,6 +444,8 @@ async def process_single_download(
 
         video.stash_scene_id = scene["id"]
         video.status = "synced"
+        if video.synced_at is None:
+            video.synced_at = datetime.now(UTC)
         await db.commit()
         logger.info("Video %s: synced to Stash scene %s", video.id, scene["id"])
 

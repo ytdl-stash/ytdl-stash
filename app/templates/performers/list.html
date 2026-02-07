@@ -16,32 +16,32 @@
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="btn btn-sm {{ 'btn-primary' if filter == 'watched' else 'btn-ghost' }}">Watched</a>
+     class="btn btn-sm {{ 'btn-primary' if filter == 'watched' else 'btn-ghost' }} tooltip tooltip-bottom" data-tip="Channels that are actively monitored">Watched</a>
   <a href="/performers?filter=not_watched&sort={{ sort }}"
      hx-get="/performers?filter=not_watched&sort={{ sort }}"
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="btn btn-sm {{ 'btn-primary' if filter == 'not_watched' else 'btn-ghost' }}">Not Watched</a>
+     class="btn btn-sm {{ 'btn-primary' if filter == 'not_watched' else 'btn-ghost' }} tooltip tooltip-bottom" data-tip="Channels with auto-scanning disabled">Not Watched</a>
   <strong class="ml-4">Sort:</strong>
   <a href="/performers?filter={{ filter }}&sort=name"
      hx-get="/performers?filter={{ filter }}&sort=name"
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="btn btn-sm {{ 'btn-primary' if sort == 'name' else 'btn-ghost' }}">Name</a>
+     class="btn btn-sm {{ 'btn-primary' if sort == 'name' else 'btn-ghost' }} tooltip tooltip-bottom" data-tip="Sort alphabetically by channel name">Name</a>
   <a href="/performers?filter={{ filter }}&sort=video_count"
      hx-get="/performers?filter={{ filter }}&sort=video_count"
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="btn btn-sm {{ 'btn-primary' if sort == 'video_count' else 'btn-ghost' }}">Videos</a>
+     class="btn btn-sm {{ 'btn-primary' if sort == 'video_count' else 'btn-ghost' }} tooltip tooltip-bottom" data-tip="Sort by number of videos (most first)">Videos</a>
   <a href="/performers?filter={{ filter }}&sort=last_checked"
      hx-get="/performers?filter={{ filter }}&sort=last_checked"
      hx-target="#performer-grid"
      hx-swap="innerHTML"
      hx-push-url="true"
-     class="btn btn-sm {{ 'btn-primary' if sort == 'last_checked' else 'btn-ghost' }}">Last checked</a>
+     class="btn btn-sm {{ 'btn-primary' if sort == 'last_checked' else 'btn-ghost' }} tooltip tooltip-bottom" data-tip="Sort by most recently scanned">Last checked</a>
 </nav>
 <div id="performer-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4">
   {% for channel in channels %}

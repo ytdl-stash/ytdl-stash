@@ -72,6 +72,7 @@ query FindScene($id: ID!) {
             name
         }
         cover
+        organized
     }
 }
 """
@@ -167,9 +168,45 @@ query FindStudios($filter: FindFilterType!, $studio_filter: StudioFilterType!) {
 }
 """
 
+_FIND_STUDIOS_BY_URL_QUERY = """
+query FindStudiosByUrl($filter: FindFilterType!, $studio_filter: StudioFilterType!) {
+    findStudios(filter: $filter, studio_filter: $studio_filter) {
+        studios {
+            id
+            name
+            urls
+            image_path
+            details
+            scene_count
+        }
+    }
+}
+"""
+
+_FIND_STUDIO_BY_ID_QUERY = """
+query FindStudio($id: ID!) {
+    findStudio(id: $id) {
+        id
+        name
+        urls
+        image_path
+        details
+        scene_count
+    }
+}
+"""
+
 _STUDIO_CREATE_MUTATION = """
 mutation StudioCreate($input: StudioCreateInput!) {
     studioCreate(input: $input) {
+        id
+    }
+}
+"""
+
+_STUDIO_UPDATE_MUTATION = """
+mutation StudioUpdate($input: StudioUpdateInput!) {
+    studioUpdate(input: $input) {
         id
     }
 }
@@ -584,6 +621,133 @@ class StashClient:
             logger.info("Stash: creating new studio '%s'", name)
             return await self.create_studio(name)
 
+    def _studio_dict(self, s: dict) -> dict:
+        """Build {id, name, urls, image_path, details, scene_count} from GraphQL studio result."""
+        return {
+            "id": s["id"],
+            "name": s.get("name") or "",
+            "urls": s.get("urls") or [],
+            "image_path": s.get("image_path"),
+            "details": s.get("details"),
+            "scene_count": s.get("scene_count"),
+        }
+
+    async def find_studio_by_url(self, url: str) -> dict | None:
+        """Find a studio by URL (INCLUDES match on studio urls). Returns {id, name, urls, image_path, details} or None."""
+        variables = {
+            "filter": {"per_page": 1},
+            "studio_filter": {
+                "url": {
+                    "value": url,
+                    "modifier": "INCLUDES",
+                }
+            },
+        }
+        data = await self._query(_FIND_STUDIOS_BY_URL_QUERY, variables)
+        studios = data["findStudios"]["studios"]
+        if not studios:
+            return None
+        return self._studio_dict(studios[0])
+
+    async def get_studio(self, studio_id: str) -> dict | None:
+        """Fetch full studio data by Stash ID. Returns {id, name, urls, image_path, details} or None."""
+        data = await self._query(_FIND_STUDIO_BY_ID_QUERY, {"id": studio_id})
+        studio = data.get("findStudio")
+        if not studio:
+            return None
+        return self._studio_dict(studio)
+
+    async def create_studio_with_metadata(
+        self,
+        name: str,
+        urls: list[str],
+        image_url: str | None = None,
+        details: str | None = None,
+    ) -> str:
+        """Create a studio with name, urls, and optional image/details. Returns the new studio's ID."""
+        name = name.strip()
+        input_dict: dict = {"name": name, "urls": urls}
+        if image_url:
+            input_dict["image"] = image_url
+        if details:
+            input_dict["details"] = details
+        data = await self._query(_STUDIO_CREATE_MUTATION, {"input": input_dict})
+        return data["studioCreate"]["id"]
+
+    async def update_studio(self, studio_id: str, **fields: object) -> None:
+        """Update a Stash studio. Only non-None keyword args are sent.
+
+        Supported fields match StudioUpdateInput: name, urls, parent_id, image,
+        rating100, favorite, details, aliases, tag_ids, ignore_auto_tag.
+        """
+        input_dict: dict = {"id": studio_id}
+        for key, value in fields.items():
+            if value is not None:
+                input_dict[key] = value
+        if len(input_dict) <= 1:
+            return
+        await self._query(_STUDIO_UPDATE_MUTATION, {"input": input_dict})
+
+    async def _gap_fill_studio_url_image_details(
+        self,
+        studio: dict,
+        url: str,
+        image_url: str | None,
+        details: str | None,
+    ) -> None:
+        """Add URL, image, and details to an existing studio if missing."""
+        updates: dict = {}
+        stash_urls = studio.get("urls") or []
+        if url and url not in stash_urls:
+            updates["urls"] = stash_urls + [url]
+        stash_image = studio.get("image_path")
+        if image_url and not stash_image:
+            updates["image"] = image_url
+        stash_details = (studio.get("details") or "").strip()
+        if details and not stash_details:
+            updates["details"] = details
+        if updates:
+            logger.info(
+                "Stash: gap-filling studio %s with %s",
+                studio["id"],
+                list(updates.keys()),
+            )
+            await self.update_studio(studio["id"], **updates)
+
+    async def find_or_create_studio_by_url(
+        self,
+        name: str,
+        url: str,
+        image_url: str | None = None,
+        details: str | None = None,
+    ) -> str:
+        """Find studio by URL first, then by name, then create with metadata. Returns studio ID."""
+        name = name.strip()
+        key = name.lower()
+        async with _lock_dict_meta:
+            if key not in _studio_locks:
+                _studio_locks[key] = asyncio.Lock()
+            lock = _studio_locks[key]
+        async with lock:
+            by_url = await self.find_studio_by_url(url)
+            if by_url:
+                return by_url["id"]
+            studio_id = await self.find_studio(name)
+            if studio_id:
+                studio = await self.get_studio(studio_id)
+                if studio:
+                    await self._gap_fill_studio_url_image_details(
+                        studio, url, image_url, details
+                    )
+                return studio_id
+            logger.info("Stash: creating new studio '%s' with URL %s", name, url)
+            return await self.create_studio_with_metadata(
+                name=name,
+                urls=[url],
+                image_url=image_url,
+                details=details,
+            )
+
     async def update_scene(
         self,
         scene_id: str,
@@ -595,6 +759,7 @@ class StashClient:
         tag_ids: list[str] | None = None,
         details: str | None = None,
         cover_image: str | None = None,
+        organized: bool | None = None,
     ) -> None:
         """Update scene metadata. Only non-None fields are sent (Stash clears nulls)."""
         scene_input: dict = {"id": scene_id}
@@ -614,6 +779,8 @@ class StashClient:
             scene_input["details"] = details
         if cover_image is not None:
             scene_input["cover_image"] = cover_image
+        if organized is not None:
+            scene_input["organized"] = organized
         await self._query(_SCENE_UPDATE_MUTATION, {"input": scene_input})
 
     # ------------------------------------------------------------------

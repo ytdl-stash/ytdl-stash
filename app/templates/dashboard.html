@@ -2,21 +2,29 @@
 {% block title %}Dashboard — ytdl-stash{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-bold mb-4">Dashboard</h1>
+<div class="card bg-base-200 shadow mb-8">
+  <div class="card-body">
+    <h2 class="card-title text-lg">Videos downloaded by day</h2>
+    <div class="w-full max-w-4xl h-64">
+      <canvas id="downloads-chart" aria-label="Videos downloaded per day (last 90 days)"></canvas>
+    </div>
+  </div>
+</div>
 <div class="stats stats-vertical lg:stats-horizontal shadow mb-8">
   <div class="stat">
-    <div class="stat-title">Total Channels</div>
+    <div class="stat-title tooltip tooltip-bottom" data-tip="Number of monitored channels">Total Channels</div>
     <div class="stat-value">{{ total_channels }}</div>
   </div>
   <div class="stat">
-    <div class="stat-title">Total Videos</div>
+    <div class="stat-title tooltip tooltip-bottom" data-tip="Total videos discovered across all channels">Total Videos</div>
     <div class="stat-value">{{ total_videos }}</div>
   </div>
   <div class="stat">
-    <div class="stat-title">Pending</div>
+    <div class="stat-title tooltip tooltip-bottom" data-tip="Videos waiting to be downloaded">Pending</div>
     <div class="stat-value">{{ pending_count }}</div>
   </div>
   <div class="stat">
-    <div class="stat-title">Failed</div>
+    <div class="stat-title tooltip tooltip-bottom" data-tip="Videos that failed to download">Failed</div>
     <div class="stat-value">{{ failed_count }}</div>
   </div>
 </div>
@@ -26,14 +34,30 @@
   <table class="table table-responsive">
     <thead>
       <tr>
+        <th>Preview</th>
         <th>Title</th>
         <th>Channel</th>
-        <th>Synced</th>
+        <th class="tooltip tooltip-bottom" data-tip="When this video was synced to Stash">Synced</th>
       </tr>
     </thead>
     <tbody>
       {% for video in recent_downloads %}
       <tr>
+        <td data-label="Preview" class="w-20">
+          {% if video.stash_scene_id and settings %}
+          <img src="{{ settings.stash_url.rstrip('/') }}/scene/{{ video.stash_scene_id }}/screenshot{% if settings.stash_api_key %}?apikey={{ settings.stash_api_key }}{% endif %}"
+               alt=""
+               class="rounded w-16 h-12 object-cover bg-base-300"
+               loading="lazy">
+          {% elif video.thumbnail_url %}
+          <img src="{{ video.thumbnail_url }}"
+               alt=""
+               class="rounded w-16 h-12 object-cover bg-base-300"
+               loading="lazy">
+          {% else %}
+          <div class="rounded w-16 h-12 bg-base-300 flex items-center justify-center text-base-content/30 text-xs">—</div>
+          {% endif %}
+        </td>
         <td data-label="Title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
         <td data-label="Channel">{{ video.channel.name if video.channel else '—' }}</td>
         <td data-label="Synced">{{ video.updated_at.strftime('%Y-%m-%d %H:%M') if video.updated_at else '—' }}</td>
@@ -45,4 +69,44 @@
 {% else %}
 <p>No recent downloads.</p>
 {% endif %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  var data = {{ chart_data | tojson }};
+  var ctx = document.getElementById('downloads-chart');
+  if (!ctx || !data.labels || !data.values) return;
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.labels,
+      datasets: [{
+        label: 'Downloads',
+        data: data.values,
+        borderColor: '#60a5fa',
+        backgroundColor: 'rgba(96, 165, 250, 0.25)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHoverRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: {
+          ticks: { maxTicksLimit: 10 }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { precision: 0 }
+        }
+      }
+    }
+  });
+})();
+</script>
 {% endblock %}

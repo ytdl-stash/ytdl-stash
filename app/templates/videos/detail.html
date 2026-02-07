@@ -35,7 +35,7 @@
     <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 mt-4">
       <dt class="font-semibold text-base-content/70">URL</dt>
       <dd><a href="{{ video.url }}" target="_blank" rel="noopener" class="link link-hover break-all">{{ video.url }}</a></dd>
-      <dt class="font-semibold text-base-content/70">Site video ID</dt>
+      <dt class="font-semibold text-base-content/70 tooltip tooltip-bottom" data-tip="Unique identifier on the source site">Site video ID</dt>
       <dd>{{ video.site_video_id }}</dd>
       <dt class="font-semibold text-base-content/70">Upload date</dt>
       <dd>{{ video.upload_date.isoformat() if video.upload_date else '—' }}</dd>
@@ -47,14 +47,19 @@
       <dd>{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</dd>
       <dt class="font-semibold text-base-content/70">Error</dt>
       <dd>{{ video.error_message or '—' }}</dd>
-      <dt class="font-semibold text-base-content/70">OSHash</dt>
+      <dt class="font-semibold text-base-content/70 tooltip tooltip-bottom" data-tip="OpenSubtitles hash used to match files in Stash">OSHash</dt>
       <dd>{{ video.oshash or '—' }}</dd>
-      <dt class="font-semibold text-base-content/70">Original filename</dt>
+      <dt class="font-semibold text-base-content/70 tooltip tooltip-bottom" data-tip="Filename as saved to disk by yt-dlp">Original filename</dt>
       <dd>{{ video.original_filename or '—' }}</dd>
       <dt class="font-semibold text-base-content/70">Stash scene</dt>
       <dd>
         {% if video.stash_scene_id and settings %}
-        <a href="{{ settings.stash_url.rstrip('/') }}/scenes/{{ video.stash_scene_id }}" target="_blank" rel="noopener" class="link link-hover">View in Stash</a>
+        <a href="{{ settings.stash_url.rstrip('/') }}/scenes/{{ video.stash_scene_id }}" target="_blank" rel="noopener" class="btn btn-sm btn-primary gap-1.5 inline-flex items-center tooltip tooltip-bottom" data-tip="Open this scene in your Stash instance">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+          View in Stash
+        </a>
         {% elif video.stash_scene_id %}
         {{ video.stash_scene_id }}
         {% else %}
@@ -64,7 +69,7 @@
     </dl>
     <div class="card-actions justify-start mt-4 flex-wrap gap-2">
       {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
-      <button class="btn btn-sm btn-warning"
+      <button class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel processing for this video"
               hx-post="/videos/{{ video.id }}/stop"
               hx-target="#video-status-{{ video.id }}"
               hx-swap="outerHTML"
@@ -78,7 +83,7 @@
       </button>
       {% endif %}
       {% if video.status in ['failed', 'cancelled', 'skipped'] %}
-      <button class="btn btn-sm btn-primary"
+      <button class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Reset to pending and re-download this video"
               hx-post="/videos/{{ video.id }}/retry"
               hx-target="#video-status-{{ video.id }}"
               hx-swap="outerHTML"
@@ -87,18 +92,17 @@
       </button>
       {% endif %}
       {% if video.stash_scene_id %}
-      <button class="btn btn-sm btn-info"
+      <button class="btn btn-sm btn-info tooltip tooltip-top" data-tip="Re-scrape metadata and regenerate from Stash"
               hx-post="/videos/{{ video.id }}/resync"
               hx-target="#video-status-{{ video.id }}"
               hx-swap="outerHTML"
               hx-disabled-elt="this"
-              hx-indicator="this"
-              title="Re-sync scene from Stash (scrape &amp; generate)">
+              hx-indicator="this">
         <span class="htmx-indicator loading loading-spinner loading-xs"></span>
         Re-sync from Stash
       </button>
       {% endif %}
-      <button class="btn btn-sm btn-error"
+      <button class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Permanently remove this video record"
               hx-delete="/videos/{{ video.id }}"
               hx-confirm="Delete this video?">
         Delete

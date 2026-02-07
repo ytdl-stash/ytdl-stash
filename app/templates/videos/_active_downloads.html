@@ -1,0 +1,74 @@
+<div id="active-downloads"
+     hx-get="/videos/active_downloads"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     class="{% if active_videos %}mb-4{% endif %}">
+  {% if active_videos %}
+  <div class="flex flex-col gap-3">
+    <h2 class="text-lg font-semibold m-0">Active downloads</h2>
+    {% for video in active_videos %}
+    {% set p = (download_progress or {}).get(video.id) %}
+    <div class="card card-compact bg-base-200 shadow-sm">
+      <div class="card-body flex-row flex-wrap gap-4 items-center">
+        <div class="flex-shrink-0 w-24">
+          {% if video.stash_scene_id and settings %}
+          <a href="/videos/{{ video.id }}">
+            <img src="{{ settings.stash_url.rstrip('/') }}/scene/{{ video.stash_scene_id }}/screenshot{% if settings.stash_api_key %}?apikey={{ settings.stash_api_key }}{% endif %}"
+                 alt="{{ video.title }}"
+                 class="rounded w-24 h-14 object-cover bg-base-300"
+                 loading="lazy">
+          </a>
+          {% elif video.thumbnail_url %}
+          <a href="/videos/{{ video.id }}">
+            <img src="{{ video.thumbnail_url }}"
+                 alt="{{ video.title }}"
+                 class="rounded w-24 h-14 object-cover bg-base-300"
+                 loading="lazy">
+          </a>
+          {% else %}
+          <div class="rounded w-24 h-14 bg-base-300 flex items-center justify-center text-base-content/30 text-xs">
+            No thumb
+          </div>
+          {% endif %}
+        </div>
+        <div class="flex-1 min-w-0">
+          <a href="/videos/{{ video.id }}" class="link link-hover font-medium block truncate">{{ video.title }}</a>
+          <p class="text-sm text-base-content/70 m-0">{{ video.channel.name if video.channel else '—' }}</p>
+          <span id="active-video-status-{{ video.id }}" class="block mt-1">
+            {% if video.status == 'downloading' and p and p.percent is not none %}
+            <div>
+              <progress value="{{ p.percent }}" max="100" class="progress progress-primary w-full max-w-md h-2"></progress>
+              <small class="block text-xs opacity-70 mt-0.5">
+                {{ p.percent }}%
+                {% if p.downloaded and p.total %} · {{ p.downloaded }} / {{ p.total }}{% endif %}
+                {% if p.speed %} · {{ p.speed }}{% endif %}
+                {% if p.eta %} · ETA {{ p.eta }}{% endif %}
+              </small>
+            </div>
+            {% else %}
+            <span class="badge badge-primary badge-sm">{{ video.status }}</span>
+            {% endif %}
+          </span>
+        </div>
+        <div class="flex-shrink-0">
+          {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
+          <button class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel this download (may take a moment)"
+                  hx-post="/videos/{{ video.id }}/stop"
+                  hx-target="#active-downloads"
+                  hx-swap="outerHTML"
+                  hx-confirm="Stop processing for '{{ video.title|e }}'? (If downloading, this may take a moment)">
+            Stop
+          </button>
+          {% elif video.status == 'cancelling' %}
+          <button class="btn btn-sm btn-ghost" disabled>
+            <span class="loading loading-spinner loading-sm"></span>
+            Stopping…
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

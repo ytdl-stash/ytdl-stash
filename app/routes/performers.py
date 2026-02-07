@@ -15,6 +15,7 @@ from app.download_progress import download_progress
 from app.main import templates
 from app.models import Channel
 from app.performer_sync import sync_channel_performer
+from app.studio_sync import sync_channel_studio
 from app.stash_client import StashClient
 
 logger = logging.getLogger(__name__)
@@ -115,8 +116,41 @@ async def performer_sync(
     try:
         async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
             await sync_channel_performer(channel, db, stash, settings)
+            await sync_channel_studio(channel, db, stash, settings)
     except Exception:
-        logger.warning("Performer sync failed for channel %s", channel_id, exc_info=True)
+        logger.warning("Performer/studio sync failed for channel %s", channel_id, exc_info=True)
+
+    result = await db.execute(
+        select(Channel)
+        .where(Channel.id == channel_id)
+        .options(selectinload(Channel.videos))
+    )
+    channel = result.scalar_one()
+
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            "performers/_card.html",
+            {"request": request, "channel": channel},
+        )
+    return RedirectResponse(url=f"/performers/{channel_id}", status_code=303)
+
+
+@router.post("/{channel_id}/sync-studio")
+async def performer_sync_studio(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Manually trigger studio sync only. Returns updated _card.html or redirect."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Performer not found")
+    try:
+        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+            await sync_channel_studio(channel, db, stash, settings)
+    except Exception:
+        logger.warning("Studio sync failed for channel %s", channel_id, exc_info=True)
 
     result = await db.execute(
         select(Channel)

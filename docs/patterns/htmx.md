@@ -85,26 +85,31 @@ The `htmx-indicator` class is automatically shown/hidden by HTMX during the requ
 
 ---
 
-## Pattern: Auto-Refreshing Table
+## Pattern: Auto-Refreshing Table with Pagination
 
-Video list that updates every 10 seconds:
+Video list that updates every 10 seconds and supports pagination:
 
 ```html
-<div hx-get="/videos?partial=true"
+<form id="filter-form" ...>
+  <input type="hidden" name="page" id="page-input" value="{{ page }}">
+  <!-- channel + status selects -->
+</form>
+<div hx-get="/videos"
      hx-trigger="every 10s"
-     hx-target="#video-table-body"
-     hx-swap="innerHTML">
-
-    <table>
-        <thead>...</thead>
-        <tbody id="video-table-body">
-            {% include "videos/_table_body.html" %}
-        </tbody>
-    </table>
+     hx-target="#video-list-content"
+     hx-swap="innerHTML"
+     hx-include="#filter-form">
+  <div id="video-list-content">
+    {% include "videos/_video_list.html" %}
+  </div>
 </div>
 ```
 
-**Rule**: The `partial=true` query param tells the server to return only the table body fragment, not the full page.
+The server detects `HX-Request` and returns the `_video_list.html` partial (table + pagination controls). Query params `page` and `per_page` come from the form when using `hx-include="#filter-form"`. Changing filters resets to page 1 (e.g. via `hx-vals='{"page": 1}'` on the form).
+
+Above the video list, an **active downloads** panel (`_active_downloads.html`) is included. It self-polls `GET /videos/active_downloads` every 3 seconds and swaps its own container (`#active-downloads`) with the response, showing in-flight downloads with progress bars, speed, and ETA. When no downloads are active, the panel renders an empty div so it takes no visual space.
+
+If the panel includes action buttons (e.g. Stop), have them target `#active-downloads` and swap `outerHTML` so the whole panel refreshes. This avoids duplicate `video-status-{{id}}` element IDs (the main table also uses those IDs), and lets the server return the panel HTML when `HX-Target` is `active-downloads`.
 
 ---
 
@@ -208,18 +213,13 @@ Check for the `HX-Request` header to decide whether to return a full page or a p
 
 ```python
 @router.get("/videos")
-async def list_videos(request: Request, partial: bool = False, ...):
-    videos = ...
+async def list_videos(request: Request, page: int = Query(1, ge=1), per_page: int = Query(25, ge=1, le=100), ...):
+    # ... apply filters, count total, apply offset/limit ...
+    ctx = {"request": request, "videos": videos, "page": page, "per_page": per_page, "total": total, "total_pages": total_pages, ...}
 
-    if request.headers.get("HX-Request") or partial:
-        return templates.TemplateResponse("videos/_table_body.html", {
-            "request": request,
-            "videos": videos,
-        })
-    return templates.TemplateResponse("videos/list.html", {
-        "request": request,
-        "videos": videos,
-    })
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse("videos/_video_list.html", ctx)
+    return templates.TemplateResponse("videos/list.html", {**ctx, "channels": channels, ...})
 ```
 
 ---
@@ -239,7 +239,8 @@ templates/
   videos/
     list.html                  # Extends base.html
     detail.html                # Extends base.html
-    _table_body.html           # Partial: video table body rows
+    _video_list.html           # Partial: table + pagination (HTMX list target)
+    _table_body.html           # Partial: video table body rows (included by _video_list.html)
     _status_badge.html         # Partial: status badge element
   settings.html                # Extends base.html
 ```

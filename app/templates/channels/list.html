@@ -4,14 +4,14 @@
 <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
   <h1 class="text-2xl font-bold m-0">Channels</h1>
   <span class="flex items-center gap-2">
-    <button class="btn btn-sm btn-ghost"
+    <button class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Edit settings for all channels at once"
             hx-get="/channels/bulk-edit"
             hx-target="#channel-table-wrap"
             hx-swap="innerHTML">
       Bulk Edit
     </button>
     <span id="job-inline-check_all_channels">
-      <button class="btn btn-sm btn-primary"
+      <button class="btn btn-sm btn-primary tooltip tooltip-bottom" data-tip="Scan all enabled channels for new videos"
               hx-post="/jobs/check_all_channels/trigger"
               hx-target="#job-inline-check_all_channels"
               hx-swap="innerHTML">
@@ -26,27 +26,27 @@
       hx-on::after-request="this.reset()">
   <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
     <label class="form-control w-full">
-      <span class="label-text">URL</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Paste the full channel/user page URL from the video site">URL</span>
       <input type="url" name="url" placeholder="Channel URL" required class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Name</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Optional display name — auto-detected from URL if blank">Name</span>
       <input type="text" name="name" placeholder="Display name" class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Interval (hours)</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Hours between automatic scans for new videos">Interval (hours)</span>
       <input type="number" name="check_interval_hours" value="6" min="1" class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Max Age (days)</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Only download videos uploaded within this many days">Max Age (days)</span>
       <input type="number" name="max_video_age_days" placeholder="No limit" min="1" class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Min Duration (sec)</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Skip videos shorter than this many seconds">Min Duration (sec)</span>
       <input type="number" name="min_duration_seconds" placeholder="No limit" min="1" class="input input-bordered w-full">
     </label>
   </div>
-  <button type="submit" class="btn btn-primary mt-2">Add Channel</button>
+  <button type="submit" class="btn btn-primary mt-2 tooltip tooltip-bottom" data-tip="Add this channel and start monitoring">Add Channel</button>
 </form>
 <div id="channel-table-wrap">
   {% include "channels/_table.html" %}

@@ -336,9 +336,9 @@ retry
    b. **If the performer name matches a known channel** (by normalized name): call `stash_client.find_or_create_performer_by_url(name, channel.url, channel.performer_image_url)`. This finds by URL first, then by name/alias; if found by name/alias but the performer lacks the channel URL, it gap-fills the URL and image.
    c. **Otherwise**: call `stash_client.find_or_create_performer(name)` (name-only lookup/create).
    d. Collect all performer IDs.
-3. If `video.studio` is set:
-   a. Call `stash_client.find_or_create_studio(video.studio)`.
-   b. Get the studio ID.
+3. **Studio** (channel-derived, always):
+   a. If `channel.stash_studio_id` is missing, run `sync_channel_studio(channel, db, stash, settings)` — finds studio by channel URL in Stash studio urls, or creates one with metadata (name, urls, image, details).
+   b. Use `channel.stash_studio_id` as the scene's studio ID.
 
 **Data flow**:
 ```
@@ -361,9 +361,10 @@ For "Performer A":
 For "Performer B": (same)
     |
     v
-For "SomeStudio":
-  findStudios(name="SomeStudio") -> found? -> use existing ID
-                                 -> not found? -> studioCreate -> new ID
+Studio (from video.channel):
+  channel.stash_studio_id missing?
+    Yes -> sync_channel_studio (find by URL in studio urls, or create with metadata)
+  studio_id = channel.stash_studio_id
     |
     v
 performer_ids = ["1", "2"]
@@ -415,7 +416,7 @@ video.status = "synced"
    - `details` (description) — always applied since yt-dlp doesn't provide this.
    - `tags` — each tag is resolved via find-or-create, then added to the scene.
    - `cover_image` — the scraped cover image URL.
-   - `performers` / `studio` — only applied if we didn't already set them from yt-dlp.
+   - `performers` / `studio` — only applied if we didn't already set them from the channel sync.
 3. If no scraper matches the URL, or the scraper returns empty data, the step is silently skipped.
 
 **Error handling**: Best-effort. Failures are logged as warnings but do not change the video's `synced` status.
@@ -445,7 +446,8 @@ video.status = "synced"
 **What happens (automatic — after scraper runs)**:
 1. Call `stash_client.find_scene_by_id(video.stash_scene_id)` to fetch the latest scene data from Stash.
 2. Log the scene's current state (title, performer count, tag count) to confirm scraper results were applied.
-3. Thumbnails are served dynamically from Stash at `{stash_url}/scene/{id}/screenshot`, so no local field update is needed.
+3. If the scene is not already marked organized in Stash, set `organized=true` via `sceneUpdate` (best-effort; failures are logged as warnings).
+4. Thumbnails are served dynamically from Stash at `{stash_url}/scene/{id}/screenshot`, so no local field update is needed.
 
 **What happens (manual — via "Re-sync from Stash" button)**:
 1. `POST /videos/{id}/resync` verifies the scene exists in Stash.

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import get_version
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.main import templates
@@ -116,6 +117,7 @@ async def settings_page(
             "request": request,
             "settings": settings,
             "ytdlp_env_snippet": _ytdlp_env_snippet(settings),
+            "app_version": get_version(),
         },
     )
 

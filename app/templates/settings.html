@@ -1,20 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Settings — ytdl-stash{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-bold mb-4">Settings</h1>
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">Settings</h1>
+  <span class="badge badge-outline badge-lg font-mono">{{ app_version }}</span>
+</div>
 <div class="overflow-x-auto">
   <table class="table mb-6">
     <tbody>
-      <tr><th>Stash URL</th><td class="break-all">{{ settings.stash_url }}</td></tr>
-      <tr><th>Stash API Key</th><td>{{ '***' if settings.stash_api_key else '(empty)' }}</td></tr>
-      <tr><th>Download directory</th><td class="break-all">{{ settings.download_dir }}</td></tr>
-      <tr><th>Stash download dir (path mapping)</th><td class="break-all">{{ settings.stash_download_dir or '—' }}</td></tr>
-      <tr><th>Data directory</th><td class="break-all">{{ settings.data_dir }}</td></tr>
-      <tr><th>Default check interval (hours)</th><td>{{ settings.default_check_interval_hours }}</td></tr>
-      <tr><th>Max concurrent downloads</th><td>{{ settings.max_concurrent_downloads }}</td></tr>
-      <tr><th>Download delay (seconds)</th><td>{{ settings.download_delay_seconds }}</td></tr>
-      <tr><th>Cookies file</th><td class="break-all">{{ settings.cookies_file or '—' }}</td></tr>
-      <tr><th>yt-dlp output template</th><td class="break-all"><code>{{ settings.ytdlp_output_template }}</code></td></tr>
+      <tr><th class="tooltip tooltip-bottom" data-tip="Base URL of your Stash instance">Stash URL</th><td class="break-all">{{ settings.stash_url }}</td></tr>
+      <tr><th class="tooltip tooltip-bottom" data-tip="API key for authenticating with Stash">Stash API Key</th><td>{{ '***' if settings.stash_api_key else '(empty)' }}</td></tr>
+      <tr><th class="tooltip tooltip-bottom" data-tip="Where yt-dlp saves downloaded files">Download directory</th><td class="break-all">{{ settings.download_dir }}</td></tr>
+      <tr><th class="tooltip tooltip-bottom" data-tip="How Stash sees the download path (for Docker volume mapping)">Stash download dir (path mapping)</th><td class="break-all">{{ settings.stash_download_dir or '—' }}</td></tr>
+      <tr><th class="tooltip tooltip-bottom" data-tip="Where the SQLite database and logs are stored">Data directory</th><td class="break-all">{{ settings.data_dir }}</td></tr>
+      <tr><th class="tooltip tooltip-bottom" data-tip="Default hours between channel scans">Default check interval (hours)</th><td>{{ settings.default_check_interval_hours }}</td></tr>
+      <tr><th class="tooltip tooltip-bottom" data-tip="How many videos download simultaneously">Max concurrent downloads</th><td>{{ settings.max_concurrent_downloads }}</td></tr>
+      <tr><th class="tooltip tooltip-bottom" data-tip="Seconds to wait between starting each download">Download delay (seconds)</th><td>{{ settings.download_delay_seconds }}</td></tr>
+      <tr><th class="tooltip tooltip-bottom" data-tip="Path to a Netscape-format cookies file for authenticated downloads">Cookies file</th><td class="break-all">{{ settings.cookies_file or '—' }}</td></tr>
+      <tr><th class="tooltip tooltip-bottom" data-tip="Filename template passed to yt-dlp">yt-dlp output template</th><td class="break-all"><code>{{ settings.ytdlp_output_template }}</code></td></tr>
     </tbody>
   </table>
 </div>
@@ -28,10 +31,10 @@
   <table class="table mb-6">
     <tbody>
       <tr>
-        <th>Scrape scene URL after sync</th>
+        <th class="tooltip tooltip-bottom" data-tip="Fetch scene page from Stash URL after sync">Scrape scene URL after sync</th>
         <td>
           {% if settings.stash_scrape_after_sync %}
-            <span class="badge badge-success">Enabled</span>
+            <span class="badge badge-success tooltip tooltip-bottom" data-tip="Stash will scrape the scene URL after sync">Enabled</span>
           {% else %}
             <span class="badge badge-ghost">Disabled</span>
           {% endif %}
@@ -39,10 +42,10 @@
         </td>
       </tr>
       <tr>
-        <th>Generate after sync</th>
+        <th class="tooltip tooltip-bottom" data-tip="Run Stash generate (covers, previews, etc.) after sync">Generate after sync</th>
         <td>
           {% if settings.stash_generate_after_sync %}
-            <span class="badge badge-success">Enabled</span>
+            <span class="badge badge-success tooltip tooltip-bottom" data-tip="Stash will generate previews/covers/sprites/phashes after sync">Enabled</span>
           {% else %}
             <span class="badge badge-ghost">Disabled</span>
           {% endif %}
@@ -53,10 +56,10 @@
       <tr>
         <th>Generate options</th>
         <td>
-          <span class="badge {{ 'badge-info' if settings.stash_generate_covers else 'badge-ghost' }} mr-1">Covers</span>
-          <span class="badge {{ 'badge-info' if settings.stash_generate_previews else 'badge-ghost' }} mr-1">Previews</span>
-          <span class="badge {{ 'badge-info' if settings.stash_generate_sprites else 'badge-ghost' }} mr-1">Sprites</span>
-          <span class="badge {{ 'badge-info' if settings.stash_generate_phashes else 'badge-ghost' }}">Phashes</span>
+          <span class="badge {{ 'badge-info' if settings.stash_generate_covers else 'badge-ghost' }} mr-1 tooltip tooltip-bottom" data-tip="Generate cover images">Covers</span>
+          <span class="badge {{ 'badge-info' if settings.stash_generate_previews else 'badge-ghost' }} mr-1 tooltip tooltip-bottom" data-tip="Generate video preview clips">Previews</span>
+          <span class="badge {{ 'badge-info' if settings.stash_generate_sprites else 'badge-ghost' }} mr-1 tooltip tooltip-bottom" data-tip="Generate sprite sheets">Sprites</span>
+          <span class="badge {{ 'badge-info' if settings.stash_generate_phashes else 'badge-ghost' }} tooltip tooltip-bottom" data-tip="Generate perceptual hashes">Phashes</span>
         </td>
       </tr>
       {% endif %}
@@ -86,57 +89,57 @@
   hx-indicator="#ytdlp-env-spinner">
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
     <label class="form-control w-full">
-      <span class="label-text">Format</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="yt-dlp format selection string (e.g. bestvideo+bestaudio/best)">Format</span>
       <input type="text" name="ytdlp_format" value="{{ settings.ytdlp_format or '' }}" placeholder="bestvideo+bestaudio/best" class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Impersonate</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Browser to impersonate for anti-bot bypass">Impersonate</span>
       <input type="text" name="ytdlp_impersonate" value="{{ settings.ytdlp_impersonate or '' }}" placeholder="chrome" class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">User-Agent</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="HTTP User-Agent header sent by yt-dlp">User-Agent</span>
       <input type="text" name="ytdlp_user_agent" value="{{ settings.ytdlp_user_agent or '' }}" placeholder="Mozilla/5.0 ..." class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Referer</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="HTTP Referer header for requests">Referer</span>
       <input type="text" name="ytdlp_referer" value="{{ settings.ytdlp_referer or '' }}" placeholder="https://example.com/" class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Proxy</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Proxy URL (e.g. socks5://127.0.0.1:9050)">Proxy</span>
       <input type="text" name="ytdlp_proxy" value="{{ settings.ytdlp_proxy or '' }}" placeholder="socks5://127.0.0.1:9050" class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Socket timeout (seconds)</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Socket timeout in seconds for network requests">Socket timeout (seconds)</span>
       <input type="number" name="ytdlp_socket_timeout_seconds" value="{{ settings.ytdlp_socket_timeout_seconds or '' }}" min="1" step="1" class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Retries</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Number of retries for failed requests">Retries</span>
       <input type="number" name="ytdlp_retries" value="{{ settings.ytdlp_retries }}" min="0" step="1" class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Fragment retries</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Retries for fragment downloads (e.g. HLS)">Fragment retries</span>
       <input type="number" name="ytdlp_fragment_retries" value="{{ settings.ytdlp_fragment_retries }}" min="0" step="1" class="input input-bordered w-full">
     </label>
     <label class="form-control w-full">
-      <span class="label-text">Update check interval (hours)</span>
+      <span class="label-text tooltip tooltip-bottom" data-tip="Hours between yt-dlp update checks">Update check interval (hours)</span>
       <input type="number" name="ytdlp_update_check_interval_hours" value="{{ settings.ytdlp_update_check_interval_hours }}" min="1" step="1" class="input input-bordered w-full">
     </label>
   </div>
 
   <label class="form-control w-full max-w-2xl mb-4">
-    <span class="label-text">HTTP headers JSON</span>
+    <span class="label-text tooltip tooltip-bottom" data-tip="Custom HTTP headers as JSON object">HTTP headers JSON</span>
     <textarea name="ytdlp_http_headers_json" rows="4" class="textarea textarea-bordered w-full">{{ settings.ytdlp_http_headers_json }}</textarea>
   </label>
   <label class="form-control w-full max-w-2xl mb-4">
-    <span class="label-text">Scan options JSON (merged into yt-dlp options for channel scans)</span>
+    <span class="label-text tooltip tooltip-bottom" data-tip="Extra yt-dlp options for channel/video list scans">Scan options JSON (merged into yt-dlp options for channel scans)</span>
     <textarea name="ytdlp_scan_opts_json" rows="4" class="textarea textarea-bordered w-full">{{ settings.ytdlp_scan_opts_json }}</textarea>
   </label>
   <label class="form-control w-full max-w-2xl mb-4">
-    <span class="label-text">Download options JSON (merged into yt-dlp options for downloads)</span>
+    <span class="label-text tooltip tooltip-bottom" data-tip="Extra yt-dlp options for actual downloads">Download options JSON (merged into yt-dlp options for downloads)</span>
     <textarea name="ytdlp_download_opts_json" rows="4" class="textarea textarea-bordered w-full">{{ settings.ytdlp_download_opts_json }}</textarea>
   </label>
 
-  <button type="submit" class="btn btn-primary">Generate docker-compose snippet</button>
+  <button type="submit" class="btn btn-primary tooltip tooltip-bottom" data-tip="Generate environment variables — does not change running config">Generate docker-compose snippet</button>
   <span id="ytdlp-env-spinner" class="htmx-indicator ml-2">Generating…</span>
 </form>
 
@@ -145,7 +148,7 @@
 </div>
 
 <h2 class="text-xl font-semibold mt-8 mb-2">Stash connection</h2>
-<button class="btn btn-primary btn-sm"
+<button class="btn btn-primary btn-sm tooltip tooltip-bottom" data-tip="Verify connectivity to your Stash GraphQL API"
         hx-post="/settings/test-stash"
         hx-target="#stash-test-result"
         hx-swap="innerHTML"
@@ -173,8 +176,8 @@
     Include playlists
   </label>
   <div class="flex gap-2">
-    <button type="submit" name="dry_run" value="true" class="btn btn-secondary">Preview Import</button>
-    <button type="submit" name="dry_run" value="false" class="btn btn-primary">Import</button>
+    <button type="submit" name="dry_run" value="true" class="btn btn-secondary tooltip tooltip-bottom" data-tip="Dry run — show what would be imported without making changes">Preview Import</button>
+    <button type="submit" name="dry_run" value="false" class="btn btn-primary tooltip tooltip-bottom" data-tip="Import channels and videos from the uploaded file">Import</button>
   </div>
 </form>
 <span id="import-spinner" class="htmx-indicator">Importing…</span>

@@ -23,8 +23,16 @@ _CHANNEL_MIGRATION_COLUMNS: list[tuple[str, str]] = [
     ("stash_performer_id", "VARCHAR(50)"),
     ("performer_image_url", "VARCHAR(2048)"),
     ("stash_performer_data", "JSON"),
+    ("stash_studio_id", "VARCHAR(50)"),
+    ("stash_studio_data", "JSON"),
     ("max_video_age_days", "INTEGER"),
     ("min_duration_seconds", "INTEGER"),
+]
+
+# Columns to add to videos if missing (for existing DBs without Alembic)
+_VIDEO_MIGRATION_COLUMNS: list[tuple[str, str]] = [
+    ("downloaded_at", "TEXT"),
+    ("synced_at", "TEXT"),
 ]
 
 
@@ -54,6 +62,7 @@ async def init_db(settings: "Settings") -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _migrate_channels_columns(conn)
+        await _migrate_videos_columns(conn)
         await _recover_stuck_videos(conn)
     logger.info("Database initialized at %s", db_path)
 
@@ -68,6 +77,38 @@ async def _migrate_channels_columns(conn) -> None:
                 text(f"ALTER TABLE channels ADD COLUMN {col_name} {col_type}")
             )
             logger.info("Added column channels.%s", col_name)
+
+
+async def _migrate_videos_columns(conn) -> None:
+    """Add missing columns to videos table and backfill milestone timestamps."""
+    result = await conn.execute(text("PRAGMA table_info(videos)"))
+    existing = {row[1] for row in result.fetchall()}
+    for col_name, col_type in _VIDEO_MIGRATION_COLUMNS:
+        if col_name not in existing:
+            await conn.execute(
+                text(f"ALTER TABLE videos ADD COLUMN {col_name} {col_type}")
+            )
+            logger.info("Added column videos.%s", col_name)
+
+    # Best-effort backfill: set synced_at/downloaded_at from updated_at for existing rows.
+    r1 = await conn.execute(
+        text(
+            "UPDATE videos SET synced_at = updated_at "
+            "WHERE status = 'synced' AND (synced_at IS NULL OR synced_at = '')"
+        )
+    )
+    r2 = await conn.execute(
+        text(
+            "UPDATE videos SET downloaded_at = updated_at "
+            "WHERE status IN ('downloaded', 'synced') AND (downloaded_at IS NULL OR downloaded_at = '')"
+        )
+    )
+    if r1.rowcount or r2.rowcount:
+        logger.info(
+            "Backfilled video milestone timestamps (synced_at: %d, downloaded_at: %d)",
+            r1.rowcount,
+            r2.rowcount,
+        )
 
 
 async def _recover_stuck_videos(conn) -> None:

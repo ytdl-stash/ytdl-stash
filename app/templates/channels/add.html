@@ -5,27 +5,27 @@
 <p class="mb-4"><a href="/channels" class="link link-hover">← Back to Channels</a></p>
 <form method="post" action="/channels" class="space-y-4 max-w-xl">
   <label class="form-control w-full">
-    <span class="label-text">URL</span>
+    <span class="label-text tooltip tooltip-bottom" data-tip="Paste the full channel/user page URL from the video site">URL</span>
     <input type="url" name="url" placeholder="Channel URL" required class="input input-bordered w-full">
   </label>
   <label class="form-control w-full">
-    <span class="label-text">Name</span>
+    <span class="label-text tooltip tooltip-bottom" data-tip="Optional display name — auto-detected from URL if blank">Name</span>
     <input type="text" name="name" placeholder="Display name" class="input input-bordered w-full">
   </label>
   <label class="form-control w-full">
-    <span class="label-text">Interval (hours)</span>
+    <span class="label-text tooltip tooltip-bottom" data-tip="Hours between automatic scans for new videos">Interval (hours)</span>
     <input type="number" name="check_interval_hours" value="6" min="1" class="input input-bordered w-full">
   </label>
   <label class="form-control w-full">
-    <span class="label-text">Max Video Age (days)</span>
+    <span class="label-text tooltip tooltip-bottom" data-tip="Only download videos uploaded within this many days">Max Video Age (days)</span>
     <input type="number" name="max_video_age_days" placeholder="No limit (download all)" min="1" class="input input-bordered w-full">
     <span class="label-text-alt text-base-content/60 mt-1">Only download videos uploaded within this many days. Leave blank for no limit.</span>
   </label>
   <label class="form-control w-full">
-    <span class="label-text">Min Duration (seconds)</span>
+    <span class="label-text tooltip tooltip-bottom" data-tip="Skip videos shorter than this many seconds">Min Duration (seconds)</span>
     <input type="number" name="min_duration_seconds" placeholder="No limit (download all)" min="1" class="input input-bordered w-full">
     <span class="label-text-alt text-base-content/60 mt-1">Only download videos longer than this many seconds. Leave blank for no limit.</span>
   </label>
-  <button type="submit" class="btn btn-primary">Add Channel</button>
+  <button type="submit" class="btn btn-primary tooltip tooltip-bottom" data-tip="Add this channel and start monitoring">Add Channel</button>
 </form>
 {% endblock %}

@@ -1,0 +1,105 @@
+<div class="overflow-x-auto">
+  <table class="table table-responsive">
+    <thead>
+      <tr>
+        <th class="w-24"></th>
+        <th>Title</th>
+        <th>Channel</th>
+        <th>Status</th>
+        <th>Upload Date</th>
+        <th>Duration</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="video-table-body">
+      {% include "videos/_table_body.html" %}
+    </tbody>
+  </table>
+</div>
+{% set start_row = (page - 1) * per_page + 1 %}
+{% set end_row = [page * per_page, total]|min %}
+{% if total > 0 %}
+<div class="flex flex-wrap items-center justify-between gap-4 mt-4">
+  <p class="text-sm text-base-content/70 m-0">
+    Showing {{ start_row }}–{{ end_row }} of {{ total }} video{{ 's' if total != 1 else '' }}
+  </p>
+  {% if total_pages > 1 %}
+  <div class="join">
+    <button class="join-item btn btn-sm"
+            onclick="document.getElementById('page-input').value=1"
+            hx-get="/videos"
+            hx-target="#video-list-content"
+            hx-swap="innerHTML"
+            hx-include="#filter-form"
+            {% if page <= 1 %}disabled{% endif %}>
+      First
+    </button>
+    <button class="join-item btn btn-sm"
+            onclick="document.getElementById('page-input').value={{ page - 1 }}"
+            hx-get="/videos"
+            hx-target="#video-list-content"
+            hx-swap="innerHTML"
+            hx-include="#filter-form"
+            {% if page <= 1 %}disabled{% endif %}>
+      Prev
+    </button>
+    {% set window_start = [1, page - 2]|max %}
+    {% set window_end = [total_pages, page + 2]|min %}
+    {% if window_start > 1 %}
+    <button class="join-item btn btn-sm {{ 'btn-active' if page == 1 else '' }}"
+            onclick="document.getElementById('page-input').value=1"
+            hx-get="/videos"
+            hx-target="#video-list-content"
+            hx-swap="innerHTML"
+            hx-include="#filter-form">
+      1
+    </button>
+    {% if window_start > 2 %}
+    <button class="join-item btn btn-sm btn-disabled" disabled>…</button>
+    {% endif %}
+    {% endif %}
+    {% for p in range(window_start, window_end + 1) %}
+    <button class="join-item btn btn-sm {{ 'btn-active' if p == page else '' }}"
+            onclick="document.getElementById('page-input').value={{ p }}"
+            hx-get="/videos"
+            hx-target="#video-list-content"
+            hx-swap="innerHTML"
+            hx-include="#filter-form">
+      {{ p }}
+    </button>
+    {% endfor %}
+    {% if window_end < total_pages %}
+    {% if window_end < total_pages - 1 %}
+    <button class="join-item btn btn-sm btn-disabled" disabled>…</button>
+    {% endif %}
+    <button class="join-item btn btn-sm {{ 'btn-active' if page == total_pages else '' }}"
+            onclick="document.getElementById('page-input').value={{ total_pages }}"
+            hx-get="/videos"
+            hx-target="#video-list-content"
+            hx-swap="innerHTML"
+            hx-include="#filter-form">
+      {{ total_pages }}
+    </button>
+    {% endif %}
+    <button class="join-item btn btn-sm"
+            onclick="document.getElementById('page-input').value={{ page + 1 }}"
+            hx-get="/videos"
+            hx-target="#video-list-content"
+            hx-swap="innerHTML"
+            hx-include="#filter-form"
+            {% if page >= total_pages %}disabled{% endif %}>
+      Next
+    </button>
+    <button class="join-item btn btn-sm"
+            onclick="document.getElementById('page-input').value={{ total_pages }}"
+            hx-get="/videos"
+            hx-target="#video-list-content"
+            hx-swap="innerHTML"
+            hx-include="#filter-form"
+            {% if page >= total_pages %}disabled{% endif %}>
+      Last
+    </button>
+  </div>
+  {% endif %}
+</div>
+{% endif %}

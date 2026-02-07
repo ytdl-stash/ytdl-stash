@@ -4,8 +4,12 @@
 <h1 class="text-2xl font-bold mb-4">Logs</h1>
 
 <div class="mb-4">
-  <form id="log-filter-form" class="flex flex-wrap gap-2 items-center mb-2">
-    <select name="level" id="log-level-filter" aria-label="Minimum level" class="select select-bordered select-sm max-w-56">
+  <form id="log-filter-form" class="flex flex-wrap gap-2 items-center mb-2"
+        hx-get="/logs/entries"
+        hx-target="#log-entries"
+        hx-swap="innerHTML"
+        hx-trigger="change from:find select, keyup changed delay:500ms from:find input, search from:find input">
+    <select name="level" id="log-level-filter" aria-label="Minimum level" class="select select-bordered select-sm max-w-56 tooltip tooltip-bottom" data-tip="Show only log entries at or above this severity">
       <option value="" {% if not current_level %}selected{% endif %}>All levels</option>
       <option value="DEBUG" {% if current_level == "DEBUG" %}selected{% endif %}>DEBUG</option>
       <option value="INFO" {% if current_level == "INFO" %}selected{% endif %}>INFO</option>
@@ -14,32 +18,24 @@
     </select>
     <input type="search" name="search" placeholder="Search logs…"
            value="{{ current_search }}" aria-label="Search logs"
-           class="input input-bordered input-sm max-w-56">
-    <select name="limit" aria-label="Entries to show" class="select select-bordered select-sm max-w-56">
+           class="input input-bordered input-sm max-w-56 tooltip tooltip-bottom" data-tip="Filter logs by keyword">
+    <select name="limit" aria-label="Entries to show" class="select select-bordered select-sm max-w-56 tooltip tooltip-bottom" data-tip="Maximum number of log entries to display">
       <option value="50" {% if current_limit == 50 %}selected{% endif %}>50 entries</option>
       <option value="200" {% if current_limit == 200 %}selected{% endif %}>200 entries</option>
       <option value="500" {% if current_limit == 500 %}selected{% endif %}>500 entries</option>
       <option value="1000" {% if current_limit == 1000 %}selected{% endif %}>1000 entries</option>
     </select>
-    <button type="submit"
-            class="btn btn-sm btn-primary"
-            hx-get="/logs/entries"
-            hx-include="#log-filter-form"
-            hx-target="#log-entries"
-            hx-swap="innerHTML">
-      Filter
-    </button>
   </form>
   <div class="flex flex-wrap gap-2 items-center">
-    <button class="btn btn-sm btn-ghost"
+    <button class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Clear the in-memory log buffer (does not delete log file)"
             hx-post="/logs/clear"
             hx-target="#log-entries"
             hx-swap="innerHTML"
             hx-confirm="Clear in-memory log buffer?">
       Clear
     </button>
-    <a href="/logs/download" class="btn btn-sm btn-outline">Download log file</a>
-    <label class="flex items-center gap-1 text-sm cursor-pointer">
+    <a href="/logs/download" class="btn btn-sm btn-outline tooltip tooltip-bottom" data-tip="Download the persistent log file from disk">Download log file</a>
+    <label class="flex items-center gap-1 text-sm cursor-pointer tooltip tooltip-bottom" data-tip="Automatically reload logs every 5 seconds">
       <input type="checkbox" id="auto-refresh-toggle" class="toggle toggle-sm" checked>
       Auto-refresh
     </label>

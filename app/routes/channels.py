@@ -17,6 +17,7 @@ from app.downloader import async_extract_channel_metadata
 from app.main import templates
 from app.models import Channel
 from app.performer_sync import sync_channel_performer
+from app.studio_sync import sync_channel_studio
 from app.pipeline import process_channel_scan
 from app.stash_client import StashClient
 
@@ -260,8 +261,9 @@ async def add_channel(
     try:
         async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
             await sync_channel_performer(channel, db, stash, settings)
+            await sync_channel_studio(channel, db, stash, settings)
     except Exception:
-        logger.warning("Performer sync failed for channel %s", channel.id, exc_info=True)
+        logger.warning("Performer/studio sync failed for channel %s", channel.id, exc_info=True)
 
     if request.headers.get("HX-Request"):
         channel = await _load_channel_for_row(db, channel.id)

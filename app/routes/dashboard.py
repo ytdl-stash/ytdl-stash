@@ -1,10 +1,13 @@
 """Dashboard route: GET / with aggregate stats."""
 
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import Settings, get_settings
 from app.database import get_db
 from app.main import templates
 from app.models import Channel, Video
@@ -16,6 +19,7 @@ router = APIRouter(tags=["dashboard"])
 async def dashboard(
     request: Request,
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     """Render dashboard with total channels, total videos, pending/failed counts, recent downloads."""
     # Total channels
@@ -48,6 +52,30 @@ async def dashboard(
     )
     recent_downloads = list(result.scalars().all())
 
+    # Downloads by day (last 90 days): count by COALESCE(downloaded_at, synced_at) date
+    start_date = (datetime.now(UTC) - timedelta(days=89)).date()
+    day_count_result = await db.execute(
+        text(
+            "SELECT date(COALESCE(downloaded_at, synced_at)) AS d, COUNT(*) AS c "
+            "FROM videos "
+            "WHERE COALESCE(downloaded_at, synced_at) IS NOT NULL "
+            "AND date(COALESCE(downloaded_at, synced_at)) >= :start "
+            "GROUP BY d ORDER BY d"
+        ),
+        {"start": start_date.isoformat()},
+    )
+    count_by_date = {row[0]: row[1] for row in day_count_result.fetchall()}
+
+    chart_labels = []
+    chart_values = []
+    for i in range(90):
+        d = start_date + timedelta(days=i)
+        key = d.isoformat()
+        chart_labels.append(key)
+        chart_values.append(count_by_date.get(key, 0))
+
+    chart_data = {"labels": chart_labels, "values": chart_values}
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -57,5 +85,7 @@ async def dashboard(
             "pending_count": pending_count,
             "failed_count": failed_count,
             "recent_downloads": recent_downloads,
+            "settings": settings,
+            "chart_data": chart_data,
         },
     )

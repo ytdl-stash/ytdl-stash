@@ -24,6 +24,7 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 
 | Component | File(s) | Responsibility |
 |-----------|---------|----------------|
+| **Version** | `app/__init__.py` | `get_version()` reads `VERSION` file baked into Docker image (falls back to `"dev"`) |
 | **Config** | `app/config.py` | Pydantic BaseSettings, reads `YTDL_*` env vars |
 | **App Entry** | `app/main.py` | FastAPI factory, lifespan, static/template mounts |
 | **Database** | `app/database.py`, `app/models.py` | SQLAlchemy async engine, Channel + Video models |
@@ -32,9 +33,11 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 | **Pipeline** | `app/pipeline.py` | Orchestration: download -> oshash -> scan -> match -> tag -> scrape -> re-sync |
 | **Scheduler** | `app/scheduler.py` | APScheduler periodic channel checks + download processing; job registry with status tracking and manual trigger support |
 | **Performer Sync** | `app/performer_sync.py` | Bidirectional sync: pulls full Stash performer data locally, pushes source metadata (image, URL) to Stash when missing |
+| **Studio Sync** | `app/studio_sync.py` | Links channels to Stash studios by URL: find by channel URL in studio urls, or create; gap-fill URL, image, details |
 | **YTDLM Import** | `app/ytdlm_import.py` | Import channels and videos from YoutubeDL-Material `local_db.json` |
 | **Logging** | `app/logging_config.py` | Centralized logging: console + rotating file + in-memory ring buffer for web UI |
-| **Routes** | `app/routes/*.py` | FastAPI routers: dashboard, channels CRUD, videos, performers, jobs, logs, settings |
+| **Auth** | `app/auth.py`, `app/routes/auth.py` | Optional app password: PBKDF2 hash in `{data_dir}/auth.json`, session cookie; CLI `python -m app.auth set \| remove` |
+| **Routes** | `app/routes/*.py` | FastAPI routers: dashboard, channels CRUD, videos, performers, jobs, logs, settings, auth (login/logout) |
 | **Templates** | `app/templates/*.html` | Jinja2 + HTMX server-rendered UI |
 | **Static** | `app/static/` | Custom CSS (HTMX indicators, a few app-specific rules) |
 
@@ -44,7 +47,7 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 |-------|-----------|-----|
 | Runtime | Python 3.12 | yt-dlp is a Python library; single language for everything |
 | Web framework | FastAPI + Uvicorn | Async-native, automatic OpenAPI docs, dependency injection |
-| Frontend | Jinja2 + HTMX + DaisyUI + Tailwind (CDN) | No build step, server-rendered, progressive enhancement; DaisyUI components and Tailwind utilities for layout and styling. Tables use a responsive pattern (card-style rows on narrow viewports via `data-label` and `.table-responsive`); list/detail tables are wrapped in `overflow-x-auto` for fallback. |
+| Frontend | Jinja2 + HTMX + DaisyUI + Tailwind (CDN) | No build step, server-rendered, progressive enhancement; DaisyUI components (including tooltips for help text; see [docs/patterns/ui.md](../patterns/ui.md)) and Tailwind utilities for layout and styling. Tables use a responsive pattern (card-style rows on narrow viewports via `data-label` and `.table-responsive`); list/detail tables are wrapped in `overflow-x-auto` for fallback. |
 | Database | SQLite + SQLAlchemy async + aiosqlite | Zero-config, single-file DB, async support via aiosqlite |
 | Downloader | yt-dlp (Python import) | Industry standard, supports hundreds of sites |
 | Scheduler | APScheduler 3.x | Lightweight, async-compatible, no external broker needed |
@@ -128,6 +131,7 @@ ytdl-stash/
   app/
     __init__.py
     main.py                     # FastAPI app factory + lifespan
+    auth.py                     # Optional app password (hash, session, CLI)
     config.py                   # Pydantic BaseSettings
     database.py                 # Async engine, session, init_db (Phase 2)
     models.py                   # Channel, Video models (Phase 2)
@@ -135,17 +139,20 @@ ytdl-stash/
     stash_client.py             # Stash GraphQL client (Phase 4)
     pipeline.py                 # Download-to-Stash orchestration (Phase 5)
     performer_sync.py           # Auto-link channel performers to Stash (Phase 11)
+    studio_sync.py              # Auto-link channel studios to Stash (by URL)
     scheduler.py                # APScheduler setup (Phase 6)
     routes/
       __init__.py
+      auth.py                   # GET/POST /login, GET /logout (when password set)
       dashboard.py              # GET /
       channels.py               # Channels CRUD
-      videos.py                 # Videos list/detail/retry
+      videos.py                 # Videos list (paginated)/detail/retry/active_downloads panel
       health.py                 # GET /health (Phase 10)
       performers.py             # Performer Browser + detail + delete (Phase 11)
       settings.py               # Settings + Stash connectivity test
     templates/
       base.html
+      login.html                # Standalone login page (no nav)
       dashboard.html
       error.html                # User-friendly error page (Phase 10)
       channels/
@@ -155,8 +162,10 @@ ytdl-stash/
       videos/
         list.html
         detail.html
-        _table_body.html        # HTMX partial: video table rows
-        _status_badge.html      # HTMX partial: status badge
+        _video_list.html       # HTMX partial: table + pagination
+        _table_body.html       # HTMX partial: video table rows
+        _status_badge.html     # HTMX partial: status badge
+        _active_downloads.html # HTMX partial: active downloads panel (self-polls every 3s)
       performers/
         list.html               # Performer Browser grid/list
         detail.html             # Performer detail with videos
@@ -164,9 +173,22 @@ ytdl-stash/
       settings.html
     static/
       style.css
-  data/                         # SQLite DB (volume-mounted, gitignored)
+  data/                         # SQLite DB + auth.json (volume-mounted, gitignored)
   downloads/                    # Video files (volume-mounted, gitignored)
 ```
+
+## Application Version
+
+The app version is derived from GitHub release tags (e.g. `v0.12.0`). During the Docker image build, the release workflow passes the git tag as the `APP_VERSION` build arg, which is written to a `VERSION` file inside the container. At runtime, `app.get_version()` reads this file and returns the version string. When running outside Docker (local dev), the function falls back to `"dev"`.
+
+The version is displayed on the Settings page (`/settings`) as a badge next to the page title.
+
+| Layer | Mechanism |
+|-------|-----------|
+| CI/CD | `.github/workflows/release.yml` passes `APP_VERSION=${{ github.ref_name }}` build arg |
+| Docker | `Dockerfile` writes `$APP_VERSION` to `/app/VERSION` |
+| Python | `app/__init__.py` exports `get_version()` which reads the `VERSION` file |
+| UI | `settings.html` displays the version via the `app_version` template variable |
 
 ## Key Design Principles
 
@@ -215,6 +237,18 @@ The Settings page (`/settings`) displays the effective configuration **read at s
 | `YTDL_STASH_GENERATE_PHASHES` | `True` | Generate perceptual hashes (only when generate is enabled) |
 | `YTDL_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
+## Optional app password
+
+Password protection is **off by default**. When enabled, all web UI routes (except `/health`, `/login`, `/logout`, and `/static`) require a session cookie set by entering the password on the login page.
+
+- **Storage**: Password hash is stored in `{YTDL_DATA_DIR}/auth.json` (PBKDF2-SHA256). No database changes.
+- **Session**: Cookie `ytdl_session` (HttpOnly, SameSite=Lax, 7-day expiry). Changing or removing the password invalidates all sessions.
+- **CLI** (run inside the container, e.g. `docker compose exec ytdl-stash ...`):
+  - `python -m app.auth set` — prompt for a new password (enables protection; overwrites existing password).
+  - `python -m app.auth remove` — delete `auth.json` (disables protection).
+
+Docker health checks (`GET /health`) are not protected so the container remains healthy.
+
 ## Logging
 
 Logging is configured centrally in `app/logging_config.py` via the `setup_logging()` function, called once during FastAPI lifespan startup. Three handlers are attached to the root logger:
@@ -251,7 +285,11 @@ All datetime columns use the custom `TZDateTime` type in `app/models.py`. SQLite
 
 ## Schema (Channel)
 
-The `Channel` model includes: `id`, `name`, `url`, `site`, `enabled`, `check_interval_hours`, `last_checked_at`, `created_at`, `updated_at`, `stash_performer_id` (nullable, linked Stash performer ID), `performer_image_url` (nullable, cached avatar/thumbnail URL from the tube site), `stash_performer_data` (nullable JSON, full Stash performer record pulled during sync — gender, birthdate, ethnicity, measurements, bio, etc.), `max_video_age_days` (nullable, only download videos uploaded within this many days), and `min_duration_seconds` (nullable, only download videos longer than this many seconds).
+The `Channel` model includes: `id`, `name`, `url`, `site`, `enabled`, `check_interval_hours`, `last_checked_at`, `created_at`, `updated_at`, `stash_performer_id` (nullable, linked Stash performer ID), `performer_image_url` (nullable, cached avatar/thumbnail URL from the tube site), `stash_performer_data` (nullable JSON, full Stash performer record pulled during sync — gender, birthdate, ethnicity, measurements, bio, etc.), `stash_studio_id` (nullable, linked Stash studio ID), `stash_studio_data` (nullable JSON, full Stash studio record pulled during sync), `max_video_age_days` (nullable, only download videos uploaded within this many days), and `min_duration_seconds` (nullable, only download videos longer than this many seconds).
+
+## Schema (Video)
+
+The `Video` model includes: `id`, `channel_id`, `site_video_id`, `title`, `url`, `upload_date`, `performers`, `studio`, `duration_seconds`, `thumbnail_url`, `original_filename`, `oshash`, `status`, `error_message`, `stash_scene_id`, `metadata_json`, `created_at`, `updated_at`, **`downloaded_at`** (nullable, set once when status becomes `downloaded`), and **`synced_at`** (nullable, set once when status becomes `synced`). The milestone timestamps `downloaded_at` and `synced_at` are used for the dashboard “videos downloaded by day” chart; the chart counts by the date of `COALESCE(downloaded_at, synced_at)` over the last 90 days.
 
 ## Video Status Lifecycle
 

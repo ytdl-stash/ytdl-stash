@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — ytdl-stash</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="min-h-screen flex items-center justify-center bg-base-300">
+  <div class="card w-full max-w-md bg-base-200 shadow-xl">
+    <div class="card-body">
+      <h1 class="card-title justify-center text-2xl">ytdl-stash</h1>
+      <p class="text-center text-base-content/70 text-sm">Enter the app password</p>
+      <form method="post" action="/login" class="flex flex-col gap-4 mt-2">
+        <label class="form-control w-full">
+          <span class="label-text">Password</span>
+          <input
+            type="password"
+            name="password"
+            autocomplete="current-password"
+            class="input input-bordered w-full"
+            placeholder="Password"
+            required
+            autofocus
+          />
+        </label>
+        {% if error %}
+        <p class="text-error text-sm">{{ error }}</p>
+        {% endif %}
+        <button type="submit" class="btn btn-primary">Sign in</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

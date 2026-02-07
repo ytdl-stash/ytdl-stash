@@ -5,10 +5,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.auth import get_cookie_name, get_password_hash, verify_session_token
 from app.config import get_settings
 from app.database import init_db
 from app.logging_config import setup_logging
@@ -43,6 +45,24 @@ def create_app() -> FastAPI:
     """Application factory."""
     app = FastAPI(title="ytdl-stash", lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+    class AuthMiddleware(BaseHTTPMiddleware):
+        _SKIP_PREFIXES = ("/health", "/login", "/logout")
+        _STATIC_PREFIX = "/static"
+
+        async def dispatch(self, request, call_next):
+            path = request.url.path
+            if path.startswith(self._STATIC_PREFIX) or path in self._SKIP_PREFIXES:
+                return await call_next(request)
+            stored = get_password_hash()
+            if stored is None:
+                return await call_next(request)
+            token = request.cookies.get(get_cookie_name())
+            if token and verify_session_token(token, stored):
+                return await call_next(request)
+            return RedirectResponse(url="/login", status_code=302)
+
+    app.add_middleware(AuthMiddleware)
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
@@ -95,8 +115,9 @@ def create_app() -> FastAPI:
         )
 
     from app.routes import (
-        dashboard,
+        auth as auth_routes,
         channels,
+        dashboard,
         health as health_routes,
         jobs as jobs_routes,
         logs as logs_routes,
@@ -106,6 +127,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health_routes.router)
+    app.include_router(auth_routes.router)
     app.include_router(dashboard.router)
     app.include_router(channels.router)
     app.include_router(performers.router)

@@ -215,7 +215,7 @@ async def update_performer(self, performer_id: str, **fields) -> None:
 
 ## Find or Create Studio
 
-Same pattern as performers:
+Name-only find-or-create (legacy, used by scrapers):
 
 ```python
 async def find_studio(self, name: str) -> str | None:
@@ -248,6 +248,64 @@ async def find_or_create_studio(self, name: str) -> str:
         return studio_id
     return await self.create_studio(name)
 ```
+
+### Find Studio by URL (channel sync)
+
+Mirrors the performer URL lookup pattern. Use `StudioFilterType.url` with `INCLUDES` modifier:
+
+```python
+async def find_studio_by_url(self, url: str) -> dict | None:
+    variables = {
+        "filter": {"per_page": 1},
+        "studio_filter": {
+            "url": {
+                "value": url,
+                "modifier": "INCLUDES",
+            }
+        }
+    }
+    data = await self._query(_FIND_STUDIOS_BY_URL_QUERY, variables)
+    studios = data["findStudios"]["studios"]
+    return self._studio_dict(studios[0]) if studios else None
+```
+
+### Create Studio with Metadata
+
+```python
+async def create_studio_with_metadata(
+    self,
+    name: str,
+    urls: list[str],
+    image_url: str | None = None,
+    details: str | None = None,
+) -> str:
+    input_dict = {"name": name, "urls": urls}
+    if image_url:
+        input_dict["image"] = image_url
+    if details:
+        input_dict["details"] = details
+    data = await self._query(_STUDIO_CREATE_MUTATION, {"input": input_dict})
+    return data["studioCreate"]["id"]
+```
+
+### Update Studio (gap-fill)
+
+```python
+async def update_studio(self, studio_id: str, **fields) -> None:
+    input_dict = {"id": studio_id}
+    for key, value in fields.items():
+        if value is not None:
+            input_dict[key] = value
+    if len(input_dict) <= 1:
+        return
+    await self._query(_STUDIO_UPDATE_MUTATION, {"input": input_dict})
+```
+
+**Key fields for StudioUpdateInput**: `name`, `urls`, `parent_id`, `image` (URL string), `details`, `aliases`, `tag_ids`, `ignore_auto_tag`, `rating100`, `favorite`.
+
+### Find-or-Create Studio by URL
+
+Order: find by URL first, then by name (gap-fill if found), else create with metadata.
 
 ---
 
