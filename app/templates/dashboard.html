@@ -2,30 +2,32 @@
 {% block title %}Dashboard — ytdl-stash{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-bold mb-4">Dashboard</h1>
-<div class="card bg-base-200 shadow mb-8">
-  <div class="card-body">
-    <h2 class="card-title text-lg">Videos downloaded by day</h2>
-    <div class="w-full max-w-4xl h-64">
-      <canvas id="downloads-chart" aria-label="Videos downloaded per day (last 90 days)"></canvas>
+<div class="flex flex-col lg:flex-row gap-4 items-stretch mb-8">
+  <div class="stats stats-vertical lg:stats-horizontal shadow flex-1 min-w-0">
+    <div class="stat">
+      <div class="stat-title tooltip tooltip-bottom" data-tip="Number of monitored channels">Total Channels</div>
+      <div class="stat-value">{{ total_channels }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-title tooltip tooltip-bottom" data-tip="Total videos discovered across all channels">Total Videos</div>
+      <div class="stat-value">{{ total_videos }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-title tooltip tooltip-bottom" data-tip="Videos waiting to be downloaded">Pending</div>
+      <div class="stat-value">{{ pending_count }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-title tooltip tooltip-bottom" data-tip="Videos that failed to download">Failed</div>
+      <div class="stat-value">{{ failed_count }}</div>
     </div>
   </div>
-</div>
-<div class="stats stats-vertical lg:stats-horizontal shadow mb-8">
-  <div class="stat">
-    <div class="stat-title tooltip tooltip-bottom" data-tip="Number of monitored channels">Total Channels</div>
-    <div class="stat-value">{{ total_channels }}</div>
-  </div>
-  <div class="stat">
-    <div class="stat-title tooltip tooltip-bottom" data-tip="Total videos discovered across all channels">Total Videos</div>
-    <div class="stat-value">{{ total_videos }}</div>
-  </div>
-  <div class="stat">
-    <div class="stat-title tooltip tooltip-bottom" data-tip="Videos waiting to be downloaded">Pending</div>
-    <div class="stat-value">{{ pending_count }}</div>
-  </div>
-  <div class="stat">
-    <div class="stat-title tooltip tooltip-bottom" data-tip="Videos that failed to download">Failed</div>
-    <div class="stat-value">{{ failed_count }}</div>
+  <div class="card bg-base-200 shadow flex-1 min-w-0 max-w-md">
+    <div class="card-body py-4">
+      <h2 class="card-title text-base">Downloads by day</h2>
+      <div class="w-full h-32">
+        <canvas id="downloads-chart" aria-label="Videos downloaded per day (last 90 days)"></canvas>
+      </div>
+    </div>
   </div>
 </div>
 <h2 class="text-xl font-semibold mb-3">Recent Downloads</h2>
@@ -37,7 +39,7 @@
         <th>Preview</th>
         <th>Title</th>
         <th>Channel</th>
-        <th class="tooltip tooltip-bottom" data-tip="When this video was synced to Stash">Synced</th>
+        <th class="tooltip tooltip-bottom" data-tip="When this video was synced to Stash">Synced at</th>
       </tr>
     </thead>
     <tbody>
@@ -60,7 +62,7 @@
         </td>
         <td data-label="Title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
         <td data-label="Channel">{{ video.channel.name if video.channel else '—' }}</td>
-        <td data-label="Synced">{{ video.updated_at.strftime('%Y-%m-%d %H:%M') if video.updated_at else '—' }}</td>
+        <td data-label="Synced at">{{ video.updated_at.strftime('%Y-%m-%d %H:%M') if video.updated_at else '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -75,6 +77,20 @@
   var data = {{ chart_data | tojson }};
   var ctx = document.getElementById('downloads-chart');
   if (!ctx || !data.labels || !data.values) return;
+  var chartColor = '#60a5fa';
+  var bgAlpha = 'rgba(96, 165, 250, 0.25)';
+  try {
+    var swatch = document.createElement('span');
+    swatch.className = 'text-primary';
+    swatch.style.cssText = 'position:absolute;width:0;height:0;opacity:0';
+    document.body.appendChild(swatch);
+    var resolved = getComputedStyle(swatch).color;
+    document.body.removeChild(swatch);
+    if (resolved && resolved.startsWith('rgb(')) {
+      chartColor = resolved;
+      bgAlpha = resolved.replace(')', ', 0.25)').replace('rgb(', 'rgba(');
+    }
+  } catch (_) {}
   new Chart(ctx, {
     type: 'line',
     data: {
@@ -82,8 +98,8 @@
       datasets: [{
         label: 'Downloads',
         data: data.values,
-        borderColor: '#60a5fa',
-        backgroundColor: 'rgba(96, 165, 250, 0.25)',
+        borderColor: chartColor,
+        backgroundColor: bgAlpha,
         fill: true,
         tension: 0.3,
         pointRadius: 0,

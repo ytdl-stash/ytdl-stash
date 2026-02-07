@@ -2,7 +2,7 @@
   <a href="/performers/{{ channel.id }}" class="block p-4 no-underline text-inherit">
     <figure class="w-full aspect-square overflow-hidden rounded-lg mb-2">
       {% if channel.performer_image_url %}
-      <img src="{{ channel.performer_image_url }}" alt="" class="w-full aspect-square object-cover block" loading="lazy">
+      <img src="{{ channel.performer_image_url }}{% if settings.stash_api_key and settings.stash_url.rstrip('/') in channel.performer_image_url %}{% if '?' in channel.performer_image_url %}&{% else %}?{% endif %}apikey={{ settings.stash_api_key }}{% endif %}" alt="" class="w-full aspect-square object-cover block" loading="lazy">
       {% else %}
       <div class="w-full aspect-square bg-base-300 block rounded-lg"></div>
       {% endif %}
@@ -11,33 +11,41 @@
     <span class="badge badge-ghost badge-sm mr-2">{{ channel.site }}</span>
     <span class="text-sm text-base-content/60">{{ channel.videos|length }} video{{ channel.videos|length != 1 and 's' or '' }}</span>
     <span class="{% if channel.enabled %}watched-indicator{% else %}not-watched-indicator{% endif %} tooltip tooltip-bottom" data-tip="{% if channel.enabled %}Watching{% else %}Not watching{% endif %}" aria-label="{% if channel.enabled %}Watching{% else %}Not watching{% endif %}"></span>
-    <span class="{% if channel.stash_performer_id %}stash-linked{% else %}stash-unlinked{% endif %} tooltip tooltip-bottom" data-tip="Performer: {% if channel.stash_performer_id %}Linked{% else %}Not linked{% endif %}" aria-label="Performer: {% if channel.stash_performer_id %}Linked{% else %}Not linked{% endif %}"></span>
-    <span class="{% if channel.stash_studio_id %}stash-linked{% else %}stash-unlinked{% endif %} tooltip tooltip-bottom" data-tip="Studio: {% if channel.stash_studio_id %}Linked{% else %}Not linked{% endif %}" aria-label="Studio: {% if channel.stash_studio_id %}Linked{% else %}Not linked{% endif %}"></span>
+    <span class="{% if channel.stash_performer_id %}stash-performer-linked{% else %}stash-performer-unlinked{% endif %} tooltip tooltip-bottom" data-tip="Performer: {% if channel.stash_performer_id %}Linked{% else %}Not linked{% endif %}" aria-label="Performer: {% if channel.stash_performer_id %}Linked{% else %}Not linked{% endif %}"></span>
+    <span class="{% if channel.stash_studio_id %}stash-studio-linked{% else %}stash-studio-unlinked{% endif %} tooltip tooltip-bottom" data-tip="Studio: {% if channel.stash_studio_id %}Linked{% else %}Not linked{% endif %}" aria-label="Studio: {% if channel.stash_studio_id %}Linked{% else %}Not linked{% endif %}"></span>
   </a>
   <div class="card-actions px-4 pb-4 flex flex-wrap gap-2">
     <form hx-post="/performers/{{ channel.id }}/toggle"
           hx-target="#performer-card-{{ channel.id }}"
           hx-swap="outerHTML"
           class="inline">
-      <button type="submit" class="btn btn-sm {{ 'btn-ghost' if not channel.enabled else 'btn-primary' }} tooltip tooltip-top" data-tip="Toggle auto-scanning for this channel">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
+      <button type="submit" class="btn btn-sm {{ 'btn-primary' if not channel.enabled else 'btn-ghost' }} tooltip tooltip-top" data-tip="Toggle auto-scanning for this channel">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
     </form>
-    <form hx-post="/performers/{{ channel.id }}/sync"
+    <form hx-post="/performers/{{ channel.id }}/sync-performer"
           hx-target="#performer-card-{{ channel.id }}"
           hx-swap="outerHTML"
-          hx-indicator="#spinner-sync-{{ channel.id }}"
+          hx-indicator="#spinner-sync-performer-{{ channel.id }}"
           class="inline">
-      <button type="submit" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Create or update this performer in Stash">Sync to Stash</button>
-      <span id="spinner-sync-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
+      <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-top" data-tip="Sync performer only">Sync Performer</button>
+      <span id="spinner-sync-performer-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
     </form>
     <form hx-post="/performers/{{ channel.id }}/sync-studio"
           hx-target="#performer-card-{{ channel.id }}"
           hx-swap="outerHTML"
           hx-indicator="#spinner-sync-studio-{{ channel.id }}"
           class="inline">
-      <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-top" data-tip="Link this channel's site to a Stash studio">Sync Studio</button>
+      <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-top" data-tip="Sync studio only">Sync Studio</button>
       <span id="spinner-sync-studio-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
     </form>
-    <button class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Remove this performer and all videos"
+    <form hx-post="/performers/{{ channel.id }}/sync"
+          hx-target="#performer-card-{{ channel.id }}"
+          hx-swap="outerHTML"
+          hx-indicator="#spinner-sync-both-{{ channel.id }}"
+          class="inline">
+      <button type="submit" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Sync both performer and studio">Sync Both</button>
+      <span id="spinner-sync-both-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
+    </form>
+    <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Remove this performer and all videos"
             hx-delete="/performers/{{ channel.id }}"
             hx-target="#performer-card-{{ channel.id }}"
             hx-swap="outerHTML swap:1s"

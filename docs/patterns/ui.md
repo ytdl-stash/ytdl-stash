@@ -4,6 +4,17 @@ Reference for how this project uses DaisyUI components and Tailwind for consiste
 
 ---
 
+## Buttons
+
+Always set an explicit `type` on `<button>` elements:
+
+- **`type="submit"`** — only for the button that submits a form (one per form).
+- **`type="button"`** — for all other buttons: HTMX triggers, pagination, cancel, modal actions, etc.
+
+Omitting `type` defaults to `submit` in HTML, which can cause accidental form submission if a button is inside (or later moved into) a form.
+
+---
+
 ## Tooltips
 
 We use **DaisyUI’s tooltip component** for inline help on buttons, labels, table headers, and indicators. No JavaScript is required: add `class="tooltip"` and `data-tip="Help text"` to the element.
@@ -36,3 +47,14 @@ Use tooltips consistently for:
 - Status/indicator elements (what the indicator means)
 
 Do **not** use the native HTML `title` attribute for help text; use DaisyUI tooltips so styling and behavior are consistent.
+
+---
+
+## Performer card indicators
+
+Performer cards use distinct classes for Stash link status (see `app/static/style.css`):
+
+- `.stash-performer-linked` / `.stash-performer-unlinked` — Performer sync (show "✓ P" / "P —")
+- `.stash-studio-linked` / `.stash-studio-unlinked` — Studio sync (show "✓ S" / "S —")
+
+The generic `.stash-linked` / `.stash-unlinked` remain for single-indicator contexts (e.g. performer detail page).

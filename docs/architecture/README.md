@@ -164,12 +164,14 @@ ytdl-stash/
         detail.html
         _video_list.html       # HTMX partial: table + pagination
         _table_body.html       # HTMX partial: video table rows
+        _table_body_performer.html  # Partial: video rows for performer detail (no channel/thumb columns)
         _status_badge.html     # HTMX partial: status badge
         _active_downloads.html # HTMX partial: active downloads panel (self-polls every 3s)
       performers/
         list.html               # Performer Browser grid/list
         detail.html             # Performer detail with videos
         _card.html              # HTMX partial: single performer card
+        _detail_card.html       # HTMX partial: performer detail card (for in-place HTMX updates)
       settings.html
     static/
       style.css

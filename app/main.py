@@ -18,6 +18,8 @@ from app.scheduler import start_scheduler, stop_scheduler
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+# Add global function to check if password is set
+templates.env.globals["is_password_set"] = lambda: get_password_hash() is not None
 logger = logging.getLogger(__name__)
 
 

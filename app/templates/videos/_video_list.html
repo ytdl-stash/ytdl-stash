@@ -25,7 +25,7 @@
   </p>
   {% if total_pages > 1 %}
   <div class="join">
-    <button class="join-item btn btn-sm"
+    <button type="button" class="join-item btn btn-sm"
             onclick="document.getElementById('page-input').value=1"
             hx-get="/videos"
             hx-target="#video-list-content"
@@ -34,7 +34,7 @@
             {% if page <= 1 %}disabled{% endif %}>
       First
     </button>
-    <button class="join-item btn btn-sm"
+    <button type="button" class="join-item btn btn-sm"
             onclick="document.getElementById('page-input').value={{ page - 1 }}"
             hx-get="/videos"
             hx-target="#video-list-content"
@@ -46,7 +46,7 @@
     {% set window_start = [1, page - 2]|max %}
     {% set window_end = [total_pages, page + 2]|min %}
     {% if window_start > 1 %}
-    <button class="join-item btn btn-sm {{ 'btn-active' if page == 1 else '' }}"
+    <button type="button" class="join-item btn btn-sm {{ 'btn-active' if page == 1 else '' }}"
             onclick="document.getElementById('page-input').value=1"
             hx-get="/videos"
             hx-target="#video-list-content"
@@ -55,11 +55,11 @@
       1
     </button>
     {% if window_start > 2 %}
-    <button class="join-item btn btn-sm btn-disabled" disabled>…</button>
+    <button type="button" class="join-item btn btn-sm btn-disabled" disabled>…</button>
     {% endif %}
     {% endif %}
     {% for p in range(window_start, window_end + 1) %}
-    <button class="join-item btn btn-sm {{ 'btn-active' if p == page else '' }}"
+    <button type="button" class="join-item btn btn-sm {{ 'btn-active' if p == page else '' }}"
             onclick="document.getElementById('page-input').value={{ p }}"
             hx-get="/videos"
             hx-target="#video-list-content"
@@ -70,9 +70,9 @@
     {% endfor %}
     {% if window_end < total_pages %}
     {% if window_end < total_pages - 1 %}
-    <button class="join-item btn btn-sm btn-disabled" disabled>…</button>
+    <button type="button" class="join-item btn btn-sm btn-disabled" disabled>…</button>
     {% endif %}
-    <button class="join-item btn btn-sm {{ 'btn-active' if page == total_pages else '' }}"
+    <button type="button" class="join-item btn btn-sm {{ 'btn-active' if page == total_pages else '' }}"
             onclick="document.getElementById('page-input').value={{ total_pages }}"
             hx-get="/videos"
             hx-target="#video-list-content"
@@ -81,7 +81,7 @@
       {{ total_pages }}
     </button>
     {% endif %}
-    <button class="join-item btn btn-sm"
+    <button type="button" class="join-item btn btn-sm"
             onclick="document.getElementById('page-input').value={{ page + 1 }}"
             hx-get="/videos"
             hx-target="#video-list-content"
@@ -90,7 +90,7 @@
             {% if page >= total_pages %}disabled{% endif %}>
       Next
     </button>
-    <button class="join-item btn btn-sm"
+    <button type="button" class="join-item btn btn-sm"
             onclick="document.getElementById('page-input').value={{ total_pages }}"
             hx-get="/videos"
             hx-target="#video-list-content"

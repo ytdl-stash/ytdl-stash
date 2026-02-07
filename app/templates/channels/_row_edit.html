@@ -60,7 +60,7 @@
   <td data-label="Last Checked">{{ channel.last_checked_at.strftime('%Y-%m-%d %H:%M') if channel.last_checked_at else 'Never' }}</td>
   <td data-label="Status">{{ 'Enabled' if channel.enabled else 'Disabled' }}</td>
   <td data-label="Actions">
-    <button class="btn btn-sm btn-primary"
+    <button type="button" class="btn btn-sm btn-primary"
             hx-post="/channels/{{ channel.id }}/check-now"
             hx-target="#check-result-{{ channel.id }}"
             hx-swap="innerHTML"
@@ -69,7 +69,7 @@
     </button>
     <span id="spinner-{{ channel.id }}" class="htmx-indicator">Scanning…</span>
     <span id="check-result-{{ channel.id }}"></span>
-    <button class="btn btn-sm btn-error"
+    <button type="button" class="btn btn-sm btn-error"
             hx-delete="/channels/{{ channel.id }}"
             hx-target="#channel-row-{{ channel.id }}"
             hx-swap="outerHTML swap:1s"

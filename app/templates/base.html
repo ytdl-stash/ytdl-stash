@@ -22,12 +22,14 @@
         <ul class="menu menu-horizontal gap-0.5 p-0 [&_a]:text-sm">
           <li><a href="/">Dashboard</a></li>
           <li><a href="/channels">Channels</a></li>
-          <li><a href="/performers">Performers</a></li>
+          <li><a href="/performers" class="tooltip tooltip-bottom" data-tip="Channels in Stash view — sync performers &amp; studios">Performers</a></li>
           <li><a href="/videos">Videos</a></li>
           <li><a href="/jobs">Jobs</a></li>
           <li><a href="/logs">Logs</a></li>
           <li><a href="/settings">Settings</a></li>
+          {% if is_password_set() %}
           <li><a href="/logout">Log out</a></li>
+          {% endif %}
         </ul>
       </nav>
 
@@ -44,12 +46,14 @@
         <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-50 mt-2 w-48 p-2 shadow-lg">
           <li><a href="/">Dashboard</a></li>
           <li><a href="/channels">Channels</a></li>
-          <li><a href="/performers">Performers</a></li>
+          <li><a href="/performers" class="tooltip tooltip-bottom" data-tip="Channels in Stash view — sync performers &amp; studios">Performers</a></li>
           <li><a href="/videos">Videos</a></li>
           <li><a href="/jobs">Jobs</a></li>
           <li><a href="/logs">Logs</a></li>
           <li><a href="/settings">Settings</a></li>
+          {% if is_password_set() %}
           <li><a href="/logout">Log out</a></li>
+          {% endif %}
         </ul>
       </div>
     </div>

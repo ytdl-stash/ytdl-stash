@@ -69,7 +69,7 @@
     </dl>
     <div class="card-actions justify-start mt-4 flex-wrap gap-2">
       {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
-      <button class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel processing for this video"
+      <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel processing for this video"
               hx-post="/videos/{{ video.id }}/stop"
               hx-target="#video-status-{{ video.id }}"
               hx-swap="outerHTML"
@@ -77,13 +77,13 @@
         Stop
       </button>
       {% elif video.status == 'cancelling' %}
-      <button class="btn btn-sm btn-ghost" disabled>
+      <button type="button" class="btn btn-sm btn-ghost" disabled>
         <span class="loading loading-spinner loading-sm"></span>
         Stopping…
       </button>
       {% endif %}
       {% if video.status in ['failed', 'cancelled', 'skipped'] %}
-      <button class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Reset to pending and re-download this video"
+      <button type="button" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Reset to pending and re-download this video"
               hx-post="/videos/{{ video.id }}/retry"
               hx-target="#video-status-{{ video.id }}"
               hx-swap="outerHTML"
@@ -92,7 +92,7 @@
       </button>
       {% endif %}
       {% if video.stash_scene_id %}
-      <button class="btn btn-sm btn-info tooltip tooltip-top" data-tip="Re-scrape metadata and regenerate from Stash"
+      <button type="button" class="btn btn-sm btn-info tooltip tooltip-top" data-tip="Re-scrape metadata and regenerate from Stash"
               hx-post="/videos/{{ video.id }}/resync"
               hx-target="#video-status-{{ video.id }}"
               hx-swap="outerHTML"
@@ -102,7 +102,7 @@
         Re-sync from Stash
       </button>
       {% endif %}
-      <button class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Permanently remove this video record"
+      <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Permanently remove this video record"
               hx-delete="/videos/{{ video.id }}"
               hx-confirm="Delete this video?">
         Delete

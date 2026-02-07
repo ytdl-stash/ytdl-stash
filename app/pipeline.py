@@ -22,7 +22,6 @@ from app.downloader import (
 )
 from app.models import Channel, Video
 from app.performer_sync import is_placeholder_name
-from app.studio_sync import sync_channel_studio
 from app.stash_client import StashClient, _normalize_performer_name
 
 logger = logging.getLogger(__name__)
@@ -417,16 +416,6 @@ async def process_single_download(
             performer_ids.append(pid)
 
         studio_id: str | None = None
-        if channel and not channel.stash_studio_id:
-            try:
-                await sync_channel_studio(channel, db, stash, settings)
-            except Exception as e:
-                logger.warning(
-                    "Video %s: studio sync failed for channel %s (non-fatal): %s",
-                    video.id,
-                    channel.id,
-                    e,
-                )
         if channel and channel.stash_studio_id:
             studio_id = channel.stash_studio_id
             logger.info("Video %s: studio from channel -> Stash id %s", video.id, studio_id)

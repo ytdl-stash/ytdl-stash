@@ -4,7 +4,7 @@
 <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
   <h1 class="text-2xl font-bold m-0">Videos</h1>
   <span id="job-inline-retry_all_failed">
-    <button class="btn btn-sm btn-secondary tooltip tooltip-bottom" data-tip="Reset all failed videos back to pending for re-download"
+    <button type="button" class="btn btn-sm btn-secondary tooltip tooltip-bottom" data-tip="Reset all failed videos back to pending for re-download"
             hx-post="/jobs/retry_all_failed/trigger"
             hx-target="#job-inline-retry_all_failed"
             hx-swap="innerHTML"

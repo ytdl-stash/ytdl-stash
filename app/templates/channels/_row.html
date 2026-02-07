@@ -1,7 +1,7 @@
 <tr id="channel-row-{{ channel.id }}" class="{{ 'opacity-65 grayscale hover:opacity-90' if not channel.enabled else '' }}">
   <td data-label="Name">
     <a href="/videos?channel_id={{ channel.id }}">{{ channel.name }}</a>
-    <button class="btn btn-sm btn-ghost ml-2 tooltip tooltip-top" data-tip="Rename this channel"
+    <button type="button" class="btn btn-sm btn-ghost ml-2 tooltip tooltip-top" data-tip="Rename this channel"
             hx-get="/channels/{{ channel.id }}/edit"
             hx-target="#channel-row-{{ channel.id }}"
             hx-swap="outerHTML">
@@ -28,7 +28,7 @@
     </form>
   </td>
   <td data-label="Actions">
-    <button class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Scan this channel for new videos now"
+    <button type="button" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Scan this channel for new videos now"
             hx-post="/channels/{{ channel.id }}/check-now"
             hx-target="#check-result-{{ channel.id }}"
             hx-swap="innerHTML"
@@ -37,7 +37,7 @@
     </button>
     <span id="spinner-{{ channel.id }}" class="htmx-indicator">Scanning…</span>
     <span id="check-result-{{ channel.id }}"></span>
-    <button class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Remove this channel and all its videos"
+    <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Remove this channel and all its videos"
             hx-delete="/channels/{{ channel.id }}"
             hx-target="#channel-row-{{ channel.id }}"
             hx-swap="outerHTML swap:1s"

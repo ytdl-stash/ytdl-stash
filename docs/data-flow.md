@@ -336,9 +336,9 @@ retry
    b. **If the performer name matches a known channel** (by normalized name): call `stash_client.find_or_create_performer_by_url(name, channel.url, channel.performer_image_url)`. This finds by URL first, then by name/alias; if found by name/alias but the performer lacks the channel URL, it gap-fills the URL and image.
    c. **Otherwise**: call `stash_client.find_or_create_performer(name)` (name-only lookup/create).
    d. Collect all performer IDs.
-3. **Studio** (channel-derived, always):
-   a. If `channel.stash_studio_id` is missing, run `sync_channel_studio(channel, db, stash, settings)` — finds studio by channel URL in Stash studio urls, or creates one with metadata (name, urls, image, details).
-   b. Use `channel.stash_studio_id` as the scene's studio ID.
+3. **Studio** (opt-in, channel-derived when linked):
+   a. If `channel.stash_studio_id` is set (user has clicked "Sync Studio" on the performer), use it as the scene's studio ID.
+   b. Otherwise, no studio is associated with the scene.
 
 **Data flow**:
 ```
@@ -361,10 +361,8 @@ For "Performer A":
 For "Performer B": (same)
     |
     v
-Studio (from video.channel):
-  channel.stash_studio_id missing?
-    Yes -> sync_channel_studio (find by URL in studio urls, or create with metadata)
-  studio_id = channel.stash_studio_id
+Studio (from video.channel, opt-in):
+  studio_id = channel.stash_studio_id if set, else None
     |
     v
 performer_ids = ["1", "2"]

@@ -27,7 +27,7 @@
     </select>
   </form>
   <div class="flex flex-wrap gap-2 items-center">
-    <button class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Clear the in-memory log buffer (does not delete log file)"
+    <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Clear the in-memory log buffer (does not delete log file)"
             hx-post="/logs/clear"
             hx-target="#log-entries"
             hx-swap="innerHTML"
@@ -45,7 +45,7 @@
 <div id="log-entries"
      hx-get="/logs/entries"
      hx-include="#log-filter-form"
-     hx-trigger="every 5s [document.getElementById('auto-refresh-toggle').checked]"
+     hx-trigger="every 5s [document.getElementById('auto-refresh-toggle')?.checked === true]"
      hx-swap="innerHTML">
   {% include "logs/_entries.html" %}
 </div>

@@ -39,14 +39,14 @@
 </table>
 
 <div class="flex flex-wrap gap-2 items-center mt-4">
-  <button class="btn btn-sm btn-primary"
+  <button type="button" class="btn btn-sm btn-primary"
     hx-post="/settings/ytdlp/check"
     hx-target="#ytdlp-update-status"
     hx-swap="innerHTML"
     hx-indicator="#ytdlp-update-spinner">
     Check for updates
   </button>
-  <button class="btn btn-sm btn-secondary"
+  <button type="button" class="btn btn-sm btn-secondary"
     hx-post="/settings/ytdlp/update"
     hx-target="#ytdlp-update-status"
     hx-swap="innerHTML"

@@ -2,6 +2,17 @@
 
 Monitor video channels, download new videos with [yt-dlp](https://github.com/yt-dlp/yt-dlp), and sync them into [Stash](https://github.com/stashapp/stash) with metadata (performers, studio, date) via its GraphQL API. Uses oshash for reliable scene matching.
 
+**Features**
+
+- **Channel monitoring** — Periodic scans; configurable interval and parallel downloads (yt-dlp).
+- **Stash sync** — Oshash scene matching; applies title, performers, studio, date; optional scrape/generate after sync.
+- **Web UI** — Dashboard, channels, videos, jobs, logs, settings.
+- **Performer & studio linking** — Sync performers and studios to Stash; link channels to studios by URL.
+- **YTDLM import** — Import channels and videos from [YoutubeDL-Material](https://github.com/yt-dlp/YoutubeDL-Material) `local_db.json`.
+- **Optional app password** — Protect the web UI.
+- **Cookies file** — For sites that require login.
+- **Folder mapping** — Use when Stash sees the same files under a different path.
+
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
@@ -12,16 +23,16 @@ Monitor video channels, download new videos with [yt-dlp](https://github.com/yt-
 
 ### Option A: Pre-built image (recommended)
 
-1. Create a `docker-compose.yml` (or grab the one from this repo) and set the `image`:
+1. Use the [docker-compose.yml](docker-compose.yml) from this repo, but replace `build: .` with the image line:
 
    ```yaml
    services:
      ytdl-stash:
        image: ghcr.io/<OWNER>/ytdl-stash:latest
-       # ... see docker-compose.yml in this repo for full example
+       # ... keep the rest of docker-compose.yml (ports, volumes, environment)
    ```
 
-2. Start the stack:
+2. Set `STASH_URL` and optionally `STASH_API_KEY` for your Stash instance, then start:
 
    ```bash
    docker compose up -d
@@ -29,27 +40,27 @@ Monitor video channels, download new videos with [yt-dlp](https://github.com/yt-
 
 ### Option B: Build from source
 
-1. Clone the repo and start the stack:
+1. Clone the repo, set `STASH_URL` and optionally `STASH_API_KEY`, then start:
 
    ```bash
    docker compose up -d
    ```
 
-2. Open the UI at **http://localhost:8282**.
+### Next steps (both options)
 
-3. Add a channel (e.g. a creator page URL from a supported site). The app will:
+1. Open the UI at **http://localhost:8282**.
+2. Add a channel (e.g. a creator page URL from a supported site). The app will:
    - Scan the channel periodically for new videos
    - Download pending videos (default one at a time; configurable concurrency)
    - Compute oshash and trigger a Stash scan
    - Match the scene and apply title, performers, studio, date
-
-4. Ensure Stash can see the same download directory. By default the app writes to `/downloads` inside the container; mount the same path in Stash’s library (or use **Folder mapping** below).
+3. Ensure Stash can see the same download directory. By default the app writes to `/downloads` inside the container; mount the same path in Stash’s library (or use **Folder mapping** below).
 
 ## Configuration
 
-All application settings use environment variables with the `YTDL_` prefix. Every variable is **optional** — the app starts with sensible defaults and zero configuration required.
+All settings use environment variables with the `YTDL_` prefix. **Every variable is optional** — the app starts with sensible defaults. Most users only need to set `STASH_URL` (and `STASH_API_KEY` if Stash has API auth enabled) via the Docker Compose host variables below.
 
-The **Settings** page (`/settings`) shows the effective configuration read at startup (read-only). To change a value, update your environment and restart the container/app.
+The **Settings** page (`/settings`) shows the effective configuration (read-only). To change a value, update your environment and restart the container or app.
 
 ### Docker Compose host variables
 
@@ -85,6 +96,7 @@ These are set on the **host** and interpolated by Docker Compose before the cont
 | `YTDL_DEFAULT_CHECK_INTERVAL_HOURS` | `int` | `6` | Optional | Hours between automatic channel checks |
 | `YTDL_MAX_CONCURRENT_DOWNLOADS` | `int` | `1` | Optional | Parallel download/import slots (min 1, max 16) |
 | `YTDL_DOWNLOAD_DELAY_SECONDS` | `int` | `5` | Optional | Seconds to wait between successive downloads |
+| `YTDL_YTDLP_UPDATE_CHECK_INTERVAL_HOURS` | `int` | `24` | Optional | Hours between PyPI checks for a newer yt-dlp |
 
 ### yt-dlp options
 
@@ -109,7 +121,6 @@ These accept a JSON string and are merged into the yt-dlp options dict at call t
 | `YTDL_YTDLP_HTTP_HEADERS_JSON` | `str` (JSON) | `{}` | Optional | Extra HTTP headers merged into every yt-dlp request |
 | `YTDL_YTDLP_SCAN_OPTS_JSON` | `str` (JSON) | `{}` | Optional | Extra yt-dlp options merged for channel scans |
 | `YTDL_YTDLP_DOWNLOAD_OPTS_JSON` | `str` (JSON) | `{}` | Optional | Extra yt-dlp options merged for downloads |
-| `YTDL_YTDLP_UPDATE_CHECK_INTERVAL_HOURS` | `int` | `24` | Optional | Hours between PyPI checks for a newer yt-dlp |
 
 ### Post-sync Stash actions
 
@@ -165,7 +176,10 @@ This produces multi-platform images (linux/amd64 + linux/arm64) tagged as:
 - `ghcr.io/<OWNER>/ytdl-stash:1`
 - `ghcr.io/<OWNER>/ytdl-stash:latest`
 
-## Development
+## More
 
-- Run without Docker: see [docs/recipes/local-dev-without-docker.md](docs/recipes/local-dev-without-docker.md).
-- Architecture and patterns: [docs/architecture/README.md](docs/architecture/README.md), [docs/patterns/](docs/patterns/).
+| Topic | Link |
+|-------|------|
+| **Troubleshooting** (yt-dlp, Stash, Docker) | [docs/recipes/troubleshooting.md](docs/recipes/troubleshooting.md) |
+| **Run without Docker** (local dev) | [docs/recipes/local-dev-without-docker.md](docs/recipes/local-dev-without-docker.md) |
+| **Architecture & patterns** | [docs/architecture/README.md](docs/architecture/README.md), [docs/patterns/](docs/patterns/) |

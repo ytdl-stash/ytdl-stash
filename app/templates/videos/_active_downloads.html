@@ -52,7 +52,7 @@
         </div>
         <div class="flex-shrink-0">
           {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
-          <button class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel this download (may take a moment)"
+          <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel this download (may take a moment)"
                   hx-post="/videos/{{ video.id }}/stop"
                   hx-target="#active-downloads"
                   hx-swap="outerHTML"
@@ -60,7 +60,7 @@
             Stop
           </button>
           {% elif video.status == 'cancelling' %}
-          <button class="btn btn-sm btn-ghost" disabled>
+          <button type="button" class="btn btn-sm btn-ghost" disabled>
             <span class="loading loading-spinner loading-sm"></span>
             Stopping…
           </button>

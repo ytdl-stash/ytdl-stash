@@ -1,5 +1,58 @@
 /* ytdl-stash custom (DaisyUI + Tailwind do the rest) */
 
+/*
+ * Tooltips: DaisyUI v5 expects .tooltip + data-tip on a wrapper div, but we use
+ * them on the trigger (button/label/th/span). This block makes tooltips work
+ * when applied directly to the element so we don't need wrapper divs everywhere.
+ */
+[data-tip].tooltip {
+  position: relative;
+}
+[data-tip].tooltip::before {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 50;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--rounded-box, 0.25rem);
+  font-size: 0.75rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  max-width: 16rem;
+  white-space: normal;
+  text-align: center;
+  background: oklch(var(--b3));
+  color: oklch(var(--bc));
+  border: 1px solid oklch(var(--b3) / 0.8);
+  box-shadow: 0 1px 3px oklch(var(--bc) / 0.1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+[data-tip].tooltip:hover::before,
+[data-tip].tooltip:focus-visible::before {
+  opacity: 1;
+}
+[data-tip].tooltip.tooltip-bottom::before {
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(0.25rem);
+}
+[data-tip].tooltip.tooltip-top::before {
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-0.25rem);
+}
+[data-tip].tooltip.tooltip-left::before {
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%) translateX(-0.25rem);
+}
+[data-tip].tooltip.tooltip-right::before {
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%) translateX(0.25rem);
+}
+
 /* HTMX loading indicator */
 .htmx-indicator {
   display: none;
@@ -48,6 +101,35 @@
   content: "Stash —";
   font-size: 0.75rem;
   color: #71717a;
+}
+
+/* Performer/studio link indicators (differentiated on performer cards) */
+.stash-performer-linked::before {
+  content: "✓ P";
+  font-size: 0.7rem;
+  color: #22c55e;
+  margin-left: 0.25rem;
+}
+
+.stash-performer-unlinked::before {
+  content: "P —";
+  font-size: 0.7rem;
+  color: #71717a;
+  margin-left: 0.25rem;
+}
+
+.stash-studio-linked::before {
+  content: "✓ S";
+  font-size: 0.7rem;
+  color: #22c55e;
+  margin-left: 0.25rem;
+}
+
+.stash-studio-unlinked::before {
+  content: "S —";
+  font-size: 0.7rem;
+  color: #71717a;
+  margin-left: 0.25rem;
 }
 
 /* Responsive tables: card-style rows on narrow viewports (matches Tailwind md: 768px) */

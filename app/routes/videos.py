@@ -293,6 +293,11 @@ async def delete_video(
     logger.info("Video %s deleted", video_id)
 
     if request.headers.get("HX-Request"):
+        hx_target = request.headers.get("HX-Target") or ""
+        # List and performer detail target the row for swap; return empty to remove it
+        if "video-row-" in hx_target:
+            return HTMLResponse("", status_code=200)
+        # Video detail page has no target; redirect back to list
         return HTMLResponse(
             status_code=200,
             headers={"HX-Redirect": "/videos"},

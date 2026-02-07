@@ -1,28 +1,6 @@
 {% for video in videos %}
 <tr id="video-row-{{ video.id }}">
-  <td data-label="Thumb" class="w-24 p-1">
-    {% if video.stash_scene_id and settings %}
-    <a href="/videos/{{ video.id }}">
-      <img src="{{ settings.stash_url.rstrip('/') }}/scene/{{ video.stash_scene_id }}/screenshot{% if settings.stash_api_key %}?apikey={{ settings.stash_api_key }}{% endif %}"
-           alt="{{ video.title }}"
-           class="rounded w-24 h-14 object-cover bg-base-300"
-           loading="lazy">
-    </a>
-    {% elif video.thumbnail_url %}
-    <a href="/videos/{{ video.id }}">
-      <img src="{{ video.thumbnail_url }}"
-           alt="{{ video.title }}"
-           class="rounded w-24 h-14 object-cover bg-base-300"
-           loading="lazy">
-    </a>
-    {% else %}
-    <div class="rounded w-24 h-14 bg-base-300 flex items-center justify-center text-base-content/30 text-xs">
-      No thumb
-    </div>
-    {% endif %}
-  </td>
   <td data-label="Title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
-  <td data-label="Channel">{{ video.channel.name if video.channel else '—' }}</td>
   <td data-label="Status">{% include "videos/_status_badge.html" %}</td>
   <td data-label="Upload Date">{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>
   <td data-label="Duration">{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</td>

@@ -67,7 +67,9 @@ When a user adds a channel (subscription), the app should **automatically link o
   - Show Stash link status and performer ID
   - List all videos from this channel with status breakdown
   - Quick actions: enable/disable watching, re-sync to Stash, open in Stash
-- [x] `POST /performers/{channel_id}/sync` — manually trigger performer sync to Stash
+- [x] `POST /performers/{channel_id}/sync-performer` — manually trigger performer sync only
+- [x] `POST /performers/{channel_id}/sync-studio` — manually trigger studio sync only
+- [x] `POST /performers/{channel_id}/sync` — manually trigger both performer and studio sync
 - [x] `POST /performers/{channel_id}/toggle` — toggle the channel's `enabled` flag (start/stop watching)
 
 ### Templates: Performer Browser UI
@@ -83,7 +85,7 @@ When a user adds a channel (subscription), the app should **automatically link o
   - Performer info section with image, name, URL, site
   - Stash connection status with link to Stash performer page
   - Video table (reuse existing video table patterns)
-  - Action buttons: Watch/Unwatch, Sync to Stash
+  - Action buttons: Watch/Unwatch, Sync Performer, Sync Studio, Sync Both
 - [x] Add "Performers" link to the navigation bar in `base.html`
 
 ---
@@ -145,7 +147,7 @@ mutation PerformerCreate($input: PerformerCreateInput!) {
 - [x] Performer Browser page lists all performers with correct watched/not-watched status
 - [x] Performer detail page shows videos and Stash link status
 - [x] Toggle watch/unwatch updates the channel's `enabled` flag via HTMX
-- [x] Manual "Sync to Stash" button works for re-linking performers
+- [x] Manual "Sync Performer", "Sync Studio", and "Sync Both" buttons work for re-linking performers and studios
 - [x] Performer sync failures are graceful — channel is still usable, error is logged
 
 ## Deviations
