@@ -66,7 +66,11 @@ job_registry: dict[str, JobInfo] = {
 async def _run_tracked(job_id: str, coro_fn) -> None:
     """Wrap a job coroutine with tracking: set running flag, record timing."""
     info = job_registry[job_id]
-    if info._lock.locked():
+    # Guard against duplicate triggers:
+    # - `info.running` is set eagerly for manual triggers so that a rapid double-click
+    #   doesn't enqueue multiple sequential runs before the lock is acquired.
+    # - `_lock.locked()` covers already-running jobs (manual or scheduled).
+    if info.running or info._lock.locked():
         logger.debug("Job %s already running, skipping", job_id)
         return
     async with info._lock:
@@ -211,7 +215,7 @@ def trigger_job(job_id: str) -> bool:
     info = job_registry.get(job_id)
     if info is None:
         raise ValueError(f"Unknown job: {job_id}")
-    if info._lock.locked():
+    if info.running or info._lock.locked():
         return False
     if info.coro_fn is None:
         raise ValueError(f"Job {job_id} has no coroutine function registered")
