@@ -117,11 +117,11 @@ These control what happens **after** a scene is synced to Stash.
 
 | Variable | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
-| `YTDL_STASH_SCRAPE_AFTER_SYNC` | `bool` | `false` | Optional | Run the Stash URL scraper on the scene after sync |
-| `YTDL_STASH_GENERATE_AFTER_SYNC` | `bool` | `false` | Optional | Trigger Stash metadata generation after sync |
+| `YTDL_STASH_SCRAPE_AFTER_SYNC` | `bool` | `true` | Optional | Run the Stash URL scraper on the scene after sync |
+| `YTDL_STASH_GENERATE_AFTER_SYNC` | `bool` | `true` | Optional | Trigger Stash metadata generation after sync |
 | `YTDL_STASH_GENERATE_COVERS` | `bool` | `true` | Optional | Generate cover images (when generate is enabled) |
-| `YTDL_STASH_GENERATE_PREVIEWS` | `bool` | `false` | Optional | Generate video previews (when generate is enabled) |
-| `YTDL_STASH_GENERATE_SPRITES` | `bool` | `false` | Optional | Generate sprite sheets (when generate is enabled) |
+| `YTDL_STASH_GENERATE_PREVIEWS` | `bool` | `true` | Optional | Generate video previews (when generate is enabled) |
+| `YTDL_STASH_GENERATE_SPRITES` | `bool` | `true` | Optional | Generate sprite sheets (when generate is enabled) |
 | `YTDL_STASH_GENERATE_PHASHES` | `bool` | `true` | Optional | Generate perceptual hashes (when generate is enabled) |
 
 ### Folder mapping (Stash path)

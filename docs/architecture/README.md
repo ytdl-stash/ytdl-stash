@@ -207,11 +207,11 @@ The Settings page (`/settings`) displays the effective configuration **read at s
 | `YTDL_YTDLP_SCAN_OPTS_JSON` | `{}` | JSON object merged into yt-dlp options for channel scans / metadata extraction |
 | `YTDL_YTDLP_DOWNLOAD_OPTS_JSON` | `{}` | JSON object merged into yt-dlp options for downloads |
 | `YTDL_YTDLP_UPDATE_CHECK_INTERVAL_HOURS` | `24` | How often the scheduler checks GitHub nightly builds for a newer yt-dlp version |
-| `YTDL_STASH_SCRAPE_AFTER_SYNC` | `False` | Run Stash URL scraper on the scene after sync (best-effort) |
-| `YTDL_STASH_GENERATE_AFTER_SYNC` | `False` | Trigger Stash metadata generation (covers, previews, etc.) after sync |
+| `YTDL_STASH_SCRAPE_AFTER_SYNC` | `True` | Run Stash URL scraper on the scene after sync (best-effort) |
+| `YTDL_STASH_GENERATE_AFTER_SYNC` | `True` | Trigger Stash metadata generation (covers, previews, etc.) after sync |
 | `YTDL_STASH_GENERATE_COVERS` | `True` | Generate cover images (only when generate is enabled) |
-| `YTDL_STASH_GENERATE_PREVIEWS` | `False` | Generate video previews (slow; only when generate is enabled) |
-| `YTDL_STASH_GENERATE_SPRITES` | `False` | Generate sprite sheets (only when generate is enabled) |
+| `YTDL_STASH_GENERATE_PREVIEWS` | `True` | Generate video previews (only when generate is enabled) |
+| `YTDL_STASH_GENERATE_SPRITES` | `True` | Generate sprite sheets (only when generate is enabled) |
 | `YTDL_STASH_GENERATE_PHASHES` | `True` | Generate perceptual hashes (only when generate is enabled) |
 | `YTDL_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 

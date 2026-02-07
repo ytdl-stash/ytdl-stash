@@ -56,11 +56,11 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------------
     # Post-sync Stash actions (run after a scene is synced to Stash)
     # ---------------------------------------------------------------------
-    stash_scrape_after_sync: bool = False
-    stash_generate_after_sync: bool = False
+    stash_scrape_after_sync: bool = True
+    stash_generate_after_sync: bool = True
     stash_generate_covers: bool = True
-    stash_generate_previews: bool = False
-    stash_generate_sprites: bool = False
+    stash_generate_previews: bool = True
+    stash_generate_sprites: bool = True
     stash_generate_phashes: bool = True
 
     model_config = {"env_prefix": "YTDL_"}
