@@ -131,10 +131,10 @@ async def retry_video(
     video = await db.get(Video, video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-    if video.status not in {"failed", "cancelled"}:
+    if video.status not in {"failed", "cancelled", "skipped"}:
         raise HTTPException(
             status_code=400,
-            detail="Only failed/cancelled videos can be retried",
+            detail="Only failed/cancelled/skipped videos can be retried",
         )
 
     video.status = "pending"

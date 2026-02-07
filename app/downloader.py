@@ -427,6 +427,41 @@ def download_video(
     }
 
 
+def extract_video_info(url: str, settings: Settings) -> dict:
+    """Extract video metadata (duration, title, etc.) without downloading.
+
+    This is used for pre-download duration checks when ``extract_flat=True``
+    during the channel scan didn't return duration information.
+
+    Returns dict with ``duration`` (int | None) and ``title`` (str).
+    """
+    opts: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+    }
+    if settings.cookies_file:
+        opts["cookiefile"] = settings.cookies_file
+    opts.update(_build_common_ytdlp_opts(settings))
+    # Re-use scan opts for consistency (proxy, headers, etc.)
+    opts.update(
+        _parse_json_obj(settings.ytdlp_scan_opts_json, name="YTDL_YTDLP_SCAN_OPTS_JSON")
+    )
+
+    try:
+        logger.info("Extracting metadata (no download): %s", url)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        duration = info.get("duration") if info else None
+        return {
+            "duration": int(duration) if duration is not None else None,
+            "title": (info.get("title") or "") if info else "",
+        }
+    except DownloadError as e:
+        logger.warning("Metadata extraction failed for %s: %s", url, e)
+        return {"duration": None, "title": ""}
+
+
 async def async_compute_oshash(filepath: str) -> str:
     """Async wrapper for compute_oshash. Use this from async code to avoid blocking the event loop."""
     return await asyncio.to_thread(compute_oshash, filepath)
@@ -437,6 +472,11 @@ async def async_extract_channel_metadata(
 ) -> dict:
     """Async wrapper for extract_channel_metadata. Use from async code to avoid blocking the event loop."""
     return await asyncio.to_thread(extract_channel_metadata, url, settings)
+
+
+async def async_extract_video_info(url: str, settings: Settings) -> dict:
+    """Async wrapper for extract_video_info. Use from async code to avoid blocking the event loop."""
+    return await asyncio.to_thread(extract_video_info, url, settings)
 
 
 async def async_scan_channel(url: str, settings: Settings) -> dict:

@@ -194,17 +194,19 @@ yt-dlp flat extract -> {entries: [...], channel_meta: {name, thumbnail}}
 1. Query up to `settings.max_concurrent_downloads` `Video` row(s) with `status="pending"`, ordered by `created_at ASC` (FIFO).
 2. If none found, exit.
 3. For each picked video, set `video.status = "downloading"`.
-4. Call `download_video(video.url, settings.download_dir, settings.ytdlp_output_template, settings.cookies_file)` via `asyncio.to_thread()` (each download runs in a worker thread).
-5. While downloading, yt-dlp `progress_hooks` update an **in-memory** progress store (percent/ETA/speed) so the web UI can render a progress bar.
-6. If the user clicks **Stop** while a video is pending or in-flight:
+4. **Pre-download duration check**: If `channel.min_duration_seconds` is set and `video.duration_seconds` is unknown (flat scan didn't return it), extract full metadata via `extract_video_info()` (no download). If the duration is now known and below the threshold, set `video.status = "skipped"` and skip the download entirely.
+5. Call `download_video(video.url, settings.download_dir, settings.ytdlp_output_template, settings.cookies_file)` via `asyncio.to_thread()` (each download runs in a worker thread).
+6. While downloading, yt-dlp `progress_hooks` update an **in-memory** progress store (percent/ETA/speed) so the web UI can render a progress bar.
+7. If the user clicks **Stop** while a video is pending or in-flight:
    - `pending` videos are marked `status="cancelled"` immediately.
    - In-flight videos are marked `status="cancelling"` and a cooperative cancel flag is set; the yt-dlp hook aborts the download and the pipeline finalizes with `status="cancelled"`.
-7. On success:
+8. On success:
    a. Save `filepath`, `filename`, `performers`, `studio`, `duration`, `thumbnail_url`, `metadata_json` to the video row.
-   b. Set `video.status = "downloaded"`.
-8. On failure:
+   b. **Post-download duration safety net**: If `channel.min_duration_seconds` is set and the just-downloaded video is too short (duration was unknown until now), delete the file and set `video.status = "skipped"`.
+   c. Otherwise, set `video.status = "downloaded"`.
+9. On failure:
    a. Set `video.status = "failed"`, `video.error_message = str(error)`.
-9. Respect `settings.download_delay_seconds` as a throttle:
+10. Respect `settings.download_delay_seconds` as a throttle:
    - With `max_concurrent_downloads=1`, it is applied **between** downloads.
    - With `max_concurrent_downloads>1`, starts are **staggered** by this delay to reduce burstiness.
 
@@ -216,16 +218,33 @@ Video (status=pending)
 status = downloading
     |
     v
-yt-dlp download_video() -> {filepath, filename, title, upload_date, performers, studio, duration, thumbnail_url, metadata_json}
-    |
-    v
-  Success?
+channel.min_duration_seconds set & duration unknown?
    /     \
-  No      Yes
+  Yes     No
   |        |
-  v        v
-status=   Save metadata to video row
-failed    status = downloaded
+  v        |
+extract_video_info() (metadata only, no download)
+  |        |
+  v        |
+duration < min?
+   /  \    |
+  Yes  No  |
+  |    |   |
+  v    +---+
+status=    |
+skipped    v
+        yt-dlp download_video() -> {filepath, ...}
+            |
+            v
+        duration < min? (safety net)
+           /     \
+          Yes     No
+          |        |
+          v        v
+        Delete   Save metadata to video row
+        file     status = downloaded
+        status=
+        skipped
 ```
 
 ---
@@ -308,26 +327,35 @@ retry
 **Trigger**: Scene found in step 7.
 
 **What happens**:
-1. For each performer name in `video.performers`:
-   a. Call `stash_client.find_or_create_performer(name)`.
-   b. If performer exists in Stash, get its ID.
-   c. If not, create it and get the new ID.
+1. Load `video.channel` (async relationship refresh) and query all channels to build a case-insensitive name → channel lookup.
+2. For each performer name in `video.performers`:
+   a. Normalize the name (whitespace collapsed).
+   b. **If the performer name matches a known channel** (by normalized name): call `stash_client.find_or_create_performer_by_url(name, channel.url, channel.performer_image_url)`. This finds by URL first, then by name/alias; if found by name/alias but the performer lacks the channel URL, it gap-fills the URL and image.
+   c. **Otherwise**: call `stash_client.find_or_create_performer(name)` (name-only lookup/create).
    d. Collect all performer IDs.
-2. If `video.studio` is set:
+3. If `video.studio` is set:
    a. Call `stash_client.find_or_create_studio(video.studio)`.
    b. Get the studio ID.
 
 **Data flow**:
 ```
 video.performers = ["Performer A", "Performer B"]
-video.studio = "SomeStudio"
+channels = [{name: "Performer A", url: "https://...", performer_image_url: "..."}, ...]
+    |
+    v
+Build channel_by_name lookup (normalized name -> channel)
     |
     v
 For "Performer A":
-  findPerformers(name="Performer A") -> found? -> use existing ID
-                                     -> not found? -> performerCreate -> new ID
-For "Performer B":
-  (same)
+  Matches known channel?
+    Yes -> find_or_create_performer_by_url(name, channel.url, channel.performer_image_url)
+           -> find by URL? -> use existing ID
+           -> find by name/alias? -> gap-fill URL/image if missing -> use ID
+           -> not found? -> performerCreate(name, urls, image) -> new ID
+    No  -> find_or_create_performer(name)
+           -> find by name/alias? -> use existing ID
+           -> not found? -> performerCreate(name) -> new ID
+For "Performer B": (same)
     |
     v
 For "SomeStudio":
@@ -412,6 +440,7 @@ video.status = "synced"
 | Step | Error | Handling |
 |------|-------|----------|
 | 3 - Scan | yt-dlp extraction fails | Log error, skip channel this cycle |
+| 4 - Download | Video shorter than `min_duration_seconds` | `status=skipped`, `error_message` explains threshold. File deleted if already downloaded. Retryable. |
 | 4 - Download | yt-dlp download fails | `status=failed`, `error_message` saved |
 | 4 - Download | user stop requested | `status=cancelled`, `error_message="Cancelled by user"` |
 | 5 - oshash | File read error | `status=failed`, `error_message` saved |

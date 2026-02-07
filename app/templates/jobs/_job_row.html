@@ -1,9 +1,9 @@
 <tr id="job-row-{{ job.id }}">
-  <td>
+  <td data-label="Job">
     <strong>{{ job.name }}</strong>
     <br><small class="text-base-content/60">{{ job.description }}</small>
   </td>
-  <td>
+  <td data-label="Status">
     {% if job.running %}
       <span class="badge badge-primary">Running</span>
     {% elif job.last_error %}
@@ -12,7 +12,7 @@
       <span class="badge badge-success">Idle</span>
     {% endif %}
   </td>
-  <td>
+  <td data-label="Last Run">
     {% if job.last_run_at %}
       {{ job.last_run_at.strftime('%Y-%m-%d %H:%M:%S') }}
       {% if job.last_duration_seconds is not none %}
@@ -25,7 +25,7 @@
       —
     {% endif %}
   </td>
-  <td>
+  <td data-label="Action">
     <div class="min-w-28">
       {% if job.running %}
         <button class="btn btn-sm btn-secondary"

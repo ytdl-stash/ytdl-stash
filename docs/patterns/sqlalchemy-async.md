@@ -60,9 +60,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 All models inherit from `Base` and use SQLAlchemy 2.x `Mapped` type annotations.
 
 ```python
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, JSON, Text
+from sqlalchemy import String, Integer, Boolean, ForeignKey, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import UTC, datetime
+
+from app.models import TZDateTime  # custom TypeDecorator — see below
 
 class Channel(Base):
     __tablename__ = "channels"
@@ -73,16 +75,16 @@ class Channel(Base):
     site: Mapped[str] = mapped_column(String(50))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     check_interval_hours: Mapped[int] = mapped_column(Integer)
-    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    last_checked_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     videos: Mapped[list["Video"]] = relationship(back_populates="channel", cascade="all, delete-orphan")
 ```
 
 **Rule**: Always use `Mapped[T]` + `mapped_column()` (SQLAlchemy 2.x style). Do NOT use the legacy `Column()` style.
 
-**Rule**: Always use `DateTime(timezone=True)` for datetime columns. Without it, SQLite strips timezone info on round-trip, producing naive datetimes that cannot be compared with `datetime.now(UTC)` (raises `TypeError`).
+**Rule**: Always use the `TZDateTime` custom type (defined in `app/models.py`) for datetime columns — never bare `DateTime(timezone=True)`. SQLite stores datetimes as plain text and strips timezone info on round-trip. `TZDateTime` is a `TypeDecorator` that wraps `DateTime(timezone=True)` and re-attaches `timezone.utc` to any naive value read back from the database. Without it, Python-side comparisons against `datetime.now(UTC)` raise `TypeError: can't compare offset-naive and offset-aware datetimes`.
 
 ---
 

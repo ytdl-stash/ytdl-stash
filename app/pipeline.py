@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import time
 from datetime import UTC, date, datetime, timedelta
 
@@ -16,11 +17,12 @@ from app.downloader import (
     DownloadCancelled,
     async_compute_oshash,
     async_download_video,
+    async_extract_video_info,
     async_scan_channel,
 )
 from app.models import Channel, Video
 from app.performer_sync import is_placeholder_name
-from app.stash_client import StashClient
+from app.stash_client import StashClient, _normalize_performer_name
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +178,48 @@ async def process_single_download(
         await db.commit()
         logger.info("Video %s: downloading", video.id)
 
+        # ------------------------------------------------------------------
+        # Pre-download duration check
+        # The channel scan uses extract_flat=True which often omits duration.
+        # If min_duration_seconds is set and we don't have a duration yet,
+        # extract full metadata (no download) to check before wasting bandwidth.
+        # ------------------------------------------------------------------
+        await db.refresh(video, ["channel"])
+        channel = video.channel
+        if channel.min_duration_seconds is not None:
+            if video.duration_seconds is None:
+                logger.info(
+                    "Video %s: extracting metadata to check duration (min=%ds)",
+                    video.id, channel.min_duration_seconds,
+                )
+                try:
+                    info = await async_extract_video_info(video.url, settings)
+                    if info.get("duration") is not None:
+                        video.duration_seconds = int(info["duration"])
+                        await db.commit()
+                except Exception:
+                    logger.debug(
+                        "Video %s: metadata extraction failed, will check after download",
+                        video.id, exc_info=True,
+                    )
+
+            if (
+                video.duration_seconds is not None
+                and video.duration_seconds < channel.min_duration_seconds
+            ):
+                logger.info(
+                    "Video %s: skipped — duration %ds < min %ds",
+                    video.id, video.duration_seconds, channel.min_duration_seconds,
+                )
+                video.status = "skipped"
+                video.error_message = (
+                    f"Too short ({video.duration_seconds}s < "
+                    f"{channel.min_duration_seconds}s minimum)"
+                )
+                await db.commit()
+                download_progress.clear(video.id)
+                return
+
         last_hook_ts = 0.0
         last_hook_status: str | None = None
 
@@ -213,6 +257,38 @@ async def process_single_download(
         )
         video.thumbnail_url = result.get("thumbnail_url")
         video.metadata_json = result.get("metadata_json")
+
+        # ------------------------------------------------------------------
+        # Post-download duration safety net
+        # Catches videos whose duration was unavailable during both the
+        # channel scan AND the pre-download metadata extraction.
+        # ------------------------------------------------------------------
+        if (
+            channel.min_duration_seconds is not None
+            and video.duration_seconds is not None
+            and video.duration_seconds < channel.min_duration_seconds
+        ):
+            logger.info(
+                "Video %s: skipped after download — duration %ds < min %ds",
+                video.id, video.duration_seconds, channel.min_duration_seconds,
+            )
+            try:
+                os.remove(result["filepath"])
+                logger.info("Video %s: deleted file %s", video.id, result["filepath"])
+            except OSError as exc:
+                logger.warning(
+                    "Video %s: could not delete file %s: %s",
+                    video.id, result["filepath"], exc,
+                )
+            video.status = "skipped"
+            video.error_message = (
+                f"Too short ({video.duration_seconds}s < "
+                f"{channel.min_duration_seconds}s minimum)"
+            )
+            await db.commit()
+            download_progress.clear(video.id)
+            return
+
         video.status = "downloaded"
         await db.commit()
         download_progress.clear(video.id)
@@ -255,10 +331,42 @@ async def process_single_download(
             raise RuntimeError("Scene not found after scan timeout")
         logger.info("Video %s: Stash scene found (id=%s)", video.id, scene["id"])
 
+        await db.refresh(video, ["channel"])
         performer_ids: list[str] = []
+        channel = video.channel
+        channel_norm = _normalize_performer_name(channel.name or "").lower() if channel else ""
+
+        ch_result = await db.execute(select(Channel))
+        channels = list(ch_result.scalars().all())
+        channel_by_name: dict[str, Channel] = {}
+        for ch in channels:
+            key = _normalize_performer_name(ch.name or "").lower()
+            if key:
+                channel_by_name[key] = ch
+
         for name in video.performers or []:
-            pid = await stash.find_or_create_performer(name)
-            logger.info("Video %s: performer '%s' -> Stash id %s", video.id, name, pid)
+            norm_name = _normalize_performer_name(name).lower()
+            if not norm_name:
+                continue
+            ch: Channel | None = None
+            if channel and channel_norm == norm_name:
+                ch = channel
+            elif norm_name in channel_by_name:
+                ch = channel_by_name[norm_name]
+            if ch:
+                if ch.stash_performer_id:
+                    pid = ch.stash_performer_id
+                    logger.info("Video %s: performer '%s' -> Stash id %s (cached)", video.id, name, pid)
+                else:
+                    pid = await stash.find_or_create_performer_by_url(
+                        name=name,
+                        url=ch.url,
+                        image_url=ch.performer_image_url,
+                    )
+                    logger.info("Video %s: performer '%s' -> Stash id %s (channel)", video.id, name, pid)
+            else:
+                pid = await stash.find_or_create_performer(name)
+                logger.info("Video %s: performer '%s' -> Stash id %s", video.id, name, pid)
             performer_ids.append(pid)
 
         studio_id: str | None = None

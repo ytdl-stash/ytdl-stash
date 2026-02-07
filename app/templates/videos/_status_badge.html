@@ -6,6 +6,7 @@
 {% elif video.status in ('downloaded', 'downloading', 'importing') %}{% set ns.badge_class = 'badge badge-primary' %}
 {% elif video.status == 'failed' %}{% set ns.badge_class = 'badge badge-error' %}
 {% elif video.status == 'cancelled' %}{% set ns.badge_class = 'badge badge-ghost' %}
+{% elif video.status == 'skipped' %}{% set ns.badge_class = 'badge badge-ghost' %}
 {% elif video.status == 'imported' %}{% set ns.badge_class = 'badge badge-secondary' %}
 {% endif %}
 <span id="video-status-{{ video.id }}"

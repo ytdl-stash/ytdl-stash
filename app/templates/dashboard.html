@@ -2,7 +2,7 @@
 {% block title %}Dashboard — ytdl-stash{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-bold mb-4">Dashboard</h1>
-<div class="stats shadow mb-8">
+<div class="stats stats-vertical lg:stats-horizontal shadow mb-8">
   <div class="stat">
     <div class="stat-title">Total Channels</div>
     <div class="stat-value">{{ total_channels }}</div>
@@ -22,24 +22,26 @@
 </div>
 <h2 class="text-xl font-semibold mb-3">Recent Downloads</h2>
 {% if recent_downloads %}
-<table class="table">
-  <thead>
-    <tr>
-      <th>Title</th>
-      <th>Channel</th>
-      <th>Synced</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for video in recent_downloads %}
-    <tr>
-      <td><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
-      <td>{{ video.channel.name if video.channel else '—' }}</td>
-      <td>{{ video.updated_at.strftime('%Y-%m-%d %H:%M') if video.updated_at else '—' }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="overflow-x-auto">
+  <table class="table table-responsive">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Channel</th>
+        <th>Synced</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for video in recent_downloads %}
+      <tr>
+        <td data-label="Title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
+        <td data-label="Channel">{{ video.channel.name if video.channel else '—' }}</td>
+        <td data-label="Synced">{{ video.updated_at.strftime('%Y-%m-%d %H:%M') if video.updated_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% else %}
 <p>No recent downloads.</p>
 {% endif %}

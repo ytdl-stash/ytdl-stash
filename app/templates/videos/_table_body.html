@@ -1,11 +1,11 @@
 {% for video in videos %}
 <tr id="video-row-{{ video.id }}">
-  <td><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
-  <td>{{ video.channel.name if video.channel else '—' }}</td>
-  <td>{% include "videos/_status_badge.html" %}</td>
-  <td>{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>
-  <td>{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</td>
-  <td>
+  <td data-label="Title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
+  <td data-label="Channel">{{ video.channel.name if video.channel else '—' }}</td>
+  <td data-label="Status">{% include "videos/_status_badge.html" %}</td>
+  <td data-label="Upload Date">{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>
+  <td data-label="Duration">{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</td>
+  <td data-label="Actions">
     <a href="/videos/{{ video.id }}" class="btn btn-sm btn-ghost">Detail</a>
     {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
     <button class="btn btn-sm btn-warning"
@@ -21,7 +21,7 @@
       Stopping…
     </button>
     {% endif %}
-    {% if video.status in ['failed', 'cancelled'] %}
+    {% if video.status in ['failed', 'cancelled', 'skipped'] %}
     <button class="btn btn-sm btn-primary"
             hx-post="/videos/{{ video.id }}/retry"
             hx-target="#video-status-{{ video.id }}"

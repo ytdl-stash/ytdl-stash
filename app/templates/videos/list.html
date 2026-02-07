@@ -36,6 +36,7 @@
         <option value="imported" {% if selected_status == 'imported' %}selected{% endif %}>Imported</option>
         <option value="synced" {% if selected_status == 'synced' %}selected{% endif %}>Synced</option>
         <option value="failed" {% if selected_status == 'failed' %}selected{% endif %}>Failed</option>
+        <option value="skipped" {% if selected_status == 'skipped' %}selected{% endif %}>Skipped</option>
         <option value="cancelled" {% if selected_status == 'cancelled' %}selected{% endif %}>Cancelled</option>
       </select>
     </label>
@@ -47,20 +48,22 @@
      hx-target="#video-table-body"
      hx-swap="innerHTML"
      hx-include="#filter-form">
-  <table class="table">
-    <thead>
-      <tr>
-        <th>Title</th>
-        <th>Channel</th>
-        <th>Status</th>
-        <th>Upload Date</th>
-        <th>Duration</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="video-table-body">
-      {% include "videos/_table_body.html" %}
-    </tbody>
-  </table>
+  <div class="overflow-x-auto">
+    <table class="table table-responsive">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Channel</th>
+          <th>Status</th>
+          <th>Upload Date</th>
+          <th>Duration</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="video-table-body">
+        {% include "videos/_table_body.html" %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

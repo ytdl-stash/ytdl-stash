@@ -5,7 +5,7 @@
 <p class="mb-4"><a href="/performers" class="link link-hover">← Back to Performers</a></p>
 <div class="card bg-base-200">
   <div class="card-body">
-    <div class="flex gap-6 items-start mb-4">
+    <div class="flex flex-col sm:flex-row gap-6 items-start mb-4">
       {% if channel.performer_image_url %}
       <img src="{{ channel.performer_image_url }}" alt="" class="w-[120px] h-[120px] object-cover rounded-lg shrink-0" width="120" height="120">
       {% else %}
@@ -120,21 +120,23 @@
     {% endif %}
 
     <h3 class="text-lg font-semibold mt-6">Videos ({{ videos|length }})</h3>
-    <table class="table mt-2">
-      <thead>
-        <tr>
-          <th>Title</th>
-          <th>Channel</th>
-          <th>Status</th>
-          <th>Upload Date</th>
-          <th>Duration</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% include "videos/_table_body.html" %}
-      </tbody>
-    </table>
+    <div class="overflow-x-auto">
+      <table class="table table-responsive mt-2">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Channel</th>
+            <th>Status</th>
+            <th>Upload Date</th>
+            <th>Duration</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% include "videos/_table_body.html" %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% endblock %}

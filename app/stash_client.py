@@ -51,6 +51,7 @@ query FindPerformers($filter: FindFilterType!, $performer_filter: PerformerFilte
             id
             name
             urls
+            image_path
         }
     }
 }
@@ -202,6 +203,20 @@ mutation TagCreate($input: TagCreateInput!) {
 """
 
 
+def _normalize_performer_name(name: str) -> str:
+    """Normalize whitespace in performer names for consistent lookups."""
+    return " ".join(name.split())
+
+
+# Process-global locks so that concurrent workers (each with their own StashClient)
+# serialize find-or-create for the same performer/studio/tag name.
+_performer_locks: dict[str, asyncio.Lock] = {}
+_studio_locks: dict[str, asyncio.Lock] = {}
+_tag_locks: dict[str, asyncio.Lock] = {}
+# Protects "get or create" of the above locks so two tasks don't race and create two Lock instances.
+_lock_dict_meta: asyncio.Lock = asyncio.Lock()
+
+
 class StashClient:
     """Async client for Stash's GraphQL API. Uses ApiKey header and 30s timeout.
 
@@ -324,8 +339,17 @@ class StashClient:
         logger.warning("Stash: scene not found after %d poll(s) for oshash=%s (timed out)", poll_count, oshash)
         return None
 
-    async def find_performer(self, name: str) -> str | None:
-        """Find a performer by exact name. Returns performer ID or None."""
+    def _performer_dict(self, p: dict) -> dict:
+        """Build {id, name, urls, image_path} from GraphQL performer result."""
+        return {
+            "id": p["id"],
+            "name": p.get("name") or "",
+            "urls": p.get("urls") or [],
+            "image_path": p.get("image_path"),
+        }
+
+    async def find_performer(self, name: str) -> dict | None:
+        """Find a performer by exact name. Returns {id, name, urls, image_path} or None."""
         variables = {
             "filter": {"per_page": 1},
             "performer_filter": {
@@ -337,21 +361,52 @@ class StashClient:
         }
         data = await self._query(_FIND_PERFORMERS_QUERY, variables)
         performers = data["findPerformers"]["performers"]
-        return performers[0]["id"] if performers else None
+        if not performers:
+            return None
+        return self._performer_dict(performers[0])
+
+    async def find_performer_by_alias(self, name: str) -> dict | None:
+        """Find a performer where name appears in alias_list. Returns {id, name, urls, image_path} or None."""
+        variables = {
+            "filter": {"per_page": 1},
+            "performer_filter": {
+                "aliases": {
+                    "value": name,
+                    "modifier": "EQUALS",
+                }
+            },
+        }
+        data = await self._query(_FIND_PERFORMERS_QUERY, variables)
+        performers = data["findPerformers"]["performers"]
+        if not performers:
+            return None
+        return self._performer_dict(performers[0])
 
     async def create_performer(self, name: str) -> str:
         """Create a performer. Returns the new performer's ID."""
+        name = _normalize_performer_name(name)
         data = await self._query(_PERFORMER_CREATE_MUTATION, {"input": {"name": name}})
         return data["performerCreate"]["id"]
 
     async def find_or_create_performer(self, name: str) -> str:
         """Find performer by name or create. Returns performer ID."""
-        performer_id = await self.find_performer(name)
-        if performer_id:
-            logger.debug("Stash: found existing performer '%s' (id=%s)", name, performer_id)
-            return performer_id
-        logger.info("Stash: creating new performer '%s'", name)
-        return await self.create_performer(name)
+        name = _normalize_performer_name(name)
+        key = name.lower()
+        async with _lock_dict_meta:
+            if key not in _performer_locks:
+                _performer_locks[key] = asyncio.Lock()
+            lock = _performer_locks[key]
+        async with lock:
+            p = await self.find_performer(name)
+            if p:
+                logger.debug("Stash: found existing performer '%s' (id=%s)", name, p["id"])
+                return p["id"]
+            p = await self.find_performer_by_alias(name)
+            if p:
+                logger.debug("Stash: found existing performer by alias '%s' (id=%s)", name, p["id"])
+                return p["id"]
+            logger.info("Stash: creating new performer '%s'", name)
+            return await self.create_performer(name)
 
     async def find_performer_by_url(self, url: str) -> dict | None:
         """Find a performer by URL (INCLUDES match on performer urls). Returns {id, name, urls} or None."""
@@ -378,11 +433,32 @@ class StashClient:
         image_url: str | None = None,
     ) -> str:
         """Create a performer with name, urls, and optional image URL. Returns the new performer's ID."""
+        name = _normalize_performer_name(name)
         input_dict: dict = {"name": name, "urls": urls}
         if image_url:
             input_dict["image"] = image_url
         data = await self._query(_PERFORMER_CREATE_WITH_META_MUTATION, {"input": input_dict})
         return data["performerCreate"]["id"]
+
+    async def _gap_fill_performer_url_image(
+        self, performer: dict, url: str, image_url: str | None
+    ) -> None:
+        """Add URL and optionally image to an existing performer if missing."""
+        updates: dict = {}
+        stash_urls = performer.get("urls") or []
+        if url and url not in stash_urls:
+            updates["urls"] = stash_urls + [url]
+        stash_image = performer.get("image_path")
+        if image_url and not stash_image:
+            updates["image"] = image_url
+        if updates:
+            logger.info(
+                "Stash: gap-filling performer %s with %s",
+                performer["id"],
+                list(updates.keys()),
+            )
+            # update_performer expects **fields; need to call with id in input
+            await self.update_performer(performer["id"], **updates)
 
     async def find_or_create_performer_by_url(
         self,
@@ -391,17 +467,29 @@ class StashClient:
         image_url: str | None = None,
     ) -> str:
         """Find performer by URL first, then by name, then create with metadata. Returns performer ID."""
-        by_url = await self.find_performer_by_url(url)
-        if by_url:
-            return by_url["id"]
-        by_name = await self.find_performer(name)
-        if by_name:
-            return by_name
-        return await self.create_performer_with_metadata(
-            name=name,
-            urls=[url],
-            image_url=image_url,
-        )
+        name = _normalize_performer_name(name)
+        key = name.lower()
+        async with _lock_dict_meta:
+            if key not in _performer_locks:
+                _performer_locks[key] = asyncio.Lock()
+            lock = _performer_locks[key]
+        async with lock:
+            by_url = await self.find_performer_by_url(url)
+            if by_url:
+                return by_url["id"]
+            by_name = await self.find_performer(name)
+            if by_name:
+                await self._gap_fill_performer_url_image(by_name, url, image_url)
+                return by_name["id"]
+            by_alias = await self.find_performer_by_alias(name)
+            if by_alias:
+                await self._gap_fill_performer_url_image(by_alias, url, image_url)
+                return by_alias["id"]
+            return await self.create_performer_with_metadata(
+                name=name,
+                urls=[url],
+                image_url=image_url,
+            )
 
     async def get_performer(self, performer_id: str) -> dict | None:
         """Fetch full performer data by Stash ID. Returns the full performer dict or None."""
@@ -446,12 +534,18 @@ class StashClient:
 
     async def find_or_create_studio(self, name: str) -> str:
         """Find studio by name or create. Returns studio ID."""
-        studio_id = await self.find_studio(name)
-        if studio_id:
-            logger.debug("Stash: found existing studio '%s' (id=%s)", name, studio_id)
-            return studio_id
-        logger.info("Stash: creating new studio '%s'", name)
-        return await self.create_studio(name)
+        key = name.strip().lower()
+        async with _lock_dict_meta:
+            if key not in _studio_locks:
+                _studio_locks[key] = asyncio.Lock()
+            lock = _studio_locks[key]
+        async with lock:
+            studio_id = await self.find_studio(name)
+            if studio_id:
+                logger.debug("Stash: found existing studio '%s' (id=%s)", name, studio_id)
+                return studio_id
+            logger.info("Stash: creating new studio '%s'", name)
+            return await self.create_studio(name)
 
     async def update_scene(
         self,
@@ -511,12 +605,18 @@ class StashClient:
 
     async def find_or_create_tag(self, name: str) -> str:
         """Find tag by name or create. Returns tag ID."""
-        tag_id = await self.find_tag(name)
-        if tag_id:
-            logger.debug("Stash: found existing tag '%s' (id=%s)", name, tag_id)
-            return tag_id
-        logger.info("Stash: creating new tag '%s'", name)
-        return await self.create_tag(name)
+        key = name.strip().lower()
+        async with _lock_dict_meta:
+            if key not in _tag_locks:
+                _tag_locks[key] = asyncio.Lock()
+            lock = _tag_locks[key]
+        async with lock:
+            tag_id = await self.find_tag(name)
+            if tag_id:
+                logger.debug("Stash: found existing tag '%s' (id=%s)", name, tag_id)
+                return tag_id
+            logger.info("Stash: creating new tag '%s'", name)
+            return await self.create_tag(name)
 
     # ------------------------------------------------------------------
     # Scraping

@@ -1,6 +1,6 @@
 """SQLAlchemy models for Channel and Video."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -12,10 +12,32 @@ from sqlalchemy import (
     JSON,
     String,
     Text,
+    TypeDecorator,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+
+class TZDateTime(TypeDecorator):
+    """A DateTime type that ensures UTC tzinfo survives a SQLite round-trip.
+
+    SQLite stores datetimes as plain text and loses timezone information.
+    This decorator re-attaches ``timezone.utc`` to any naive value coming
+    back from the database so that Python-side comparisons against
+    aware datetimes (e.g. ``datetime.now(UTC)``) never raise a
+    ``TypeError``.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_result_value(
+        self, value: datetime | None, dialect: object
+    ) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class Channel(Base):
@@ -30,13 +52,13 @@ class Channel(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     check_interval_hours: Mapped[int] = mapped_column(Integer)
     last_checked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        TZDateTime, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+        TZDateTime, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        TZDateTime,
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
@@ -77,10 +99,10 @@ class Video(Base):
     stash_scene_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+        TZDateTime, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        TZDateTime,
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )

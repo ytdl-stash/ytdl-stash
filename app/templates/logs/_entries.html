@@ -1,7 +1,7 @@
 {% if records %}
 <div class="text-xs text-base-content/60 mb-2">Showing {{ records|length }} entries (newest first)</div>
 <div class="log-table-wrap overflow-x-auto max-h-[70vh] overflow-y-auto border border-base-300 rounded-box">
-<table class="table table-xs log-table w-full text-sm">
+<table class="table table-xs log-table table-responsive w-full text-sm">
   <thead class="bg-base-200">
     <tr>
       <th class="w-44 whitespace-nowrap">Time</th>
@@ -13,8 +13,8 @@
   <tbody>
     {% for record in records %}
     <tr class="log-level-{{ record.level|lower }}">
-      <td class="whitespace-nowrap w-44"><code class="text-xs">{{ record.timestamp }}</code></td>
-      <td class="w-20">
+      <td data-label="Time" class="whitespace-nowrap w-44"><code class="text-xs">{{ record.timestamp }}</code></td>
+      <td data-label="Level" class="w-20">
         {% if record.level|lower == 'debug' %}
         <span class="badge badge-sm badge-neutral">{{ record.level }}</span>
         {% elif record.level|lower == 'info' %}
@@ -27,8 +27,8 @@
         <span class="badge badge-sm badge-ghost">{{ record.level }}</span>
         {% endif %}
       </td>
-      <td class="w-48 whitespace-nowrap overflow-hidden text-ellipsis max-w-56"><code class="text-xs">{{ record.logger }}</code></td>
-      <td class="break-words"><pre class="m-0 p-0 bg-transparent border-none font-inherit text-inherit whitespace-pre-wrap break-words overflow-visible">{{ record.message }}</pre></td>
+      <td data-label="Logger" class="w-48 whitespace-nowrap overflow-hidden text-ellipsis max-w-56"><code class="text-xs">{{ record.logger }}</code></td>
+      <td data-label="Message" class="break-words"><pre class="m-0 p-0 bg-transparent border-none font-inherit text-inherit whitespace-pre-wrap break-words overflow-visible">{{ record.message }}</pre></td>
     </tr>
     {% endfor %}
   </tbody>

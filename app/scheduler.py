@@ -144,6 +144,9 @@ async def _do_check_all_channels() -> None:
                 try:
                     await process_channel_scan(channel, db, settings)
                 except Exception as e:
+                    # Rollback to clear any dirty session state (e.g. failed
+                    # commit) so the next channel scan starts with a clean session.
+                    await db.rollback()
                     logger.exception(
                         "Channel checker failed for channel %s: %s", channel.id, e
                     )

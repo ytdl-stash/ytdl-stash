@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import Settings, get_settings
 from app.database import get_db
+from app.download_progress import download_progress
 from app.main import templates
 from app.models import Channel
 from app.performer_sync import sync_channel_performer
@@ -95,6 +96,7 @@ async def performer_detail(
             "channel": channel,
             "videos": videos,
             "stash_url": settings.stash_url.rstrip("/"),
+            "download_progress": download_progress.snapshot(),
         },
     )
 

@@ -50,7 +50,40 @@
   color: #71717a;
 }
 
-/* Log table: sticky header */
+/* Responsive tables: card-style rows on narrow viewports (matches Tailwind md: 768px) */
+@media (max-width: 768px) {
+  .table-responsive thead {
+    display: none;
+  }
+  .table-responsive tbody tr {
+    display: block;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border: 1px solid oklch(var(--bc) / 0.15);
+    border-radius: var(--rounded-box, 0.5rem);
+    margin-bottom: 0.75rem;
+    padding: 0.5rem;
+  }
+  .table-responsive tbody td {
+    display: block;
+    padding: 0.25rem 0;
+    border: none;
+  }
+  .table-responsive tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    display: block;
+    margin-bottom: 0.125rem;
+    opacity: 0.8;
+  }
+  .table-responsive tbody td:not([data-label])::before {
+    display: none;
+  }
+}
+
+/* Log table: sticky header + touch-friendly scroll */
+.log-table-wrap {
+  -webkit-overflow-scrolling: touch;
+}
 .log-table thead {
   position: sticky;
   top: 0;

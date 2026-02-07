@@ -44,7 +44,7 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 |-------|-----------|-----|
 | Runtime | Python 3.12 | yt-dlp is a Python library; single language for everything |
 | Web framework | FastAPI + Uvicorn | Async-native, automatic OpenAPI docs, dependency injection |
-| Frontend | Jinja2 + HTMX + DaisyUI + Tailwind (CDN) | No build step, server-rendered, progressive enhancement; DaisyUI components and Tailwind utilities for layout and styling |
+| Frontend | Jinja2 + HTMX + DaisyUI + Tailwind (CDN) | No build step, server-rendered, progressive enhancement; DaisyUI components and Tailwind utilities for layout and styling. Tables use a responsive pattern (card-style rows on narrow viewports via `data-label` and `.table-responsive`); list/detail tables are wrapped in `overflow-x-auto` for fallback. |
 | Database | SQLite + SQLAlchemy async + aiosqlite | Zero-config, single-file DB, async support via aiosqlite |
 | Downloader | yt-dlp (Python import) | Industry standard, supports hundreds of sites |
 | Scheduler | APScheduler 3.x | Lightweight, async-compatible, no external broker needed |
@@ -235,6 +235,16 @@ The web UI log viewer (`/logs`) supports:
 
 Each module creates its own logger with `logging.getLogger(__name__)`. Noisy third-party loggers (httpx, httpcore, apscheduler, uvicorn.access) are quieted to WARNING level.
 
+## Performer deduplication
+
+To avoid creating duplicate performers in Stash when multiple code paths (channel sync, video pipeline, post-sync scrape) or concurrent downloads reference the same person, the app uses:
+
+- **Per-name asyncio locks** (module-level in `stash_client.py`, shared by all `StashClient` instances): `find_or_create_performer`, `find_or_create_performer_by_url`, `find_or_create_studio`, and `find_or_create_tag` each use a lock keyed by normalized name so that concurrent workers (e.g. when `max_concurrent_downloads` > 1) serialize find-then-create for the same entity and only one create runs.
+- **Name normalization**: Performer names are normalized (whitespace collapsed, trim) before lookup and create so that "Jane Doe" and "Jane  Doe" resolve to the same performer.
+- **Alias fallback**: Before creating a performer, the client checks Stash for an existing performer whose `alias_list` contains the given name (`find_performer_by_alias`); if found, that performer ID is reused.
+- **Channel cross-reference in pipeline**: The pipeline queries all channels and builds a case-insensitive name to channel lookup. If a performer name matches a known channel, it uses `find_or_create_performer_by_url(name, channel.url, channel.performer_image_url)` so the performer gets the channel URL and image in Stash. This applies to both primary performers (the video channel owner) and secondary performers (guests/co-stars who are also monitored channels).
+- **URL/image gap-fill**: When `find_or_create_performer_by_url` finds an existing performer by name or alias (but not by URL), it gap-fills the performer in Stash: if the channel URL is not already in the performer URL list, it appends it; if the performer has no image and the channel provides `performer_image_url`, it pushes the image. This back-fills metadata for performers that were previously created with name only (e.g. by an earlier pipeline run or post-sync scraper).
+
 ## Schema (Channel)
 
 The `Channel` model includes: `id`, `name`, `url`, `site`, `enabled`, `check_interval_hours`, `last_checked_at`, `created_at`, `updated_at`, `stash_performer_id` (nullable, linked Stash performer ID), `performer_image_url` (nullable, cached avatar/thumbnail URL from the tube site), `stash_performer_data` (nullable JSON, full Stash performer record pulled during sync — gender, birthdate, ethnicity, measurements, bio, etc.), `max_video_age_days` (nullable, only download videos uploaded within this many days), and `min_duration_seconds` (nullable, only download videos longer than this many seconds).
@@ -244,6 +254,8 @@ The `Channel` model includes: `id`, `name`, `url`, `site`, `enabled`, `check_int
 ```
 pending -> downloading -> downloaded -> importing -> synced
    |            |              |             |
+   |            +---> skipped  +-------------+---> failed
+   |            (too short)
    +------------+--------------+-------------+---> failed
 
    imported (set by YTDLM import; not re-downloaded)
@@ -251,6 +263,7 @@ pending -> downloading -> downloaded -> importing -> synced
 
 - **pending**: Video discovered during channel scan, queued for download.
 - **downloading**: Download in progress via yt-dlp.
+- **skipped**: Video skipped because it did not meet filter criteria (e.g. duration shorter than `min_duration_seconds`). `error_message` explains the reason. Can be retried.
 - **downloaded**: File saved to disk, oshash computed.
 - **importing**: Stash `metadataScan` triggered, waiting for scene to appear.
 - **synced**: Scene found in Stash, metadata (title, performers, studio, date) applied.

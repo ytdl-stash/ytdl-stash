@@ -13,9 +13,25 @@
   <div class="navbar bg-base-200">
     <div class="container mx-auto px-4">
       <div class="navbar-start">
+        <div class="dropdown lg:hidden">
+          <button type="button" tabindex="0" class="btn btn-ghost" aria-label="Open menu">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-[1] mt-2 w-52 p-2 shadow">
+            <li><a href="/">Dashboard</a></li>
+            <li><a href="/channels">Channels</a></li>
+            <li><a href="/performers">Performers</a></li>
+            <li><a href="/videos">Videos</a></li>
+            <li><a href="/jobs">Jobs</a></li>
+            <li><a href="/logs">Logs</a></li>
+            <li><a href="/settings">Settings</a></li>
+          </ul>
+        </div>
         <a href="/" class="btn btn-ghost text-lg font-bold">ytdl-stash</a>
       </div>
-      <div class="navbar-end">
+      <div class="navbar-end hidden lg:flex">
         <ul class="menu menu-horizontal px-1 gap-1">
           <li><a href="/">Dashboard</a></li>
           <li><a href="/channels">Channels</a></li>

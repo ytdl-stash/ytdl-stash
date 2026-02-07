@@ -1,5 +1,5 @@
 <tr id="channel-row-{{ channel.id }}" class="{{ 'opacity-65 grayscale hover:opacity-90' if not channel.enabled else '' }}">
-  <td>
+  <td data-label="Name">
     <form hx-put="/channels/{{ channel.id }}"
           hx-target="#channel-row-{{ channel.id }}"
           hx-swap="outerHTML"
@@ -52,14 +52,14 @@
       </button>
     </form>
   </td>
-  <td>{{ channel.site }}</td>
-  <td>{{ channel.videos|length }}</td>
-  <td>{{ channel.check_interval_hours }}h</td>
-  <td>{{ channel.max_video_age_days ~ 'd' if channel.max_video_age_days else '—' }}</td>
-  <td>{{ channel.min_duration_seconds ~ 's' if channel.min_duration_seconds else '—' }}</td>
-  <td>{{ channel.last_checked_at.strftime('%Y-%m-%d %H:%M') if channel.last_checked_at else 'Never' }}</td>
-  <td>{{ 'Enabled' if channel.enabled else 'Disabled' }}</td>
-  <td>
+  <td data-label="Site">{{ channel.site }}</td>
+  <td data-label="Videos">{{ channel.videos|length }}</td>
+  <td data-label="Interval">{{ channel.check_interval_hours }}h</td>
+  <td data-label="Max Age">{{ channel.max_video_age_days ~ 'd' if channel.max_video_age_days else '—' }}</td>
+  <td data-label="Min Duration">{{ channel.min_duration_seconds ~ 's' if channel.min_duration_seconds else '—' }}</td>
+  <td data-label="Last Checked">{{ channel.last_checked_at.strftime('%Y-%m-%d %H:%M') if channel.last_checked_at else 'Never' }}</td>
+  <td data-label="Status">{{ 'Enabled' if channel.enabled else 'Disabled' }}</td>
+  <td data-label="Actions">
     <button class="btn btn-sm btn-primary"
             hx-post="/channels/{{ channel.id }}/check-now"
             hx-target="#check-result-{{ channel.id }}"

@@ -54,7 +54,7 @@
         Stopping…
       </button>
       {% endif %}
-      {% if video.status in ['failed', 'cancelled'] %}
+      {% if video.status in ['failed', 'cancelled', 'skipped'] %}
       <button class="btn btn-sm btn-primary"
               hx-post="/videos/{{ video.id }}/retry"
               hx-target="#video-status-{{ video.id }}"
