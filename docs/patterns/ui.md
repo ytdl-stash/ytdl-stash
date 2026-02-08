@@ -25,14 +25,16 @@ For filter, sort, or pagination button groups (e.g. All / Watched / Not Watched 
 
 **Reusable partial:** Use `app/templates/components/_filter_button.html` for link-based filter/toggle buttons. Pass: `url`, `label`, `is_active`, `hx_target`. Optional: `tooltip`, `tooltip_classes` (e.g. `tooltip tooltip-bottom`).
 
+**HTMX and active state:** If the buttons trigger HTMX requests, the **swap target must include the filter/sort nav** so the response can re-render the buttons with the correct `is_active`. Otherwise the active state will be wrong after a click. Use a wrapper (e.g. `#performers-content`) that contains both the nav and the content, and return a partial that includes both from the server. See `performers/list.html` and `performers/_list_content.html`.
+
 **Example:**
 
 ```html
 <div class="join">
-  {% with url='/performers?filter=all&sort=' ~ sort, label='All', is_active=(filter == 'all'), hx_target='#performer-grid' %}
+  {% with url='/performers?filter=all&sort=' ~ sort, label='All', is_active=(filter == 'all'), hx_target='#performers-content' %}
   {% include "components/_filter_button.html" with context %}
   {% endwith %}
-  {% with url='/performers?filter=watched&sort=' ~ sort, label='Watched', is_active=(filter == 'watched'), hx_target='#performer-grid', tooltip='Channels that are actively monitored', tooltip_classes='tooltip tooltip-bottom' %}
+  {% with url='/performers?filter=watched&sort=' ~ sort, label='Watched', is_active=(filter == 'watched'), hx_target='#performers-content', tooltip='Channels that are actively monitored', tooltip_classes='tooltip tooltip-bottom' %}
   {% include "components/_filter_button.html" with context %}
   {% endwith %}
 </div>

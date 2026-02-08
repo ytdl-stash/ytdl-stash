@@ -1,12 +1,13 @@
 {# Reusable filter/toggle button for link-based filter groups.
    Use inside a DaisyUI join container. Pass: url, label, is_active, hx_target.
    Optional: tooltip, tooltip_classes (default: tooltip tooltip-bottom)
+   Inline-flex + min-h ensures all buttons align vertically (active/inactive same height).
 #}
 <a href="{{ url }}"
    hx-get="{{ url }}"
    hx-target="{{ hx_target }}"
    hx-swap="{{ hx_swap | default('innerHTML') }}"
    hx-push-url="true"
-   class="join-item btn btn-sm {{ 'btn-active' if is_active else '' }} {{ tooltip_classes | default('') }}"
+   class="join-item btn btn-sm inline-flex items-center justify-center min-h-8 {{ 'btn-primary' if is_active else 'btn-ghost' }} {{ tooltip_classes | default('') }}"
    {% if tooltip %}data-tip="{{ tooltip }}"{% endif %}
 >{{ label }}</a>

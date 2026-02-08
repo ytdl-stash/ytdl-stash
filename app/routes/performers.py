@@ -57,8 +57,14 @@ async def list_performers(
 
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
-            "performers/_card_list.html",
-            {"request": request, "channels": channels, "settings": settings},
+            "performers/_list_content.html",
+            {
+                "request": request,
+                "channels": channels,
+                "filter": filter,
+                "sort": sort,
+                "settings": settings,
+            },
         )
     return templates.TemplateResponse(
         "performers/list.html",
