@@ -294,168 +294,189 @@ async def process_single_download(
         logger.info("Video %s: downloading", video.id)
 
         # ------------------------------------------------------------------
-        # Pre-download metadata check
-        # The channel scan uses extract_flat=True which often omits duration
-        # and upload_date. If min_duration_seconds or max_video_age_days is
-        # set and we're missing those fields, extract full metadata (no
-        # download) to check before wasting bandwidth.
+        # File-existence fast-path
+        # If a previous attempt already downloaded the file (e.g. server
+        # crashed mid-import, or startup recovery reset us to pending),
+        # skip the download entirely and jump to the oshash/import stage.
         # ------------------------------------------------------------------
         await db.refresh(video, ["channel"])
         channel = video.channel
-        needs_metadata = (
-            (channel.min_duration_seconds is not None and video.duration_seconds is None)
-            or (channel.max_video_age_days is not None and video.upload_date is None)
-        )
-        if needs_metadata:
-            logger.info(
-                "Video %s: extracting metadata to check filters (min_duration=%s, max_age=%s)",
-                video.id,
-                channel.min_duration_seconds,
-                channel.max_video_age_days,
-            )
-            try:
-                info = await async_extract_video_info(video.url, settings)
-                if info.get("duration") is not None:
-                    video.duration_seconds = int(info["duration"])
-                if info.get("upload_date") is not None:
-                    video.upload_date = _parse_date(info["upload_date"])
-                await db.commit()
-            except Exception:
-                logger.debug(
-                    "Video %s: metadata extraction failed, will check after download",
-                    video.id,
-                    exc_info=True,
+        existing_filepath: str | None = None
+
+        if video.original_filename:
+            candidate = os.path.join(settings.download_dir, video.original_filename)
+            if os.path.isfile(candidate):
+                existing_filepath = candidate
+                logger.info(
+                    "Video %s: file already on disk (%s), skipping download",
+                    video.id, candidate,
                 )
 
-        # Filter: skip if duration below min (when known)
-        if (
-            channel.min_duration_seconds is not None
-            and video.duration_seconds is not None
-            and video.duration_seconds < channel.min_duration_seconds
-        ):
-            logger.info(
-                "Video %s: skipped — duration %ds < min %ds",
-                video.id, video.duration_seconds, channel.min_duration_seconds,
+        if existing_filepath is None:
+            # ------------------------------------------------------------------
+            # Pre-download metadata check
+            # The channel scan uses extract_flat=True which often omits duration
+            # and upload_date. If min_duration_seconds or max_video_age_days is
+            # set and we're missing those fields, extract full metadata (no
+            # download) to check before wasting bandwidth.
+            # ------------------------------------------------------------------
+            needs_metadata = (
+                (channel.min_duration_seconds is not None and video.duration_seconds is None)
+                or (channel.max_video_age_days is not None and video.upload_date is None)
             )
-            video.status = "skipped"
-            video.error_message = (
-                f"Too short ({video.duration_seconds}s < "
-                f"{channel.min_duration_seconds}s minimum)"
-            )
-            await db.commit()
-            download_progress.clear(video.id)
-            return
-
-        # Filter: skip if older than max age (when known)
-        if channel.max_video_age_days is not None and video.upload_date is not None:
-            min_upload_date = (
-                datetime.now(UTC) - timedelta(days=channel.max_video_age_days)
-            ).date()
-            if video.upload_date < min_upload_date:
+            if needs_metadata:
                 logger.info(
-                    "Video %s: skipped — upload date %s older than max %d days",
-                    video.id, video.upload_date, channel.max_video_age_days,
+                    "Video %s: extracting metadata to check filters (min_duration=%s, max_age=%s)",
+                    video.id,
+                    channel.min_duration_seconds,
+                    channel.max_video_age_days,
+                )
+                try:
+                    info = await async_extract_video_info(video.url, settings)
+                    if info.get("duration") is not None:
+                        video.duration_seconds = int(info["duration"])
+                    if info.get("upload_date") is not None:
+                        video.upload_date = _parse_date(info["upload_date"])
+                    await db.commit()
+                except Exception:
+                    logger.debug(
+                        "Video %s: metadata extraction failed, will check after download",
+                        video.id,
+                        exc_info=True,
+                    )
+
+            # Filter: skip if duration below min (when known)
+            if (
+                channel.min_duration_seconds is not None
+                and video.duration_seconds is not None
+                and video.duration_seconds < channel.min_duration_seconds
+            ):
+                logger.info(
+                    "Video %s: skipped — duration %ds < min %ds",
+                    video.id, video.duration_seconds, channel.min_duration_seconds,
                 )
                 video.status = "skipped"
                 video.error_message = (
-                    f"Too old (uploaded {video.upload_date}, max age "
-                    f"{channel.max_video_age_days} days)"
+                    f"Too short ({video.duration_seconds}s < "
+                    f"{channel.min_duration_seconds}s minimum)"
                 )
                 await db.commit()
                 download_progress.clear(video.id)
                 return
 
-        last_hook_ts = 0.0
-        last_hook_status: str | None = None
+            # Filter: skip if older than max age (when known)
+            if channel.max_video_age_days is not None and video.upload_date is not None:
+                min_upload_date = (
+                    datetime.now(UTC) - timedelta(days=channel.max_video_age_days)
+                ).date()
+                if video.upload_date < min_upload_date:
+                    logger.info(
+                        "Video %s: skipped — upload date %s older than max %d days",
+                        video.id, video.upload_date, channel.max_video_age_days,
+                    )
+                    video.status = "skipped"
+                    video.error_message = (
+                        f"Too old (uploaded {video.upload_date}, max age "
+                        f"{channel.max_video_age_days} days)"
+                    )
+                    await db.commit()
+                    download_progress.clear(video.id)
+                    return
 
-        def _hook(d: dict) -> None:
-            # Called from the download worker thread. Throttle UI updates.
-            nonlocal last_hook_ts, last_hook_status
+            last_hook_ts = 0.0
+            last_hook_status: str | None = None
+
+            def _hook(d: dict) -> None:
+                # Called from the download worker thread. Throttle UI updates.
+                nonlocal last_hook_ts, last_hook_status
+                if download_control.is_cancel_requested(video.id):
+                    raise DownloadCancelled("Download cancelled by user")
+                now = time.monotonic()
+                status = d.get("status")
+                if status != last_hook_status or (now - last_hook_ts) >= 0.25:
+                    download_progress.update_from_ytdlp_hook(video.id, d)
+                    last_hook_ts = now
+                    last_hook_status = str(status) if status is not None else None
+
+            result = await async_download_video(
+                video.url,
+                settings.download_dir,
+                settings.ytdlp_output_template,
+                settings,
+                progress_hook=_hook,
+            )
+
+            # Stop requested during the download (or right as it finished)
             if download_control.is_cancel_requested(video.id):
                 raise DownloadCancelled("Download cancelled by user")
-            now = time.monotonic()
-            status = d.get("status")
-            if status != last_hook_status or (now - last_hook_ts) >= 0.25:
-                download_progress.update_from_ytdlp_hook(video.id, d)
-                last_hook_ts = now
-                last_hook_status = str(status) if status is not None else None
 
-        result = await async_download_video(
-            video.url,
-            settings.download_dir,
-            settings.ytdlp_output_template,
-            settings,
-            progress_hook=_hook,
-        )
-
-        # Stop requested during the download (or right as it finished)
-        if download_control.is_cancel_requested(video.id):
-            raise DownloadCancelled("Download cancelled by user")
-
-        video.original_filename = result["filename"]
-        video.title = result["title"]
-        video.upload_date = result["upload_date"]
-        video.performers = result["performers"]
-        video.studio = result.get("studio")
-        video.duration_seconds = (
-            int(result["duration"]) if result.get("duration") is not None else None
-        )
-        video.thumbnail_url = result.get("thumbnail_url")
-        video.metadata_json = result.get("metadata_json")
-
-        # ------------------------------------------------------------------
-        # Post-download filter safety nets
-        # Catches videos whose duration/upload_date was unavailable during
-        # both the channel scan AND the pre-download metadata extraction.
-        # ------------------------------------------------------------------
-        def _skip_after_download(error_msg: str) -> None:
-            try:
-                os.remove(result["filepath"])
-                logger.info("Video %s: deleted file %s", video.id, result["filepath"])
-            except OSError as exc:
-                logger.warning(
-                    "Video %s: could not delete file %s: %s",
-                    video.id, result["filepath"], exc,
-                )
-            video.status = "skipped"
-            video.error_message = error_msg
-
-        if (
-            channel.min_duration_seconds is not None
-            and video.duration_seconds is not None
-            and video.duration_seconds < channel.min_duration_seconds
-        ):
-            logger.info(
-                "Video %s: skipped after download — duration %ds < min %ds",
-                video.id, video.duration_seconds, channel.min_duration_seconds,
+            video.original_filename = result["filename"]
+            video.title = result["title"]
+            video.upload_date = result["upload_date"]
+            video.performers = result["performers"]
+            video.studio = result.get("studio")
+            video.duration_seconds = (
+                int(result["duration"]) if result.get("duration") is not None else None
             )
-            _skip_after_download(
-                f"Too short ({video.duration_seconds}s < "
-                f"{channel.min_duration_seconds}s minimum)",
-            )
-            await db.commit()
-            download_progress.clear(video.id)
-            return
+            video.thumbnail_url = result.get("thumbnail_url")
+            video.metadata_json = result.get("metadata_json")
 
-        if (
-            channel.max_video_age_days is not None
-            and video.upload_date is not None
-        ):
-            min_upload_date = (
-                datetime.now(UTC) - timedelta(days=channel.max_video_age_days)
-            ).date()
-            if video.upload_date < min_upload_date:
+            # ------------------------------------------------------------------
+            # Post-download filter safety nets
+            # Catches videos whose duration/upload_date was unavailable during
+            # both the channel scan AND the pre-download metadata extraction.
+            # ------------------------------------------------------------------
+            def _skip_after_download(error_msg: str) -> None:
+                try:
+                    os.remove(result["filepath"])
+                    logger.info("Video %s: deleted file %s", video.id, result["filepath"])
+                except OSError as exc:
+                    logger.warning(
+                        "Video %s: could not delete file %s: %s",
+                        video.id, result["filepath"], exc,
+                    )
+                video.status = "skipped"
+                video.error_message = error_msg
+
+            if (
+                channel.min_duration_seconds is not None
+                and video.duration_seconds is not None
+                and video.duration_seconds < channel.min_duration_seconds
+            ):
                 logger.info(
-                    "Video %s: skipped after download — upload date %s older than max %d days",
-                    video.id, video.upload_date, channel.max_video_age_days,
+                    "Video %s: skipped after download — duration %ds < min %ds",
+                    video.id, video.duration_seconds, channel.min_duration_seconds,
                 )
                 _skip_after_download(
-                    f"Too old (uploaded {video.upload_date}, max age "
-                    f"{channel.max_video_age_days} days)",
+                    f"Too short ({video.duration_seconds}s < "
+                    f"{channel.min_duration_seconds}s minimum)",
                 )
                 await db.commit()
                 download_progress.clear(video.id)
                 return
+
+            if (
+                channel.max_video_age_days is not None
+                and video.upload_date is not None
+            ):
+                min_upload_date = (
+                    datetime.now(UTC) - timedelta(days=channel.max_video_age_days)
+                ).date()
+                if video.upload_date < min_upload_date:
+                    logger.info(
+                        "Video %s: skipped after download — upload date %s older than max %d days",
+                        video.id, video.upload_date, channel.max_video_age_days,
+                    )
+                    _skip_after_download(
+                        f"Too old (uploaded {video.upload_date}, max age "
+                        f"{channel.max_video_age_days} days)",
+                    )
+                    await db.commit()
+                    download_progress.clear(video.id)
+                    return
+
+            # Use filepath from the download result for the rest of the pipeline
+            existing_filepath = result["filepath"]
 
         video.status = "downloaded"
         if video.downloaded_at is None:
@@ -467,8 +488,9 @@ async def process_single_download(
         if download_control.is_cancel_requested(video.id):
             raise DownloadCancelled("Download cancelled by user")
 
-        logger.info("Video %s: computing oshash for %s", video.id, result["filepath"])
-        oshash = await async_compute_oshash(result["filepath"])
+        filepath = existing_filepath
+        logger.info("Video %s: computing oshash for %s", video.id, filepath)
+        oshash = await async_compute_oshash(filepath)
         video.oshash = oshash
         await db.commit()
         logger.info("Video %s: oshash=%s", video.id, oshash)
@@ -482,7 +504,7 @@ async def process_single_download(
         if download_control.is_cancel_requested(video.id):
             raise DownloadCancelled("Download cancelled by user")
 
-        scan_path = result["filepath"]
+        scan_path = filepath
         if settings.stash_download_dir:
             # Only replace when path is under download_dir (prefix match)
             d = settings.download_dir.rstrip("/")

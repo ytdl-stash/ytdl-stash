@@ -244,6 +244,10 @@ def _build_download_opts(
         "no_warnings": True,
         "retries": settings.ytdlp_retries,
         "fragment_retries": settings.ytdlp_fragment_retries,
+        # Prevent re-downloading files that already exist at the output path.
+        # The pipeline has its own file-existence fast-path, but this is a
+        # safety net in case yt-dlp is reached for an already-downloaded file.
+        "nooverwrites": True,
     }
     if settings.cookies_file:
         opts["cookiefile"] = settings.cookies_file

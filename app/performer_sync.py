@@ -8,6 +8,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from app.downloader import _DOMAIN_RE, async_extract_channel_metadata
+from app.stash_client import _url_to_data_uri
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,6 +77,11 @@ async def _pull_from_stash(
     # Store the full Stash performer record locally
     channel.stash_performer_data = performer
 
+    # Overwrite channel name with the Stash performer name (Stash is authoritative).
+    stash_name = (performer.get("name") or "").strip()
+    if stash_name:
+        channel.name = stash_name
+
     # Keep performer_image_url in sync — prefer Stash image if available.
     # image_path from Stash is a relative path like /performer/1/image?...
     # so we need to prepend the Stash base URL to make it usable.
@@ -117,7 +123,9 @@ async def _push_to_stash(
     # Stash returns image_path = None when no image is set.
     stash_image = stash_performer.get("image_path")
     if channel.performer_image_url and not stash_image:
-        updates["image"] = channel.performer_image_url
+        data_uri = await _url_to_data_uri(channel.performer_image_url)
+        if data_uri:
+            updates["image"] = data_uri
 
     # Name: if Stash performer has a placeholder/empty name and we have a real one
     stash_name = (stash_performer.get("name") or "").strip()

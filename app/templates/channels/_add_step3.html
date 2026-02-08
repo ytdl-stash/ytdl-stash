@@ -17,7 +17,10 @@
       <span class="badge badge-success">Linked</span>
     </div>
     {% else %}
-    <p class="text-sm text-base-content/70 mt-1">No match — will create on save: <strong>{{ name|e }}</strong></p>
+    <label class="flex items-center gap-2 mt-1 cursor-pointer" id="performer-checkbox-label">
+      <input type="checkbox" name="create_performer" value="1" class="checkbox checkbox-sm" checked>
+      <span class="text-sm">Create performer in Stash: <strong>{{ name|e }}</strong></span>
+    </label>
     {% endif %}
   </div>
   <div>
@@ -28,7 +31,10 @@
       <span class="badge badge-success">Linked</span>
     </div>
     {% else %}
-    <p class="text-sm text-base-content/70 mt-1">No match — will create on save: <strong>{{ name|e }}</strong></p>
+    <label class="flex items-center gap-2 mt-1 cursor-pointer" id="studio-checkbox-label">
+      <input type="checkbox" name="create_studio" value="1" class="checkbox checkbox-sm" checked>
+      <span class="text-sm">Create studio in Stash: <strong>{{ name|e }}</strong></span>
+    </label>
     {% endif %}
   </div>
 </div>
@@ -46,7 +52,8 @@
     <input type="hidden" name="min_duration_seconds" value="{{ min_duration_seconds|default('', true)|e }}">
     <button type="submit" class="btn btn-ghost btn-sm">Back</button>
   </form>
-  <form hx-post="/channels"
+  <form id="save-channel-form"
+        hx-post="/channels"
         hx-target="#channel-grid"
         hx-swap="beforeend"
         class="inline">
@@ -56,6 +63,31 @@
     <input type="hidden" name="check_interval_hours" value="{{ check_interval_hours }}">
     <input type="hidden" name="max_video_age_days" value="{{ max_video_age_days|default('', true)|e }}">
     <input type="hidden" name="min_duration_seconds" value="{{ min_duration_seconds|default('', true)|e }}">
+    {# When a match already exists, always sync (hidden input = always "1").
+       When no match, the checkbox value is included only when checked. #}
+    {% if performer_match %}
+    <input type="hidden" name="create_performer" value="1">
+    {% endif %}
+    {% if studio_match %}
+    <input type="hidden" name="create_studio" value="1">
+    {% endif %}
     <button type="submit" class="btn btn-primary">Save Channel</button>
   </form>
 </div>
+
+{# Copy checkbox values into HTMX request params before the POST fires.
+   htmx:configRequest is guaranteed to fire and lets us inject params directly. #}
+<script>
+document.getElementById('save-channel-form')?.addEventListener('htmx:configRequest', function(evt) {
+  // Performer checkbox (only present when no existing match)
+  const perfCb = document.querySelector('#performer-checkbox-label input[name="create_performer"]');
+  if (perfCb && perfCb.checked) {
+    evt.detail.parameters['create_performer'] = '1';
+  }
+  // Studio checkbox (only present when no existing match)
+  const studioCb = document.querySelector('#studio-checkbox-label input[name="create_studio"]');
+  if (studioCb && studioCb.checked) {
+    evt.detail.parameters['create_studio'] = '1';
+  }
+});
+</script>

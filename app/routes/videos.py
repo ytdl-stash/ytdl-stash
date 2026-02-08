@@ -255,9 +255,9 @@ async def stop_video(
         )
 
     if request.headers.get("HX-Request"):
-        # Avoid duplicate DOM IDs: the active downloads panel targets `#active-downloads`,
-        # so return the full panel HTML when it's the swap target.
-        if request.headers.get("HX-Target") == "active-downloads":
+        # Return the full active-downloads panel when it's the swap target (global or channel-scoped).
+        hx_target = request.headers.get("HX-Target") or ""
+        if hx_target == "active-downloads":
             stmt = (
                 select(Video)
                 .where(Video.status.in_(ACTIVE_DOWNLOAD_STATUSES))
@@ -275,6 +275,34 @@ async def stop_video(
                     "settings": settings,
                 },
             )
+        target_id = (hx_target or "").lstrip("#")
+        if target_id.startswith("channel-active-downloads-"):
+            try:
+                channel_id = int(target_id.removeprefix("channel-active-downloads-"))
+            except ValueError:
+                channel_id = None
+            if channel_id is not None:
+                result = await db.execute(
+                    select(Channel)
+                    .where(Channel.id == channel_id)
+                    .options(selectinload(Channel.videos))
+                )
+                channel = result.scalar_one_or_none()
+                if channel:
+                    active_videos = [
+                        v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES
+                    ]
+                    return templates.TemplateResponse(
+                        "videos/_active_downloads.html",
+                        {
+                            "request": request,
+                            "active_videos": active_videos,
+                            "download_progress": download_progress.snapshot(),
+                            "settings": settings,
+                            "poll_url": f"/channels/{channel_id}/active_downloads",
+                            "container_id": f"channel-active-downloads-{channel_id}",
+                        },
+                    )
         return templates.TemplateResponse(
             "videos/_status_badge.html",
             {

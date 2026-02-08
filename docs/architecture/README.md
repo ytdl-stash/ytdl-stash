@@ -164,6 +164,7 @@ ytdl-stash/
         _card_list.html         # HTMX partial: loop of _card.html
         detail.html             # Channel detail page
         _detail_card.html       # HTMX partial: channel detail card (Stash sync + Channel Settings + videos)
+        _channel_videos.html    # HTMX partial: channel video table (polls every 10s)
         _add_modal.html         # Add channel dialog shell + step 1
         _add_step1.html         # Step 1: URL input
         _add_step2.html         # Step 2: metadata review + settings
@@ -174,9 +175,9 @@ ytdl-stash/
         detail.html
         _video_list.html       # HTMX partial: table + pagination
         _table_body.html       # HTMX partial: video table rows
-        _table_body_performer.html  # Partial: video rows for channel detail (no channel/thumb columns)
-        _status_badge.html     # HTMX partial: status badge
-        _active_downloads.html # HTMX partial: active downloads panel (self-polls every 3s)
+        _table_body_performer.html  # Partial: video rows for channel detail (thumb, no channel column)
+        _status_badge.html     # HTMX partial: status badge (tooltip shows error_message when present)
+        _active_downloads.html # HTMX partial: active downloads panel (self-polls every 3s; optional poll_url for channel-scoped)
       settings.html
     static/
       style.css

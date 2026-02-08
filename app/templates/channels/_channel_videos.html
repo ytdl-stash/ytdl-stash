@@ -1,0 +1,22 @@
+<div id="channel-videos-table-wrapper"
+     hx-get="/channels/{{ channel.id }}/videos"
+     hx-trigger="every 10s"
+     hx-swap="outerHTML">
+  <div class="overflow-x-auto">
+    <table class="table table-responsive mt-2">
+      <thead>
+        <tr>
+          <th class="w-24"></th>
+          <th>Title</th>
+          <th>Status</th>
+          <th>Upload Date</th>
+          <th>Duration</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% include "videos/_table_body_performer.html" %}
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
+ACTIVE_DOWNLOAD_STATUSES = ("downloading", "cancelling", "downloaded", "importing")
+
 
 def _parse_optional_int(value: str | None) -> int | None:
     """Parse a form value to an optional positive int. Returns None for blank/zero/negative."""
@@ -357,6 +359,8 @@ async def add_channel(
     check_interval_hours: int | None = Form(None),
     max_video_age_days: str = Form(""),
     min_duration_seconds: str = Form(""),
+    create_performer: str = Form(""),
+    create_studio: str = Form(""),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
@@ -399,10 +403,19 @@ async def add_channel(
     db.add(channel)
     await db.flush()
 
+    want_performer = bool(create_performer)
+    want_studio = bool(create_studio)
+
     try:
         async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
-            await sync_channel_performer(channel, db, stash, settings)
-            await sync_channel_studio(channel, db, stash, settings)
+            if want_performer:
+                await sync_channel_performer(channel, db, stash, settings)
+                # If performer was just created/linked, scrape it via Stash
+                # scrapers and re-sync so we pull enriched metadata immediately.
+                if channel.stash_performer_id:
+                    await _scrape_and_resync_performer(channel, stash, db, settings)
+            if want_studio:
+                await sync_channel_studio(channel, db, stash, settings)
     except Exception:
         logger.warning("Stash sync failed for channel %s", channel.id, exc_info=True)
 
@@ -418,7 +431,87 @@ async def add_channel(
     return RedirectResponse(url="/channels", status_code=303)
 
 
+async def _scrape_and_resync_performer(
+    channel: Channel,
+    stash: StashClient,
+    db: AsyncSession,
+    settings: Settings,
+) -> None:
+    """Scrape performer URL via Stash scrapers, apply data, then re-sync.
+
+    Non-fatal: logs warnings on failure but never raises.
+    """
+    if not channel.stash_performer_id:
+        return
+    try:
+        scraped = await stash.scrape_performer_url(channel.url)
+        if scraped:
+            await stash.apply_scraped_performer(channel.stash_performer_id, scraped)
+            # Re-sync so local cache reflects the scraped data
+            await sync_channel_performer(channel, db, stash, settings)
+    except Exception:
+        logger.warning(
+            "Performer scrape+resync failed for channel %s (performer %s)",
+            channel.id,
+            channel.stash_performer_id,
+            exc_info=True,
+        )
+
+
 # ----- Detail -----
+
+@router.get("/{channel_id}/active_downloads")
+async def channel_active_downloads(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """HTMX partial: active downloads for this channel only."""
+    channel = await _load_channel_with_videos(db, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
+    return templates.TemplateResponse(
+        "videos/_active_downloads.html",
+        {
+            "request": request,
+            "active_videos": active_videos,
+            "download_progress": download_progress.snapshot(),
+            "settings": settings,
+            "poll_url": f"/channels/{channel_id}/active_downloads",
+            "container_id": f"channel-active-downloads-{channel_id}",
+        },
+    )
+
+
+@router.get("/{channel_id}/videos")
+async def channel_videos(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """HTMX partial: video table for this channel (for polling refresh)."""
+    channel = await _load_channel_with_videos(db, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    videos = sorted(
+        channel.videos,
+        key=lambda v: v.upload_date or date.min,
+        reverse=True,
+    )
+    return templates.TemplateResponse(
+        "channels/_channel_videos.html",
+        {
+            "request": request,
+            "channel": channel,
+            "videos": videos,
+            "settings": settings,
+            "download_progress": download_progress.snapshot(),
+        },
+    )
+
 
 @router.get("/{channel_id}")
 async def channel_detail(
@@ -436,12 +529,14 @@ async def channel_detail(
         key=lambda v: v.upload_date or date.min,
         reverse=True,
     )
+    active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
     return templates.TemplateResponse(
         "channels/detail.html",
         {
             "request": request,
             "channel": channel,
             "videos": videos,
+            "active_videos": active_videos,
             "stash_url": settings.stash_url.rstrip("/"),
             "settings": settings,
             "download_progress": download_progress.snapshot(),
@@ -467,12 +562,14 @@ async def _channel_sync_response(
                 key=lambda v: v.upload_date or date.min,
                 reverse=True,
             )
+            active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
             return templates.TemplateResponse(
                 "channels/_detail_card.html",
                 {
                     "request": request,
                     "channel": channel,
                     "videos": videos,
+                    "active_videos": active_videos,
                     "stash_url": settings.stash_url.rstrip("/"),
                     "settings": settings,
                     "download_progress": download_progress.snapshot(),
@@ -591,12 +688,14 @@ async def channel_toggle(
                 key=lambda v: v.upload_date or date.min,
                 reverse=True,
             )
+            active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
             return templates.TemplateResponse(
                 "channels/_detail_card.html",
                 {
                     "request": request,
                     "channel": channel,
                     "videos": videos,
+                    "active_videos": active_videos,
                     "stash_url": settings.stash_url.rstrip("/"),
                     "settings": settings,
                     "download_progress": download_progress.snapshot(),
@@ -645,12 +744,14 @@ async def update_channel(
                 key=lambda v: v.upload_date or date.min,
                 reverse=True,
             )
+            active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
             return templates.TemplateResponse(
                 "channels/_detail_card.html",
                 {
                     "request": request,
                     "channel": channel,
                     "videos": videos,
+                    "active_videos": active_videos,
                     "stash_url": settings.stash_url.rstrip("/"),
                     "settings": settings,
                     "download_progress": download_progress.snapshot(),

@@ -1,7 +1,9 @@
 """Async SQLAlchemy engine, session factory, and FastAPI dependency."""
 
 import logging
+import os
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
@@ -65,7 +67,7 @@ async def init_db(settings: "Settings") -> None:
         await conn.run_sync(Base.metadata.create_all)
         await _migrate_channels_columns(conn)
         await _migrate_videos_columns(conn)
-        await _recover_stuck_videos(conn)
+        await _recover_stuck_videos(conn, settings)
     logger.info("Database initialized at %s", db_path)
 
 
@@ -113,20 +115,28 @@ async def _migrate_videos_columns(conn) -> None:
         )
 
 
-async def _recover_stuck_videos(conn) -> None:
-    """Reset videos stuck in intermediate states back to pending on startup.
+async def _recover_stuck_videos(conn, settings: "Settings") -> None:
+    """Reset videos stuck in intermediate states on startup.
 
     If the server crashed mid-download or mid-import, videos may be left in
-    'downloading' or 'importing' status with no running task to complete them.
-    We do not reset 'downloaded': those have a file on disk; resetting to
-    pending would cause a full re-download and overwrite. Stuck 'downloaded'
-    videos can be retried manually (retry sets to pending and re-downloads).
+    'downloading', 'importing', or 'cancelling' status with no running task
+    to complete them.
+
+    Smart recovery:
+    - If ``original_filename`` is set and the file exists on disk, we skip
+      straight to ``downloaded`` status instead of ``pending``, avoiding a
+      wasteful re-download.
+    - Otherwise, we reset to ``pending`` so the download processor retries.
+    - ``downloaded`` status is never touched (file on disk, just needs
+      manual retry to continue the import pipeline).
     """
     _STUCK_STATUSES = ("downloading", "importing", "cancelling")
-    result = await conn.execute(
+
+    # Fetch stuck videos so we can check for files on disk per-row.
+    rows = await conn.execute(
         text(
-            "UPDATE videos SET status = 'pending', error_message = NULL "
-            "WHERE status IN (:s1, :s2, :s3)"
+            "SELECT id, original_filename, status "
+            "FROM videos WHERE status IN (:s1, :s2, :s3)"
         ),
         {
             "s1": _STUCK_STATUSES[0],
@@ -134,10 +144,51 @@ async def _recover_stuck_videos(conn) -> None:
             "s3": _STUCK_STATUSES[2],
         },
     )
-    if result.rowcount:
+    stuck = rows.fetchall()
+    if not stuck:
+        return
+
+    recovered_to_pending = 0
+    recovered_to_downloaded = 0
+    download_dir = settings.download_dir
+
+    for row in stuck:
+        video_id, original_filename, status = row[0], row[1], row[2]
+        # Check if file already exists on disk
+        if original_filename:
+            filepath = os.path.join(download_dir, original_filename)
+            if os.path.isfile(filepath):
+                now = datetime.now(UTC).isoformat()
+                await conn.execute(
+                    text(
+                        "UPDATE videos SET status = 'downloaded', error_message = NULL, "
+                        "downloaded_at = COALESCE(downloaded_at, :now) "
+                        "WHERE id = :vid"
+                    ),
+                    {"vid": video_id, "now": now},
+                )
+                recovered_to_downloaded += 1
+                logger.info(
+                    "Video %s: recovered to 'downloaded' (file exists: %s)",
+                    video_id, filepath,
+                )
+                continue
+
+        # File not found or no filename — reset to pending for re-download
+        await conn.execute(
+            text(
+                "UPDATE videos SET status = 'pending', error_message = NULL "
+                "WHERE id = :vid"
+            ),
+            {"vid": video_id},
+        )
+        recovered_to_pending += 1
+
+    total = recovered_to_pending + recovered_to_downloaded
+    if total:
         logger.info(
-            "Recovered %d video(s) stuck in intermediate status back to pending",
-            result.rowcount,
+            "Recovered %d stuck video(s): %d to pending, %d to downloaded (file on disk)",
+            total, recovered_to_pending, recovered_to_downloaded,
         )
 
 

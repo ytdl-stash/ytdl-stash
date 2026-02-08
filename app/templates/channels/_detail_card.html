@@ -1,5 +1,6 @@
 {% set p = channel.stash_performer_data or {} %}
 {% set s = channel.stash_studio_data or {} %}
+{% from "components/_macros.html" import collapse %}
 <div id="channel-detail-card" class="card bg-base-200">
   <div class="card-body">
     <div class="flex flex-col sm:flex-row gap-6 items-start mb-4">
@@ -71,6 +72,14 @@
         <span id="spinner-relink-detail" class="htmx-indicator">Re-linking…</span>
       </form>
       {% endif %}
+      <span id="check-now-{{ channel.id }}">
+        <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Trigger an immediate scan for new videos"
+                hx-post="/channels/{{ channel.id }}/check-now"
+                hx-target="#check-now-{{ channel.id }}"
+                hx-swap="innerHTML">
+          Check Now
+        </button>
+      </span>
       <form hx-delete="/channels/{{ channel.id }}"
             hx-confirm="Delete channel '{{ channel.name|e }}' and all its videos?"
             hx-on::after-request="if(event.detail.successful) window.location='/channels'"
@@ -79,7 +88,7 @@
       </form>
     </div>
 
-    {# ── Channel Settings (interval, max age, min duration, check now) ── #}
+    {# ── Channel Settings (interval, max age, min duration) ── #}
     <details class="my-6">
       <summary class="cursor-pointer font-bold">Channel Settings</summary>
       <form hx-put="/channels/{{ channel.id }}"
@@ -109,16 +118,6 @@
           <span id="spinner-settings-detail" class="htmx-indicator">Saving…</span>
         </div>
       </form>
-      <div class="mt-2">
-        <span id="job-inline-check_now_{{ channel.id }}">
-          <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Trigger an immediate scan for new videos"
-                  hx-post="/channels/{{ channel.id }}/check-now"
-                  hx-target="#job-inline-check_now_{{ channel.id }}"
-                  hx-swap="innerHTML">
-            Check Now
-          </button>
-        </span>
-      </div>
     </details>
 
     {# ── Performer metadata from Stash ── #}
@@ -243,22 +242,13 @@
       {% endif %}
     </details>
 
+    {% set poll_url = '/channels/' ~ channel.id ~ '/active_downloads' %}
+    {% set container_id = 'channel-active-downloads-' ~ channel.id %}
+    {% call collapse("Active downloads", open=true) %}
+      {% include "videos/_active_downloads.html" with context %}
+    {% endcall %}
+    {% include "videos/_status_legend.html" %}
     <h3 class="text-lg font-semibold mt-6">Videos ({{ videos|length }})</h3>
-    <div class="overflow-x-auto">
-      <table class="table table-responsive mt-2">
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Status</th>
-            <th>Upload Date</th>
-            <th>Duration</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% include "videos/_table_body_performer.html" %}
-        </tbody>
-      </table>
-    </div>
+    {% include "channels/_channel_videos.html" %}
   </div>
 </div>

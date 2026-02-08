@@ -21,7 +21,7 @@
     Do NOT include the "v" prefix -- the script adds it.
 
 .PARAMETER Message
-    Optional one-line commit message.  When omitted you will be prompted.
+    Optional one-line commit message.  Defaults to "Release vX.Y.Z".
 
 .PARAMETER DryRun
     Show what would happen without making any changes.
@@ -30,12 +30,8 @@
     Skip the commit step (use when the working tree is already clean and
     you just want to tag + release the current HEAD).
 
-.PARAMETER Yes
-    Skip interactive prompts: use "Release vX.Y.Z" as commit message and
-    proceed without confirmation. Use for automation/CI.
-
 .EXAMPLE
-    .\scripts\release.ps1                          # minor bump, prompted for commit msg
+    .\scripts\release.ps1                          # minor bump, auto commit message
     .\scripts\release.ps1 -Bump patch              # patch bump
     .\scripts\release.ps1 -Version 1.0.0           # explicit version
     .\scripts\release.ps1 -DryRun                  # preview only
@@ -50,8 +46,7 @@ param(
     [string]$Version,
     [string]$Message,
     [switch]$DryRun,
-    [switch]$NoCommit,
-    [switch]$Yes
+    [switch]$NoCommit
 )
 
 Set-StrictMode -Version Latest
@@ -226,14 +221,7 @@ if ($isDirty) {
         Write-Info "[dry-run] Would stage and commit all changes"
     } else {
         if (-not $Message) {
-            if ($Yes) {
-                $Message = "Release $nextTag"
-            } else {
-                $Message = Read-Host "  Commit message (blank to abort)"
-                if (-not $Message) {
-                    Write-Warn "No commit message -- aborting."; exit 0
-                }
-            }
+            $Message = "Release $nextTag"
         }
 
         Invoke-Cmd -Label "Staging all changes" -Cmd "git add -A"
@@ -280,13 +268,9 @@ if ($DryRun) {
 }
 Write-Host ""
 
-if (-not $DryRun) {
-    if (-not $Yes) {
-        $confirm = Read-Host "Proceed? [y/N]"
-        if ($confirm -notin @("y", "Y", "yes")) {
-            Write-Warn "Aborted."; exit 0
-        }
-    }
+if ($DryRun) {
+    Write-Info "Dry run complete -- no changes made."
+    exit 0
 }
 
 # -- Tag ----------------------------------------------------------------

@@ -1,5 +1,10 @@
 {% for video in videos %}
 <tr id="video-row-{{ video.id }}">
+  <td data-label="Thumb" class="w-24 p-1">
+    {% with size='md', link_url='/videos/' ~ video.id %}
+    {% include "components/_video_thumbnail.html" with context %}
+    {% endwith %}
+  </td>
   <td data-label="Title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
   <td data-label="Status">{% include "videos/_status_badge.html" %}</td>
   <td data-label="Upload Date">{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>

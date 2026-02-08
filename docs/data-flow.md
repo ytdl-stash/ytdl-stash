@@ -82,10 +82,11 @@ User adds channel URL
 4. Call `stash_client.find_performer_by_url(channel.url)` — searches Stash for a performer whose URL list includes this channel URL.
 5. If found: link the existing performer by setting `channel.stash_performer_id = performer.id`.
 6. If not found by URL: fall back to `stash_client.find_performer(channel.name)` — try matching by name.
-7. If still not found: create a new performer in Stash with `name=channel.name`, `urls=[channel.url]`, and `image=channel.performer_image_url` (if available).
+7. If still not found: create a new performer in Stash with `name=channel.name`, `urls=[channel.url]`, and `image` (the thumbnail URL is downloaded and sent as a base64 data URI).
 8. Set `channel.stash_performer_id` to the found or newly created performer ID.
-9. Pull full performer data from Stash and push any source data Stash is missing.
-10. Commit to DB.
+9. Pull full performer data from Stash → store locally. The channel name is overwritten with the Stash performer name (Stash is authoritative for naming).
+10. Push any source data Stash is missing (URL, image).
+11. Commit to DB.
 
 **Data flow**:
 ```

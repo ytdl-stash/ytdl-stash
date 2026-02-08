@@ -56,6 +56,14 @@
       <span id="spinner-relink-{{ channel.id }}" class="htmx-indicator">Re-linking…</span>
     </form>
     {% endif %}
+    <span id="check-now-{{ channel.id }}">
+      <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-top" data-tip="Trigger an immediate scan for new videos"
+              hx-post="/channels/{{ channel.id }}/check-now"
+              hx-target="#check-now-{{ channel.id }}"
+              hx-swap="innerHTML">
+        Check Now
+      </button>
+    </span>
     <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Remove this channel and all videos"
             hx-delete="/channels/{{ channel.id }}"
             hx-target="#channel-card-{{ channel.id }}"

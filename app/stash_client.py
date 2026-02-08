@@ -1,6 +1,7 @@
 """Async GraphQL client for the Stash API. Used by the pipeline and settings routes."""
 
 import asyncio
+import base64
 import logging
 import time
 
@@ -245,6 +246,36 @@ query ScrapeSceneURL($url: String!) {
 }
 """
 
+_SCRAPE_PERFORMER_URL_QUERY = """
+query ScrapePerformerURL($url: String!) {
+    scrapePerformerURL(url: $url) {
+        name
+        disambiguation
+        urls
+        gender
+        birthdate
+        ethnicity
+        country
+        eye_color
+        hair_color
+        height
+        weight
+        measurements
+        fake_tits
+        career_length
+        tattoos
+        piercings
+        details
+        death_date
+        images
+        tags {
+            stored_id
+            name
+        }
+    }
+}
+"""
+
 _METADATA_GENERATE_MUTATION = """
 mutation MetadataGenerate($input: GenerateMetadataInput!) {
     metadataGenerate(input: $input)
@@ -283,6 +314,52 @@ _studio_locks: dict[str, asyncio.Lock] = {}
 _tag_locks: dict[str, asyncio.Lock] = {}
 # Protects "get or create" of the above locks so two tasks don't race and create two Lock instances.
 _lock_dict_meta: asyncio.Lock = asyncio.Lock()
+
+
+_IMAGE_CONTENT_TYPES = {
+    "image/jpeg": "image/jpeg",
+    "image/png": "image/png",
+    "image/gif": "image/gif",
+    "image/webp": "image/webp",
+    "image/svg+xml": "image/svg+xml",
+}
+# Max image download size (10 MB) — avoid fetching unexpectedly huge files.
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+
+async def _url_to_data_uri(url: str) -> str | None:
+    """Download an image URL and return a base64 data URI (``data:<mime>;base64,...``).
+
+    Returns *None* on any failure so callers can fall back to sending nothing.
+    If the URL is already a data URI it is returned as-is.
+    """
+    if url.startswith("data:"):
+        return url
+    try:
+        async with httpx.AsyncClient(
+            timeout=15.0, follow_redirects=True, max_redirects=5
+        ) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+    except Exception:
+        logger.warning("Failed to download image from %s", url, exc_info=True)
+        return None
+
+    if len(resp.content) == 0:
+        logger.warning("Empty image response from %s", url)
+        return None
+    if len(resp.content) > _MAX_IMAGE_BYTES:
+        logger.warning(
+            "Image from %s too large (%d bytes); skipping", url, len(resp.content)
+        )
+        return None
+
+    # Determine MIME type from Content-Type header; fall back to jpeg.
+    raw_ct = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+    mime = _IMAGE_CONTENT_TYPES.get(raw_ct, "image/jpeg")
+
+    encoded = base64.b64encode(resp.content).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
 
 
 class StashClient:
@@ -514,7 +591,9 @@ class StashClient:
         name = _normalize_performer_name(name)
         input_dict: dict = {"name": name, "urls": urls}
         if image_url:
-            input_dict["image"] = image_url
+            data_uri = await _url_to_data_uri(image_url)
+            if data_uri:
+                input_dict["image"] = data_uri
         data = await self._query(_PERFORMER_CREATE_WITH_META_MUTATION, {"input": input_dict})
         return data["performerCreate"]["id"]
 
@@ -528,7 +607,9 @@ class StashClient:
             updates["urls"] = stash_urls + [url]
         stash_image = performer.get("image_path")
         if image_url and not stash_image:
-            updates["image"] = image_url
+            data_uri = await _url_to_data_uri(image_url)
+            if data_uri:
+                updates["image"] = data_uri
         if updates:
             logger.info(
                 "Stash: gap-filling performer %s with %s",
@@ -672,7 +753,9 @@ class StashClient:
         name = name.strip()
         input_dict: dict = {"name": name, "urls": urls}
         if image_url:
-            input_dict["image"] = image_url
+            data_uri = await _url_to_data_uri(image_url)
+            if data_uri:
+                input_dict["image"] = data_uri
         if details:
             input_dict["details"] = details
         data = await self._query(_STUDIO_CREATE_MUTATION, {"input": input_dict})
@@ -706,7 +789,9 @@ class StashClient:
             updates["urls"] = stash_urls + [url]
         stash_image = studio.get("image_path")
         if image_url and not stash_image:
-            updates["image"] = image_url
+            data_uri = await _url_to_data_uri(image_url)
+            if data_uri:
+                updates["image"] = data_uri
         stash_details = (studio.get("details") or "").strip()
         if details and not stash_details:
             updates["details"] = details
@@ -847,6 +932,110 @@ class StashClient:
             # GraphQL errors (e.g. no matching scraper) are non-fatal
             logger.warning("Stash: scrapeSceneURL failed for %s: %s", url, e)
             return None
+
+    async def scrape_performer_url(self, url: str) -> dict | None:
+        """Scrape performer metadata from a URL using Stash's configured scrapers.
+
+        Returns the scraped performer dict or None if no scraper matched / no data returned.
+        """
+        try:
+            data = await self._query(_SCRAPE_PERFORMER_URL_QUERY, {"url": url})
+            scraped = data.get("scrapePerformerURL")
+            if not scraped:
+                logger.info("Stash: no scraper returned performer data for URL %s", url)
+                return None
+            logger.info("Stash: scraper returned performer data for URL %s", url)
+            return scraped
+        except RuntimeError as e:
+            # GraphQL errors (e.g. no matching scraper) are non-fatal
+            logger.warning("Stash: scrapePerformerURL failed for %s: %s", url, e)
+            return None
+
+    async def apply_scraped_performer(
+        self,
+        performer_id: str,
+        scraped: dict,
+    ) -> None:
+        """Apply scraped metadata to an existing performer (gap-fill only).
+
+        Only sets fields the scraper returned and that the performer doesn't already have.
+
+        Note: ScrapedPerformer field names differ from Performer / PerformerUpdateInput
+        in a few cases:
+          - scraped ``height`` (String)  → update ``height_cm`` (Int)
+          - scraped ``weight`` (String)  → update ``weight`` (Int)
+          - scraped ``gender`` (String)  → update ``gender`` (GenderEnum string)
+        """
+        current = await self.get_performer(performer_id)
+        if not current:
+            return
+
+        updates: dict = {}
+
+        # Simple string fields where scraped key == update key — only fill gaps
+        _gap_fill_fields = [
+            ("gender", "gender"),
+            ("birthdate", "birthdate"),
+            ("ethnicity", "ethnicity"),
+            ("country", "country"),
+            ("eye_color", "eye_color"),
+            ("hair_color", "hair_color"),
+            ("measurements", "measurements"),
+            ("fake_tits", "fake_tits"),
+            ("career_length", "career_length"),
+            ("tattoos", "tattoos"),
+            ("piercings", "piercings"),
+            ("details", "details"),
+            ("disambiguation", "disambiguation"),
+            ("death_date", "death_date"),
+        ]
+        for scraped_key, stash_key in _gap_fill_fields:
+            scraped_val = scraped.get(scraped_key)
+            if scraped_val and not current.get(stash_key):
+                updates[stash_key] = scraped_val
+
+        # height: ScrapedPerformer returns "height" as a String (e.g. "175"),
+        # but PerformerUpdateInput expects "height_cm" as an Int.
+        scraped_height = scraped.get("height")
+        if scraped_height and not current.get("height_cm"):
+            try:
+                updates["height_cm"] = int(scraped_height)
+            except (ValueError, TypeError):
+                pass
+
+        # weight: ScrapedPerformer returns "weight" as a String (e.g. "60"),
+        # but PerformerUpdateInput expects "weight" as an Int.
+        scraped_weight = scraped.get("weight")
+        if scraped_weight and not current.get("weight"):
+            try:
+                updates["weight"] = int(scraped_weight)
+            except (ValueError, TypeError):
+                pass
+
+        # URLs: merge scraped URLs into existing list
+        scraped_urls = scraped.get("urls") or []
+        current_urls = current.get("urls") or []
+        new_urls = [u for u in scraped_urls if u not in current_urls]
+        if new_urls:
+            updates["urls"] = current_urls + new_urls
+
+        # Image: use first scraped image if performer has no image
+        scraped_images = scraped.get("images") or []
+        if scraped_images and not current.get("image_path"):
+            # Scraped images are base64 data URIs or URLs
+            updates["image"] = scraped_images[0]
+
+        if updates:
+            logger.info(
+                "Stash: applying scraped data to performer %s (fields: %s)",
+                performer_id, list(updates.keys()),
+            )
+            await self.update_performer(performer_id, **updates)
+        else:
+            logger.info(
+                "Stash: scraper returned no new data to apply for performer %s",
+                performer_id,
+            )
 
     async def apply_scraped_scene(
         self,

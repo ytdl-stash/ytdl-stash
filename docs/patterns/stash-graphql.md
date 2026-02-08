@@ -391,6 +391,54 @@ async def wait_for_scene(self, oshash: str, timeout: float = 30, interval: float
 
 ---
 
+## Scrape Performer URL
+
+Scrape performer metadata from a URL using Stash's configured scrapers:
+
+```python
+async def scrape_performer_url(self, url: str) -> dict | None:
+    query = """
+    query ScrapePerformerURL($url: String!) {
+        scrapePerformerURL(url: $url) {
+            name disambiguation urls gender birthdate ethnicity country
+            eye_color hair_color height_cm weight measurements fake_tits
+            career_length tattoos piercings details images
+            tags { stored_id name }
+        }
+    }
+    """
+    data = await self._query(query, {"url": url})
+    return data.get("scrapePerformerURL")
+```
+
+**Note**: Returns `None` if no scraper matches the URL. The `ScrapedPerformer` type has different field names/types than `Performer` / `PerformerUpdateInput`:
+- Scraped `height` (String) → update `height_cm` (Int) — must rename and coerce
+- Scraped `weight` (String) → update `weight` (Int) — must coerce
+- Scraped `gender` (String) → update `gender` (GenderEnum string) — passes through directly
+
+### Apply Scraped Performer (gap-fill)
+
+After scraping, apply returned data to an existing performer without overwriting user-set fields:
+
+```python
+async def apply_scraped_performer(self, performer_id: str, scraped: dict) -> None:
+    current = await self.get_performer(performer_id)
+    if not current:
+        return
+    updates = {}
+    for field in ("gender", "birthdate", "ethnicity", "country", ...):
+        if scraped.get(field) and not current.get(field):
+            updates[field] = scraped[field]
+    # Numeric fields: coerce strings to int
+    for num_field in ("height_cm", "weight"):
+        if scraped.get(num_field) and not current.get(num_field):
+            updates[num_field] = int(scraped[num_field])
+    if updates:
+        await self.update_performer(performer_id, **updates)
+```
+
+---
+
 ## Stash GraphQL Schema Notes
 
 - **IDs are strings** in GraphQL, even though they are integers internally. Always pass them as `str`.
