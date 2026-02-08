@@ -66,7 +66,8 @@ function Write-Warn  { param([string]$Text) Write-Host "  WARN: $Text" -Foregrou
 function Write-Err   { param([string]$Text) Write-Host "  ERR: $Text" -ForegroundColor Red }
 
 function Invoke-Cmd {
-    <# Run a command, optionally as dry-run. Returns stdout. #>
+    <# Run a command, optionally as dry-run. Returns stdout.
+       Uses cmd /c to avoid PowerShell treating git stderr as errors. #>
     param(
         [string]$Label,
         [string]$Cmd,
@@ -77,9 +78,12 @@ function Invoke-Cmd {
         return ""
     }
     Write-Info $Label
-    $output = Invoke-Expression $Cmd 2>&1
-    if ($LASTEXITCODE -and -not $AllowFailure) {
-        Write-Err "Command failed (exit $LASTEXITCODE): $Cmd"
+    # Run via cmd /c so that stderr from native commands (e.g. git progress
+    # messages) does not trigger PowerShell's NativeCommandError handling.
+    $output = cmd /c "$Cmd 2>&1"
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -and -not $AllowFailure) {
+        Write-Err "Command failed (exit $exitCode): $Cmd"
         Write-Err ($output | Out-String)
         exit 1
     }
@@ -235,8 +239,9 @@ if ($isDirty) {
         Invoke-Cmd -Label "Staging all changes" -Cmd "git add -A"
 
         # Write message to temp file to avoid PowerShell quoting issues
+        # Use UTF8NoBOM to prevent a BOM from appearing in the commit message
         $msgFile = [System.IO.Path]::GetTempFileName()
-        Set-Content -Path $msgFile -Value $Message -Encoding UTF8
+        [System.IO.File]::WriteAllText($msgFile, $Message, [System.Text.UTF8Encoding]::new($false))
         Invoke-Cmd -Label "Creating commit" -Cmd "git commit -F `"$msgFile`""
         Remove-Item $msgFile -ErrorAction SilentlyContinue
 
@@ -302,7 +307,7 @@ Write-Ok "Pushed branch and tag"
 Write-Step "Creating GitHub release"
 
 $notesFile = [System.IO.Path]::GetTempFileName()
-Set-Content -Path $notesFile -Value $releaseNotes -Encoding UTF8
+[System.IO.File]::WriteAllText($notesFile, $releaseNotes, [System.Text.UTF8Encoding]::new($false))
 
 Invoke-Cmd -Label "gh release create $nextTag" `
            -Cmd "gh release create $nextTag --title `"$nextTag`" --notes-file `"$notesFile`""

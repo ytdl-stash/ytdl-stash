@@ -1,0 +1,62 @@
+{% if stash_error %}
+<div class="alert alert-warning text-sm mb-4">
+  <span>Stash unavailable: {{ stash_error }}. You can still save the channel; linking will be retried later.</span>
+</div>
+{% endif %}
+
+<div class="space-y-4 mb-4">
+  <div>
+    <span class="label-text font-medium">Performer</span>
+    {% if performer_match %}
+    <div class="flex items-center gap-2 mt-1">
+      {% if performer_match.get('image_path') %}
+      {% set ip = performer_match.image_path or '' %}
+      <img src="{{ ip if ip.startswith('http') else (stash_url.rstrip('/') + ip) }}" alt="" class="w-10 h-10 object-cover rounded">
+      {% endif %}
+      <span>{{ performer_match.name|e }}</span>
+      <span class="badge badge-success">Linked</span>
+    </div>
+    {% else %}
+    <p class="text-sm text-base-content/70 mt-1">No match — will create on save: <strong>{{ name|e }}</strong></p>
+    {% endif %}
+  </div>
+  <div>
+    <span class="label-text font-medium">Studio</span>
+    {% if studio_match %}
+    <div class="flex items-center gap-2 mt-1">
+      <span>{{ studio_match.name|e }}</span>
+      <span class="badge badge-success">Linked</span>
+    </div>
+    {% else %}
+    <p class="text-sm text-base-content/70 mt-1">No match — will create on save: <strong>{{ name|e }}</strong></p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="flex items-center gap-2 flex-wrap">
+  <form hx-get="/channels/add-modal/step2"
+        hx-target="#add-channel-modal-body"
+        hx-swap="innerHTML"
+        class="inline">
+    <input type="hidden" name="url" value="{{ url|e }}">
+    <input type="hidden" name="name" value="{{ name|e }}">
+    <input type="hidden" name="thumbnail" value="{{ thumbnail|default('', true)|e }}">
+    <input type="hidden" name="check_interval_hours" value="{{ check_interval_hours }}">
+    <input type="hidden" name="max_video_age_days" value="{{ max_video_age_days|default('', true)|e }}">
+    <input type="hidden" name="min_duration_seconds" value="{{ min_duration_seconds|default('', true)|e }}">
+    <button type="submit" class="btn btn-ghost btn-sm">Back</button>
+  </form>
+  <form hx-post="/channels"
+        hx-target="#channel-list"
+        hx-swap="beforeend"
+        class="inline"
+        hx-on::after-request="if(event.detail.successful) document.getElementById('add-channel-modal').close();">
+    <input type="hidden" name="url" value="{{ url|e }}">
+    <input type="hidden" name="name" value="{{ name|e }}">
+    <input type="hidden" name="thumbnail_url" value="{{ thumbnail|default('', true)|e }}">
+    <input type="hidden" name="check_interval_hours" value="{{ check_interval_hours }}">
+    <input type="hidden" name="max_video_age_days" value="{{ max_video_age_days|default('', true)|e }}">
+    <input type="hidden" name="min_duration_seconds" value="{{ min_duration_seconds|default('', true)|e }}">
+    <button type="submit" class="btn btn-primary">Save Channel</button>
+  </form>
+</div>

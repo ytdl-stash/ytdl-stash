@@ -1,0 +1,21 @@
+<form hx-post="/channels/preview"
+      hx-target="#add-channel-modal-body"
+      hx-swap="innerHTML"
+      hx-indicator="#add-step1-spinner"
+      class="space-y-4">
+  {% if error_message %}
+  <div class="alert alert-error text-sm">
+    <span>{{ error_message }}</span>
+  </div>
+  {% endif %}
+  <label class="form-control w-full">
+    <span class="label-text tooltip tooltip-bottom" data-tip="Paste the full channel/user page URL from the video site">Channel URL</span>
+    <input type="url" name="url" placeholder="https://..." value="{{ url|default('', true) }}" required class="input input-bordered w-full">
+  </label>
+  <div class="flex items-center gap-2">
+    <button type="submit" class="btn btn-primary" id="add-step1-submit">
+      Scrape
+    </button>
+    <span id="add-step1-spinner" class="htmx-indicator">Scraping…</span>
+  </div>
+</form>

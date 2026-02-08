@@ -160,7 +160,10 @@ ytdl-stash/
       error.html                # User-friendly error page (Phase 10)
       channels/
         list.html
-        add.html
+        _add_modal.html         # Add channel dialog shell + step 1
+        _add_step1.html         # Step 1: URL input
+        _add_step2.html         # Step 2: metadata review + settings
+        _add_step3.html         # Step 3: Stash linking + save
         _row.html               # HTMX partial: single channel row
       videos/
         list.html

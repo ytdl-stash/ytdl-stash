@@ -17,6 +17,7 @@ from app.downloader import async_extract_channel_metadata
 from app.main import templates
 from app.models import Channel
 from app.performer_sync import sync_channel_performer
+from app.studio_sync import sync_channel_studio
 from app.pipeline import process_channel_scan
 from app.stash_client import StashClient
 
@@ -200,12 +201,145 @@ async def edit_channel_row(
     )
 
 
-@router.get("/add")
-async def add_channel_page(request: Request):
-    """Add channel form page."""
+@router.get("/add-modal")
+async def add_channel_modal_body(
+    request: Request,
+    url: str = "",
+):
+    """HTMX partial: Step 1 modal body (URL input). Used when opening modal or clicking Back from step 2."""
     return templates.TemplateResponse(
-        "channels/add.html",
-        {"request": request},
+        "channels/_add_step1.html",
+        {"request": request, "url": url, "error_message": None},
+    )
+
+
+@router.get("/add-modal/step2")
+async def add_channel_modal_step2(
+    request: Request,
+    url: str = "",
+    name: str = "",
+    thumbnail: str = "",
+    description: str = "",
+    check_interval_hours: int = 6,
+    max_video_age_days: str = "",
+    min_duration_seconds: str = "",
+    settings: Settings = Depends(get_settings),
+):
+    """HTMX partial: Step 2 modal body (review metadata). Used when clicking Back from step 3."""
+    site = _derive_site(url) if url else "unknown"
+    return templates.TemplateResponse(
+        "channels/_add_step2.html",
+        {
+            "request": request,
+            "url": url,
+            "name": name or site,
+            "thumbnail": thumbnail or None,
+            "description": description or None,
+            "site": site,
+            "check_interval_hours": check_interval_hours,
+            "max_video_age_days": max_video_age_days or None,
+            "min_duration_seconds": min_duration_seconds or None,
+        },
+    )
+
+
+@router.post("/preview")
+async def channel_preview(
+    request: Request,
+    url: str = Form(...),
+    settings: Settings = Depends(get_settings),
+):
+    """Scrape channel metadata via yt-dlp and return Step 2 partial (review metadata). On error returns Step 1 with error message."""
+    url = url.strip()
+    if not url:
+        return templates.TemplateResponse(
+            "channels/_add_step1.html",
+            {"request": request, "error_message": "URL is required.", "url": ""},
+        )
+    site = _derive_site(url)
+    try:
+        meta = await async_extract_channel_metadata(url, settings)
+        name = (meta.get("name") or "").strip() or site
+        thumbnail = meta.get("thumbnail")
+        description = meta.get("description")
+        if description is not None and not isinstance(description, str):
+            description = str(description) if description else None
+    except Exception as e:
+        logger.debug("Channel preview scrape failed for %s: %s", url, e, exc_info=True)
+        return templates.TemplateResponse(
+            "channels/_add_step1.html",
+            {
+                "request": request,
+                "error_message": f"Could not scrape channel: {e!s}",
+                "url": url,
+            },
+        )
+    return templates.TemplateResponse(
+        "channels/_add_step2.html",
+        {
+            "request": request,
+            "url": url,
+            "name": name,
+            "thumbnail": thumbnail,
+            "description": description,
+            "site": site,
+            "check_interval_hours": settings.default_check_interval_hours,
+            "max_video_age_days": None,
+            "min_duration_seconds": None,
+        },
+    )
+
+
+@router.post("/preview/link")
+async def channel_preview_link(
+    request: Request,
+    url: str = Form(...),
+    name: str = Form(""),
+    thumbnail: str = Form(""),
+    description: str = Form(""),
+    check_interval_hours: int = Form(6),
+    max_video_age_days: str = Form(""),
+    min_duration_seconds: str = Form(""),
+    settings: Settings = Depends(get_settings),
+):
+    """Search Stash for performer/studio matches and return Step 3 partial (Stash linking results)."""
+    url = url.strip()
+    name = name.strip() or _derive_site(url)
+    performer_match: dict | None = None
+    studio_match: dict | None = None
+    stash_error: str | None = None
+
+    try:
+        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+            performer_match = await stash.find_performer_by_url(url)
+            if not performer_match:
+                performer_match = await stash.find_performer(name)
+            studio_match = await stash.find_studio_by_url(url)
+            if not studio_match:
+                studio_id = await stash.find_studio(name)
+                if studio_id:
+                    studio_match = await stash.get_studio(studio_id)
+    except Exception as e:
+        logger.warning("Stash preview link failed: %s", e, exc_info=True)
+        stash_error = str(e)
+
+    return templates.TemplateResponse(
+        "channels/_add_step3.html",
+        {
+            "request": request,
+            "url": url,
+            "name": name,
+            "thumbnail": thumbnail,
+            "description": description,
+            "site": _derive_site(url),
+            "check_interval_hours": check_interval_hours,
+            "max_video_age_days": max_video_age_days,
+            "min_duration_seconds": min_duration_seconds,
+            "performer_match": performer_match,
+            "studio_match": studio_match,
+            "stash_error": stash_error,
+            "stash_url": settings.stash_url,
+        },
     )
 
 
@@ -214,13 +348,14 @@ async def add_channel(
     request: Request,
     url: str = Form(...),
     name: str = Form(""),
+    thumbnail_url: str = Form(""),
     check_interval_hours: int | None = Form(None),
     max_video_age_days: str = Form(""),
     min_duration_seconds: str = Form(""),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """Add a new channel. Extracts real name from yt-dlp if not provided. Returns HTMX partial _row.html or redirect."""
+    """Add a new channel. Uses pre-scraped name/thumbnail from modal when provided; else extracts via yt-dlp. Returns HTMX partial _row.html or redirect."""
     user_name = name.strip()
     site = _derive_site(url)
     interval = (
@@ -231,17 +366,21 @@ async def add_channel(
     parsed_max_age = _parse_optional_int(max_video_age_days)
     parsed_min_duration = _parse_optional_int(min_duration_seconds)
 
-    # If the user didn't type a name, ask yt-dlp for the real channel name
+    # Use pre-scraped thumbnail from modal when provided; otherwise we may scrape below
+    thumb_from_modal = (thumbnail_url or "").strip() or None
     display_name = user_name
-    thumbnail_url: str | None = None
-    if not display_name:
+    thumbnail_url_final: str | None = thumb_from_modal
+
+    # Scrape only when we don't have both name and thumbnail (e.g. non-modal add or missing data)
+    if not display_name or not thumbnail_url_final:
         try:
             meta = await async_extract_channel_metadata(url, settings)
-            display_name = meta.get("name") or ""
-            thumbnail_url = meta.get("thumbnail")
+            if not display_name:
+                display_name = meta.get("name") or ""
+            if not thumbnail_url_final:
+                thumbnail_url_final = meta.get("thumbnail")
         except Exception:
             logger.debug("Could not extract channel metadata for %s", url, exc_info=True)
-    # Final fallback: use the domain
     if not display_name:
         display_name = site
 
@@ -250,7 +389,7 @@ async def add_channel(
         url=url,
         site=site,
         check_interval_hours=interval,
-        performer_image_url=thumbnail_url,
+        performer_image_url=thumbnail_url_final,
         max_video_age_days=parsed_max_age,
         min_duration_seconds=parsed_min_duration,
     )
@@ -260,8 +399,9 @@ async def add_channel(
     try:
         async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
             await sync_channel_performer(channel, db, stash, settings)
+            await sync_channel_studio(channel, db, stash, settings)
     except Exception:
-        logger.warning("Performer sync failed for channel %s", channel.id, exc_info=True)
+        logger.warning("Stash sync failed for channel %s", channel.id, exc_info=True)
 
     if request.headers.get("HX-Request"):
         channel = await _load_channel_for_row(db, channel.id)
@@ -270,6 +410,7 @@ async def add_channel(
         return templates.TemplateResponse(
             "channels/_row.html",
             {"request": request, "channel": channel},
+            headers={"HX-Trigger": "closeAddChannelModal"},
         )
     return RedirectResponse(url="/channels", status_code=303)
 

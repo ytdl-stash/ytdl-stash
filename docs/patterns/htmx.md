@@ -224,6 +224,20 @@ async def list_videos(request: Request, page: int = Query(1, ge=1), per_page: in
 
 ---
 
+## Pattern: Modal Wizard (Add Channel)
+
+The Add Channel flow uses a multi-step modal: Step 1 (URL + scrape), Step 2 (review metadata + settings), Step 3 (Stash linking results + save). The modal is a DaisyUI `<dialog>` included in the page; HTMX swaps only the modal body (`#add-channel-modal-body`) at each step.
+
+**Open modal**: Button with `hx-get="/channels/add-modal"` targeting `#add-channel-modal-body`, then `hx-on::after-request="document.getElementById('add-channel-modal').showModal()"` so the dialog opens after step 1 content loads.
+
+**Step transitions**: Each step’s form POSTs to a route that returns the next step’s partial; same target and `innerHTML` swap. Data is carried forward via hidden inputs. Back navigation uses `hx-get` to a route that re-renders the previous step with query (or form) params.
+
+**Close on success**: The final step POSTs to `/channels` with `hx-target="#channel-list"` and `hx-swap="beforeend"`. The server returns the new row and `HX-Trigger: closeAddChannelModal`. A script on the page listens for that event and calls `document.getElementById('add-channel-modal').close()`.
+
+**Loading states**: Each step’s submit button has an `hx-indicator` pointing to a spinner element inside the modal.
+
+---
+
 ## Template Organization
 
 ```
@@ -232,10 +246,14 @@ templates/
   dashboard.html               # Extends base.html
   channels/
     list.html                  # Extends base.html
-    add.html                   # Extends base.html
+    _add_modal.html            # Partial: dialog shell + initial step 1 body
+    _add_step1.html             # Partial: URL input (step 1)
+    _add_step2.html             # Partial: metadata review + settings (step 2)
+    _add_step3.html             # Partial: Stash linking + save (step 3)
     _table.html                # Partial: read-only channel table
     _bulk_edit.html            # Partial: bulk edit form (all rows editable)
     _row.html                  # Partial: single channel table row
+    _row_edit.html             # Partial: editable channel row
   videos/
     list.html                  # Extends base.html
     detail.html                # Extends base.html

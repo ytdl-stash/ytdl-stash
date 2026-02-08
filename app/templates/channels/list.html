@@ -20,38 +20,26 @@
     </span>
   </span>
 </div>
-<form class="mb-6" hx-post="/channels"
-      hx-target="#channel-list"
-      hx-swap="beforeend"
-      hx-on::after-request="this.reset()">
-  <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Paste the full channel/user page URL from the video site">URL</span>
-      <input type="url" name="url" placeholder="Channel URL" required class="input input-bordered w-full">
-    </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Optional display name — auto-detected from URL if blank">Name</span>
-      <input type="text" name="name" placeholder="Display name" class="input input-bordered w-full">
-    </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Hours between automatic scans for new videos">Interval (hours)</span>
-      <input type="number" name="check_interval_hours" value="6" min="1" class="input input-bordered w-full">
-    </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Only download videos uploaded within this many days">Max Age (days)</span>
-      <input type="number" name="max_video_age_days" placeholder="No limit" min="1" step="1" class="input input-bordered w-full">
-    </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Skip videos shorter than this many seconds">Min Duration (sec)</span>
-      <input type="number" name="min_duration_seconds" placeholder="No limit" min="1" step="1" class="input input-bordered w-full">
-    </label>
-  </div>
-  <div class="flex items-center gap-2 mt-2">
-    <button type="submit" class="btn btn-primary tooltip tooltip-bottom" data-tip="Add this channel and start monitoring">Add Channel</button>
-    <a href="/channels/add" class="link link-hover text-sm text-base-content/70">or add via full form</a>
-  </div>
-</form>
+<div class="mb-6">
+  <button type="button"
+          class="btn btn-primary tooltip tooltip-bottom"
+          data-tip="Add a channel: scrape metadata, link to Stash, then save"
+          hx-get="/channels/add-modal"
+          hx-target="#add-channel-modal-body"
+          hx-swap="innerHTML"
+          hx-trigger="click"
+          hx-on::after-request="document.getElementById('add-channel-modal').showModal()">
+    Add Channel
+  </button>
+</div>
+{% include "channels/_add_modal.html" %}
 <div id="channel-table-wrap">
   {% include "channels/_table.html" %}
 </div>
+<script>
+  document.body.addEventListener('closeAddChannelModal', function () {
+    var modal = document.getElementById('add-channel-modal');
+    if (modal) modal.close();
+  });
+</script>
 {% endblock %}
