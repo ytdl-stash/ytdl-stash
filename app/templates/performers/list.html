@@ -6,55 +6,27 @@
 <nav class="flex flex-wrap items-center gap-2 mb-4">
   <strong>Filter:</strong>
   <div class="join">
-    {% include "components/_filter_button.html" with context
-       url='/performers?filter=all&sort=' ~ sort,
-       label='All',
-       is_active=(filter == 'all'),
-       hx_target='#performer-grid'
-    %}
-    {% include "components/_filter_button.html" with context
-       url='/performers?filter=watched&sort=' ~ sort,
-       label='Watched',
-       is_active=(filter == 'watched'),
-       hx_target='#performer-grid',
-       tooltip='Channels that are actively monitored',
-       tooltip_classes='tooltip tooltip-bottom'
-    %}
-    {% include "components/_filter_button.html" with context
-       url='/performers?filter=not_watched&sort=' ~ sort,
-       label='Not Watched',
-       is_active=(filter == 'not_watched'),
-       hx_target='#performer-grid',
-       tooltip='Channels with auto-scanning disabled',
-       tooltip_classes='tooltip tooltip-bottom'
-    %}
+    {% with url='/performers?filter=all&sort=' ~ sort, label='All', is_active=(filter == 'all'), hx_target='#performer-grid' %}
+    {% include "components/_filter_button.html" with context %}
+    {% endwith %}
+    {% with url='/performers?filter=watched&sort=' ~ sort, label='Watched', is_active=(filter == 'watched'), hx_target='#performer-grid', tooltip='Channels that are actively monitored', tooltip_classes='tooltip tooltip-bottom' %}
+    {% include "components/_filter_button.html" with context %}
+    {% endwith %}
+    {% with url='/performers?filter=not_watched&sort=' ~ sort, label='Not Watched', is_active=(filter == 'not_watched'), hx_target='#performer-grid', tooltip='Channels with auto-scanning disabled', tooltip_classes='tooltip tooltip-bottom' %}
+    {% include "components/_filter_button.html" with context %}
+    {% endwith %}
   </div>
   <strong class="ml-4">Sort:</strong>
   <div class="join">
-    {% include "components/_filter_button.html" with context
-       url='/performers?filter=' ~ filter ~ '&sort=name',
-       label='Name',
-       is_active=(sort == 'name'),
-       hx_target='#performer-grid',
-       tooltip='Sort alphabetically by channel name',
-       tooltip_classes='tooltip tooltip-bottom'
-    %}
-    {% include "components/_filter_button.html" with context
-       url='/performers?filter=' ~ filter ~ '&sort=video_count',
-       label='Videos',
-       is_active=(sort == 'video_count'),
-       hx_target='#performer-grid',
-       tooltip='Sort by number of videos (most first)',
-       tooltip_classes='tooltip tooltip-bottom'
-    %}
-    {% include "components/_filter_button.html" with context
-       url='/performers?filter=' ~ filter ~ '&sort=last_checked',
-       label='Last checked',
-       is_active=(sort == 'last_checked'),
-       hx_target='#performer-grid',
-       tooltip='Sort by most recently scanned',
-       tooltip_classes='tooltip tooltip-bottom'
-    %}
+    {% with url='/performers?filter=' ~ filter ~ '&sort=name', label='Name', is_active=(sort == 'name'), hx_target='#performer-grid', tooltip='Sort alphabetically by channel name', tooltip_classes='tooltip tooltip-bottom' %}
+    {% include "components/_filter_button.html" with context %}
+    {% endwith %}
+    {% with url='/performers?filter=' ~ filter ~ '&sort=video_count', label='Videos', is_active=(sort == 'video_count'), hx_target='#performer-grid', tooltip='Sort by number of videos (most first)', tooltip_classes='tooltip tooltip-bottom' %}
+    {% include "components/_filter_button.html" with context %}
+    {% endwith %}
+    {% with url='/performers?filter=' ~ filter ~ '&sort=last_checked', label='Last checked', is_active=(sort == 'last_checked'), hx_target='#performer-grid', tooltip='Sort by most recently scanned', tooltip_classes='tooltip tooltip-bottom' %}
+    {% include "components/_filter_button.html" with context %}
+    {% endwith %}
   </div>
 </nav>
 <div id="performer-grid" class="grid grid-cols-2 md:grid-cols-4 gap-4">

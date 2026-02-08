@@ -29,20 +29,12 @@ For filter, sort, or pagination button groups (e.g. All / Watched / Not Watched 
 
 ```html
 <div class="join">
-  {% include "components/_filter_button.html" with context
-     url='/performers?filter=all&sort=' ~ sort,
-     label='All',
-     is_active=(filter == 'all'),
-     hx_target='#performer-grid'
-  %}
-  {% include "components/_filter_button.html" with context
-     url='/performers?filter=watched&sort=' ~ sort,
-     label='Watched',
-     is_active=(filter == 'watched'),
-     hx_target='#performer-grid',
-     tooltip='Channels that are actively monitored',
-     tooltip_classes='tooltip tooltip-bottom'
-  %}
+  {% with url='/performers?filter=all&sort=' ~ sort, label='All', is_active=(filter == 'all'), hx_target='#performer-grid' %}
+  {% include "components/_filter_button.html" with context %}
+  {% endwith %}
+  {% with url='/performers?filter=watched&sort=' ~ sort, label='Watched', is_active=(filter == 'watched'), hx_target='#performer-grid', tooltip='Channels that are actively monitored', tooltip_classes='tooltip tooltip-bottom' %}
+  {% include "components/_filter_button.html" with context %}
+  {% endwith %}
 </div>
 ```
 
