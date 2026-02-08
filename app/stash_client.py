@@ -71,7 +71,6 @@ query FindScene($id: ID!) {
             id
             name
         }
-        cover
         organized
     }
 }
@@ -340,7 +339,12 @@ class StashClient:
                 raise RuntimeError(
                     "Stash authentication failed. Check YTDL_STASH_API_KEY"
                 ) from e
-            raise RuntimeError(f"Stash HTTP error: {e}") from e
+            # Include response body for diagnostics (Stash often returns
+            # JSON with error details, especially on 400 Bad Request).
+            body = e.response.text[:500] if e.response else ""
+            raise RuntimeError(
+                f"Stash HTTP error: {e}" + (f"\nResponse body: {body}" if body else "")
+            ) from e
 
         data = response.json()
         if "errors" in data:
