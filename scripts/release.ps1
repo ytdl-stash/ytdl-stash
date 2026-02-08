@@ -46,7 +46,8 @@ param(
     [string]$Version,
     [string]$Message,
     [switch]$DryRun,
-    [switch]$NoCommit
+    [switch]$NoCommit,
+    [switch]$Yes
 )
 
 Set-StrictMode -Version Latest
@@ -137,8 +138,10 @@ Write-Ok "In repo: $repoRoot"
 $branch = (git branch --show-current).Trim()
 if ($branch -ne "main") {
     Write-Warn "Current branch is '$branch', not 'main'"
-    $continue = Read-Host "  Continue anyway? [y/N]"
-    if ($continue -notin @("y", "Y", "yes")) { exit 0 }
+    if (-not $Yes) {
+        $continue = Read-Host "  Continue anyway? [y/N]"
+        if ($continue -notin @("y", "Y", "yes")) { exit 0 }
+    }
 }
 Write-Ok "Branch: $branch"
 
@@ -217,9 +220,13 @@ if ($isDirty) {
         Write-Info "[dry-run] Would stage and commit all changes"
     } else {
         if (-not $Message) {
-            $Message = Read-Host "  Commit message (blank to abort)"
-            if (-not $Message) {
-                Write-Warn "No commit message -- aborting."; exit 0
+            if ($Yes) {
+                $Message = "Release $nextTag"
+            } else {
+                $Message = Read-Host "  Commit message (blank to abort)"
+                if (-not $Message) {
+                    Write-Warn "No commit message -- aborting."; exit 0
+                }
             }
         }
 
@@ -267,9 +274,11 @@ if ($DryRun) {
 Write-Host ""
 
 if (-not $DryRun) {
-    $confirm = Read-Host "Proceed? [y/N]"
-    if ($confirm -notin @("y", "Y", "yes")) {
-        Write-Warn "Aborted."; exit 0
+    if (-not $Yes) {
+        $confirm = Read-Host "Proceed? [y/N]"
+        if ($confirm -notin @("y", "Y", "yes")) {
+            Write-Warn "Aborted."; exit 0
+        }
     }
 }
 
