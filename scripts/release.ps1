@@ -30,6 +30,10 @@
     Skip the commit step (use when the working tree is already clean and
     you just want to tag + release the current HEAD).
 
+.PARAMETER Yes
+    Skip interactive prompts: use "Release vX.Y.Z" as commit message and
+    proceed without confirmation. Use for automation/CI.
+
 .EXAMPLE
     .\scripts\release.ps1                          # minor bump, prompted for commit msg
     .\scripts\release.ps1 -Bump patch              # patch bump
@@ -138,10 +142,8 @@ Write-Ok "In repo: $repoRoot"
 $branch = (git branch --show-current).Trim()
 if ($branch -ne "main") {
     Write-Warn "Current branch is '$branch', not 'main'"
-    if (-not $Yes) {
-        $continue = Read-Host "  Continue anyway? [y/N]"
-        if ($continue -notin @("y", "Y", "yes")) { exit 0 }
-    }
+    $continue = Read-Host "  Continue anyway? [y/N]"
+    if ($continue -notin @("y", "Y", "yes")) { exit 0 }
 }
 Write-Ok "Branch: $branch"
 
