@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import or_, select, update
+from sqlalchemy import and_, or_, select, update
 
 from app import database as db_module
 from app.config import get_settings
@@ -59,7 +59,7 @@ job_registry: dict[str, JobInfo] = {
     "retry_all_failed": JobInfo(
         id="retry_all_failed",
         name="Retry All Failed",
-        description="Reset every failed video back to pending so the download processor retries them.",
+        description="Retry all failed videos (import-only when oshash/filename exists; full re-download otherwise).",
     ),
     "check_ytdlp_updates": JobInfo(
         id="check_ytdlp_updates",
@@ -206,7 +206,15 @@ async def _do_process_downloads() -> None:
         try:
             result = await db.execute(
                 select(Video.id)
-                .where(Video.status == "pending")
+                .where(
+                    or_(
+                        Video.status == "pending",
+                        and_(
+                            Video.status == "downloaded",
+                            Video.stash_scene_id.is_(None),
+                        ),
+                    )
+                )
                 .order_by(Video.created_at)
                 .limit(max_concurrent)
             )
@@ -238,7 +246,7 @@ async def _do_process_downloads() -> None:
                     if video is None:
                         return
                     # Video may have been cancelled/retried between selection and now.
-                    if video.status != "pending":
+                    if video.status not in ("pending", "downloaded"):
                         return
                     await process_single_download(video, db2, settings, stash2)
                 await db2.commit()
@@ -259,20 +267,43 @@ async def _do_process_downloads() -> None:
 
 
 async def _do_retry_all_failed() -> None:
-    """Core logic: reset all failed videos to pending."""
+    """Reset failed videos: to downloaded (import-only retry) when oshash/filename
+    exists, otherwise to pending (full re-download).
+    """
     if db_module.async_session is None:
         logger.warning("Retry all failed skipped: database session not initialized")
         return
     async with db_module.async_session() as db:
         try:
             result = await db.execute(
-                update(Video)
+                select(Video.id, Video.oshash, Video.original_filename)
                 .where(Video.status == "failed")
-                .values(status="pending", error_message=None)
             )
-            count = result.rowcount
+            rows = result.all()
+            to_downloaded = 0
+            to_pending = 0
+            for video_id, oshash, original_filename in rows:
+                if oshash or original_filename:
+                    await db.execute(
+                        update(Video)
+                        .where(Video.id == video_id)
+                        .values(status="downloaded", error_message=None)
+                    )
+                    to_downloaded += 1
+                else:
+                    await db.execute(
+                        update(Video)
+                        .where(Video.id == video_id)
+                        .values(status="pending", error_message=None)
+                    )
+                    to_pending += 1
             await db.commit()
-            logger.info("Retry all failed: reset %d video(s) to pending", count)
+            total = to_downloaded + to_pending
+            if total:
+                logger.info(
+                    "Retry all failed: reset %d video(s) — %d to downloaded, %d to pending",
+                    total, to_downloaded, to_pending,
+                )
         except Exception:
             await db.rollback()
             raise

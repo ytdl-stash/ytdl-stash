@@ -46,14 +46,16 @@ docker compose up -d
 3. If using Docker on Linux: use the host's LAN IP (e.g., `http://192.168.1.100:9999`) or add `extra_hosts: ["host.docker.internal:host-gateway"]` to docker-compose.yml.
 4. If Stash has authentication enabled, set `YTDL_STASH_API_KEY`.
 
-### Scene not found after download (stuck in "importing")
-**Cause**: Stash did not pick up the file, or the oshash does not match.
+### Scene not found after download (stuck in "importing" or "failed")
+**Cause**: Stash did not pick up the file, the oshash does not match, or Stash's scan job failed.
 **Fix**:
-1. Verify the download directory is shared between both containers. The file must be visible to Stash at a path it is configured to scan.
-2. **Folder mapping**: If ytdl-stash writes to `/downloads` but Stash has that volume at a different path (e.g. `/data/downloads`), set `YTDL_STASH_DOWNLOAD_DIR=/data/downloads` so the app sends the path Stash expects when triggering a scan.
-3. Check Stash's library configuration -- the download path must be inside a Stash library path.
-4. The polling timeout is 30 seconds. If Stash is slow (large library), this may not be enough. Check the Stash task queue.
-5. Verify oshash: the hash is computed immediately after download. If yt-dlp runs a post-processor that modifies the file (e.g., remuxing), the hash will change. Ensure post-processing is complete before oshash computation.
+1. **Retry first**: Click **Retry** — if the file was downloaded and Stash finished processing after our wait, the early scene lookup (oshash/title) will find it without re-downloading.
+2. **Redownload if needed**: If the file was moved by Stash or is corrupted, click **Redownload** to force a fresh download.
+3. Verify the download directory is shared between both containers. The file must be visible to Stash at a path it is configured to scan.
+4. **Folder mapping**: If ytdl-stash writes to `/downloads` but Stash has that volume at a different path (e.g. `/data/downloads`), set `YTDL_STASH_DOWNLOAD_DIR=/data/downloads` so the app sends the path Stash expects when triggering a scan.
+5. Check Stash's library configuration — the download path must be inside a Stash library path.
+6. The app waits for Stash's scan job to complete (polls `findJob`). If Stash's job queue is backed up, the wait can take several minutes. Check the Stash task queue in Stash's UI.
+7. Verify oshash: the hash is computed immediately after download. If yt-dlp runs a post-processor that modifies the file (e.g., remuxing), the hash will change. Ensure post-processing is complete before oshash computation.
 
 ### Performers or studio not created in Stash
 **Cause**: The performer/studio name from yt-dlp may not match Stash's expectations.

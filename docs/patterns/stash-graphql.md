@@ -120,6 +120,55 @@ async def find_scene_by_oshash(self, oshash: str) -> dict | None:
 
 ---
 
+## Find Scene by Title
+
+Query Stash for a scene by exact title (fallback when oshash lookup fails):
+
+```python
+async def find_scene_by_title(self, title: str) -> dict | None:
+    variables = {
+        "filter": {"per_page": 1},
+        "scene_filter": {
+            "title": {"value": title.strip(), "modifier": "EQUALS"}
+        },
+    }
+    data = await self._query(_FIND_SCENES_QUERY, variables)
+    scenes = data["findScenes"]["scenes"]
+    return scenes[0] if scenes else None
+```
+
+---
+
+## Find Job and Wait for Job
+
+After `metadataScan` or `metadataGenerate`, poll job status until terminal state:
+
+```python
+_FIND_JOB_QUERY = """
+query FindJob($input: FindJobInput!) {
+    findJob(input: $input) {
+        id
+        status
+        description
+        progress
+        error
+    }
+}
+"""
+
+async def find_job(self, job_id: str) -> dict | None:
+    data = await self._query(_FIND_JOB_QUERY, {"input": {"id": job_id}})
+    return data.get("findJob")
+
+async def wait_for_job(self, job_id: str, poll_interval: float = 1.5, timeout: float = 300) -> dict:
+    # Poll until status in {FINISHED, FAILED, CANCELLED, STOPPING}. Raises on failure/cancel.
+    ...
+```
+
+**Rule**: Use `wait_for_job` after `trigger_scan` and `trigger_generate` instead of timeout-based polling.
+
+---
+
 ## Find or Create Performer
 
 ```python

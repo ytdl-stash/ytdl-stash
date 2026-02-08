@@ -21,6 +21,18 @@ query {
 }
 """
 
+_FIND_JOB_QUERY = """
+query FindJob($input: FindJobInput!) {
+    findJob(input: $input) {
+        id
+        status
+        description
+        progress
+        error
+    }
+}
+"""
+
 _METADATA_SCAN_MUTATION = """
 mutation MetadataScan($input: ScanMetadataInput!) {
     metadataScan(input: $input)
@@ -440,8 +452,8 @@ class StashClient:
             logger.debug("Stash health check failed: %s", e)
             return False
 
-    async def trigger_scan(self, paths: list[str]) -> None:
-        """Tell Stash to scan the given file paths. Disables cover/preview/sprite/phash generation."""
+    async def trigger_scan(self, paths: list[str]) -> str:
+        """Tell Stash to scan the given file paths. Returns the Stash job ID."""
         logger.info("Stash: triggering scan for %d path(s): %s", len(paths), paths)
         variables = {
             "input": {
@@ -452,7 +464,11 @@ class StashClient:
                 "scanGeneratePhashes": False,
             }
         }
-        await self._query(_METADATA_SCAN_MUTATION, variables)
+        result = await self._query(_METADATA_SCAN_MUTATION, variables)
+        job_id = (result or {}).get("metadataScan")
+        if not job_id:
+            raise RuntimeError("Stash metadataScan did not return a job ID")
+        return job_id
 
     async def find_scene_by_oshash(self, oshash: str) -> dict | None:
         """Find a scene by file oshash fingerprint. Returns scene dict or None."""
@@ -469,10 +485,27 @@ class StashClient:
         scenes = data["findScenes"]["scenes"]
         return scenes[0] if scenes else None
 
+    async def find_scene_by_title(self, title: str) -> dict | None:
+        """Find a scene by exact title. Returns scene dict or None."""
+        if not title or not title.strip():
+            return None
+        variables = {
+            "filter": {"per_page": 1},
+            "scene_filter": {
+                "title": {"value": title.strip(), "modifier": "EQUALS"}
+            },
+        }
+        data = await self._query(_FIND_SCENES_QUERY, variables)
+        scenes = data["findScenes"]["scenes"]
+        return scenes[0] if scenes else None
+
     async def wait_for_scene(
         self, oshash: str, timeout: float = 30, interval: float = 2
     ) -> dict | None:
-        """Poll Stash for a scene matching the oshash. Returns scene dict or None on timeout."""
+        """Poll Stash for a scene matching the oshash. Returns scene dict or None on timeout.
+
+        Deprecated: Prefer trigger_scan -> wait_for_job -> find_scene_by_oshash instead.
+        """
         logger.info("Stash: waiting for scene with oshash=%s (timeout=%ss)", oshash, timeout)
         deadline = time.monotonic() + timeout
         poll_count = 0
@@ -488,6 +521,37 @@ class StashClient:
             await asyncio.sleep(min(interval, remaining))
         logger.warning("Stash: scene not found after %d poll(s) for oshash=%s (timed out)", poll_count, oshash)
         return None
+
+    async def find_job(self, job_id: str) -> dict | None:
+        """Get job status by ID. Returns job dict or None if not found."""
+        data = await self._query(_FIND_JOB_QUERY, {"input": {"id": job_id}})
+        return data.get("findJob")
+
+    async def wait_for_job(
+        self, job_id: str, poll_interval: float = 1.5, timeout: float = 300
+    ) -> dict:
+        """Poll until job reaches a terminal state. Returns final job dict on FINISHED.
+
+        Raises RuntimeError if job FAILED, CANCELLED, or STOPPING.
+        Timeout (default 5 min) avoids infinite loops if Stash loses the job (e.g. restart).
+        """
+        deadline = time.monotonic() + timeout
+        terminal = {"FINISHED", "FAILED", "CANCELLED", "STOPPING"}
+        while True:
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"Stash job {job_id} timed out after {timeout}s")
+            job = await self.find_job(job_id)
+            if not job:
+                raise RuntimeError(f"Job {job_id} not found in Stash")
+            status = job.get("status")
+            if status in terminal:
+                if status == "FAILED":
+                    err = job.get("error") or "Unknown error"
+                    raise RuntimeError(f"Stash job {job_id} failed: {err}")
+                if status in ("CANCELLED", "STOPPING"):
+                    raise RuntimeError(f"Stash job {job_id} was {status.lower()}")
+                return job  # FINISHED
+            await asyncio.sleep(poll_interval)
 
     async def find_scene_by_id(self, scene_id: str) -> dict | None:
         """Fetch a scene by Stash ID. Returns full scene dict or None."""

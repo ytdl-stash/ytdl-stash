@@ -35,12 +35,19 @@
   {% endwith %}
   {% endif %}
   {% if video.status in ['failed', 'cancelled', 'skipped'] %}
-  <button type="button" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="{% if layout == 'detail' %}Reset to pending and re-download this video{% else %}Reset to pending and re-download{% endif %}"
+  <button type="button" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Retry import (skip download if possible)"
           hx-post="/videos/{{ video.id }}/retry"
           hx-target="{{ hx_status_target }}"
           hx-swap="outerHTML"
-          hx-confirm="Retry download for '{{ video.title|e }}'?">
+          hx-confirm="Retry import for '{{ video.title|e }}'?">
     Retry
+  </button>
+  <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Force a fresh download (deletes existing file)"
+          hx-post="/videos/{{ video.id }}/redownload"
+          hx-target="{{ hx_status_target }}"
+          hx-swap="outerHTML"
+          hx-confirm="Force re-download for '{{ video.title|e }}'? This will re-download the video.">
+    Redownload
   </button>
   {% endif %}
   {% if video.stash_scene_id %}

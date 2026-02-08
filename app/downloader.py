@@ -443,7 +443,7 @@ def download_video(
 
     return {
         "filepath": filepath,
-        "filename": os.path.basename(filepath),
+        "filename": os.path.relpath(filepath, output_dir),
         "title": info.get("title", ""),
         "upload_date": _parse_date(info.get("upload_date")),
         "performers": _extract_performers(info),

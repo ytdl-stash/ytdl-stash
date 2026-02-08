@@ -149,7 +149,7 @@ ytdl-stash/
       auth.py                   # GET/POST /login, GET /logout (when password set)
       dashboard.py              # GET /
       channels.py               # Channels: list (card grid), detail, add wizard, update, delete, sync, check-now (Phase 11)
-      videos.py                 # Videos list (paginated)/detail/retry/active_downloads panel
+      videos.py                 # Videos list (paginated)/detail/retry/redownload/resync/active_downloads panel
       health.py                 # GET /health (Phase 10)
       settings.py               # Settings + Stash connectivity test
     templates/
@@ -243,7 +243,7 @@ The Settings page (`/settings`) displays the effective configuration **read at s
 | `YTDL_STASH_GENERATE_PREVIEWS` | `True` | Generate video previews (only when generate is enabled) |
 | `YTDL_STASH_GENERATE_SPRITES` | `True` | Generate sprite sheets (only when generate is enabled) |
 | `YTDL_STASH_GENERATE_PHASHES` | `True` | Generate perceptual hashes (only when generate is enabled) |
-| `YTDL_STASH_ORGANIZED_SETTLE_SECONDS` | `5` | Seconds to wait after setting organized=True before triggering generate (allows Stash file-move to complete; 0–60) |
+| `YTDL_STASH_ORGANIZED_SETTLE_SECONDS` | `5` | **Deprecated.** No longer used; generate now runs before organized. Retained for backwards compat. |
 | `YTDL_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 ## Optional app password
@@ -315,10 +315,10 @@ pending -> downloading -> downloaded -> importing -> synced
 - **pending**: Video discovered during channel scan, queued for download.
 - **downloading**: Download in progress via yt-dlp.
 - **skipped**: Video skipped because it did not meet filter criteria (e.g. duration shorter than `min_duration_seconds`, or older than `max_video_age_days`). `error_message` explains the reason. Can be retried.
-- **downloaded**: File saved to disk, oshash computed.
+- **downloaded**: File saved to disk, oshash computed. Also used for import-retry: Retry sets this when oshash/filename exists so the pipeline retries import without re-downloading.
 - **importing**: Stash `metadataScan` triggered, waiting for scene to appear.
 - **synced**: Scene found in Stash, metadata (title, performers, studio, date) applied.
 - **imported**: Video imported from YoutubeDL-Material; not downloaded by ytdl-stash. Treated as already-downloaded (not re-downloaded).
-- **failed**: Error at any stage. `error_message` column stores the reason. Can be retried.
+- **failed**: Error at any stage. `error_message` column stores the reason. **Retry** (import-only when possible) or **Redownload** (force fresh download) from the UI.
 
-**Stuck-video recovery**: On startup, `init_db()` resets any videos left in intermediate states (`downloading`, `downloaded`, `importing`) back to `pending`. This handles cases where the server crashed or was restarted mid-pipeline.
+**Stuck-video recovery**: On startup, `init_db()` resets any videos left in intermediate states (`downloading`, `importing`, `cancelling`). If the file exists on disk (`original_filename` set), the video is recovered to `downloaded` instead of `pending` to avoid re-downloading.

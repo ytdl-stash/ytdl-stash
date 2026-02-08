@@ -280,13 +280,13 @@ video.oshash = "a1b2c3d4e5f67890"
 
 ### 6. Trigger Stash Metadata Scan
 
-**Trigger**: Immediately after oshash computation.
+**Trigger**: Immediately after oshash computation (or after early scene lookup and file-existence check when retrying).
 
 **What happens**:
 1. Set `video.status = "importing"`.
-2. Call `stash_client.trigger_scan(paths=[video.filepath])`.
-3. This sends a GraphQL `metadataScan` mutation to Stash.
-4. Stash begins scanning the file in the background (creates a scene, computes fingerprints).
+2. Call `stash_client.trigger_scan(paths=[video.filepath])` — returns Stash job ID.
+3. Call `stash_client.wait_for_job(scan_job_id)` — polls `findJob` until FINISHED/FAILED.
+4. Look up scene by `find_scene_by_oshash`, fallback to `find_scene_by_title`.
 
 **Important**: The file path passed to Stash must be the path **as Stash sees it**, not as ytdl-stash sees it. Since both containers mount the same host directory, the paths should align:
 - ytdl-stash writes to: `/downloads/SomeUser - Video Title [abc123].mp4`
@@ -294,35 +294,18 @@ video.oshash = "a1b2c3d4e5f67890"
 
 If the mount points differ, a path translation may be needed.
 
+**Early scene lookup** (before download): If `video.oshash` or `video.title` is set (e.g. from retry), try `find_scene_by_oshash` then `find_scene_by_title`. If found, skip download and scan, jump to metadata update.
+
 ---
 
-### 7. Poll for Scene in Stash
+### 7. Find Scene After Scan
 
-**Trigger**: Immediately after triggering the scan.
+**Trigger**: After `wait_for_job(scan_job_id)` completes (scan job FINISHED).
 
 **What happens**:
-1. Call `stash_client.wait_for_scene(video.oshash, timeout=30, interval=2)`.
-2. This polls `findScenes` with the oshash filter every 2 seconds for up to 30 seconds.
-3. When a scene is found, return the scene dict (contains `scene.id`).
-4. If timeout expires with no scene found, set `video.status = "failed"` with an error message.
-
-**Data flow**:
-```
-Poll loop (every 2s, max 30s):
-    |
-    v
-  GraphQL: findScenes(oshash = video.oshash)
-    |
-    v
-  Found?
-   /    \
-  No     Yes
-  |       |
-  v       v
-Wait 2s  Return scene {id, title, files}
-then
-retry
-```
+1. Call `find_scene_by_oshash(video.oshash)`.
+2. If not found, fallback to `find_scene_by_title(video.title)`.
+3. If still not found, set `video.status = "failed"` with error message.
 
 ---
 
@@ -422,39 +405,32 @@ video.status = "synced"
 
 ---
 
-### 10b. Post-Sync: Mark Scene Organized (First Download Only)
+### 10b. Post-Sync: Trigger Generate (Optional)
 
-**Trigger**: Scene is being synced for the first time (inside `run_scrape_and_generate` with `set_organized=True`).
-
-**What happens**:
-1. Call `stash_client.update_scene(scene_id, organized=True)` to mark the scene as organized.
-2. If Stash has a file-move rule triggered by the organized flag, the file is relocated to its final path **before** the generate step queues.
-3. Wait `stash_organized_settle_seconds` (default 5) to give Stash time to complete any file-move rule before queuing the generate job. The file-move may run asynchronously on Stash's side; without this delay, the generate job can start before the move finishes and silently produce nothing.
-
-**Why this ordering matters**: Stash's generate job runs asynchronously in a sequential job queue. If organized is set *after* generate is queued, the file-move can relocate the video while the generate job is waiting to run (or actively running), causing generation to fail silently. By setting organized first and waiting for the settle delay, the file is already at its final location when generate is queued.
-
-**Error handling**: Best-effort. Failures are logged as warnings; generate still fires even if organized fails (the file stays at its original location, which is still valid).
-
----
-
-### 11. Post-Sync: Trigger Generate (Optional)
-
-**Trigger**: Scene synced in step 9, and `YTDL_STASH_GENERATE_AFTER_SYNC=true`.
+**Trigger**: Scene synced in step 9, and `YTDL_STASH_GENERATE_AFTER_SYNC=true`. Runs **before** organized.
 
 **What happens**:
-1. Call `stash_client.trigger_generate(scene_ids=[scene.id])` with the configured generation options:
-   - `covers` (default: true) — generate cover/thumbnail images.
-   - `previews` (default: true) — generate video preview clips.
-   - `sprites` (default: true) — generate sprite sheets for scrubbing.
-   - `phashes` (default: true) — generate perceptual hashes for duplicate detection.
-2. Stash queues the generation as an asynchronous background job (returns a job ID immediately).
-3. Since Stash processes jobs sequentially, the generate job runs after any pending scan or file-move job completes.
+1. Call `stash_client.trigger_generate(scene_ids=[scene.id])` — returns job ID.
+2. Call `stash_client.wait_for_job(generate_job_id)` — polls until generate completes.
+3. File is still at its original location during generate; no race with file-move.
 
 **Error handling**: Best-effort. Failures are logged as warnings but do not change the video's `synced` status.
 
 ---
 
-### 12. Post-Sync: Re-sync Scene from Stash
+### 10c. Post-Sync: Mark Scene Organized (First Download Only)
+
+**Trigger**: After generate completes (inside `run_scrape_and_generate` with `set_organized=True`).
+
+**What happens**:
+1. Call `stash_client.update_scene(scene_id, organized=True)`.
+2. Any Stash file-move rule triggered by organized runs **after** generate is done.
+
+**Why this ordering**: Generate runs first and waits for completion. Organized is set last. No settle delay needed.
+
+---
+
+### 11. Post-Sync: Re-sync Scene from Stash
 
 **Trigger**: After scraping and/or generating (step 10/11), or manually via the "Re-sync" button on the Videos page.
 
@@ -466,7 +442,7 @@ video.status = "synced"
 **What happens (manual — via "Re-sync from Stash" button)**:
 1. `POST /videos/{id}/resync` verifies the scene exists in Stash.
 2. Re-scrapes the video URL via Stash's scrapers and applies any new/updated metadata.
-3. Triggers Stash generate (if enabled in settings).
+3. Triggers Stash generate and waits for job completion (if enabled in settings).
 4. The Stash screenshot thumbnail in the UI automatically reflects any cover image changes.
 
 **Manual re-sync always scrapes** regardless of the `YTDL_STASH_SCRAPE_AFTER_SYNC` setting, since it's an explicit user action.
@@ -491,23 +467,27 @@ The videos page displays scene thumbnails from Stash for synced videos. The thum
 | 4 - Download | user stop requested | `status=cancelled`, `error_message="Cancelled by user"` |
 | 5 - oshash | File read error | `status=failed`, `error_message` saved |
 | 6 - Stash scan | Stash unreachable | `status=failed`, `error_message` saved |
-| 7 - Poll | Timeout (scene not found) | `status=failed`, retry possible |
+| 7 - Find scene | Scene not found after scan job | `status=failed`, retry possible |
 | 8 - Performers | Stash API error | `status=failed`, `error_message` saved |
 | 9 - Update | Stash API error | `status=failed`, `error_message` saved |
 | 10 - Scrape | No scraper / scrape error | Logged as warning, video stays `synced`; `scrape_attempted_at` not set so Backfill job can retry |
-| 11 - Generate | Stash API error | Logged as warning, video stays `synced`; `generate_triggered_at` not set so Backfill job can retry |
-| 12 - Re-sync | Stash scene not found | Logged as warning (auto), or HTTP 404 (manual) |
+| 10b - Generate | Stash API error | Logged as warning, video stays `synced`; `generate_triggered_at` not set so Backfill job can retry |
+| 11 - Re-sync | Stash scene not found | Logged as warning (auto), or HTTP 404 (manual) |
 
-All failures in steps 1–9 result in `status=failed` with the error message saved to the database. The user can retry from the UI, which resets the video to `status=pending`. Steps 10–12 are best-effort and never change the video status.
+All failures in steps 1–9 result in `status=failed` with the error message saved to the database. The user can **Retry** (import-only when possible) or **Redownload** (force fresh download). Steps 10–10c are best-effort and never change the video status.
 
 ---
 
-## Retry Flow
+## Retry and Redownload
 
-When a user clicks "Retry" on a failed video:
-1. `POST /videos/{id}/retry` handler sets `video.status = "pending"` and clears `video.error_message`.
-2. The `download_processor` job picks it up in its next cycle.
-3. The pipeline runs from step 4 onward (or step 5/6 if the file was already downloaded).
+**Retry** (import-only when possible):
+1. `POST /videos/{id}/retry` sets `video.status = "downloaded"` when oshash/filename exists, else `"pending"`.
+2. The download processor picks up both `pending` and `downloaded` (no scene) videos.
+3. Pipeline runs early scene lookup; if found, skips download. Otherwise uses file-existence fast-path or downloads.
+
+**Redownload** (force fresh download):
+1. `POST /videos/{id}/redownload` clears `original_filename`, `oshash`, `stash_scene_id`; sets `status = "pending"`.
+2. Deletes existing file if present. Pipeline downloads from scratch.
 
 ---
 
@@ -524,8 +504,8 @@ If a job is running, a **Stop** button is available:
 | Job | Endpoint | Description |
 |-----|----------|-------------|
 | **Check All Channels** | `POST /jobs/check_all_channels/trigger` | Scans all enabled channels that are due for new videos (same as the scheduled `channel_checker`). |
-| **Process Downloads** | `POST /jobs/process_downloads/trigger` | Downloads and imports pending videos in the queue (up to configured concurrency, same as the scheduled `download_processor`). |
-| **Retry All Failed** | `POST /jobs/retry_all_failed/trigger` | Resets every `status=failed` video back to `status=pending` so the download processor retries them. |
+| **Process Downloads** | `POST /jobs/process_downloads/trigger` | Downloads and imports pending or downloaded (import-retry) videos in the queue (up to configured concurrency, same as the scheduled `download_processor`). |
+| **Retry All Failed** | `POST /jobs/retry_all_failed/trigger` | Resets failed videos: to `downloaded` (import-only) when oshash/filename exists, else to `pending`. |
 | **Backfill Scrape & Generate** | `POST /jobs/backfill_scrape_generate/trigger` | Runs scrape and generate for synced videos missing `scrape_attempted_at` or `generate_triggered_at` (bulk backfill or retry for failed post-sync steps). Only runs the step(s) that are actually missing per video. |
 | **Regenerate All** | `POST /jobs/regenerate_all/trigger` | Resets `generate_triggered_at` on all synced videos and re-triggers Stash generate for each (skips scrape). Useful after a bug that caused generate to silently fail. |
 
@@ -536,6 +516,7 @@ In addition to the Jobs page, trigger buttons appear in context:
 - **"Check All Now"** button on the **Channels** list page — triggers the Check All Channels job.
 - **"Retry All Failed"** button on the **Videos** list page — triggers the Retry All Failed job.
 - **"Re-sync"** / **"Re-sync from Stash"** button on the **Videos** list and detail pages — re-scrapes and re-generates a synced scene (only shown for videos with a `stash_scene_id`).
+- **"Retry"** and **"Redownload"** buttons on failed/cancelled/skipped videos — Retry tries import-only when possible; Redownload forces a fresh download.
 
 ### Job Tracking
 

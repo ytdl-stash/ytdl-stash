@@ -6,7 +6,7 @@ import os
 import time
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -209,11 +209,9 @@ async def run_scrape_and_generate(
 ) -> None:
     """Run scrape and generate for a synced scene, update tracking timestamps on success.
 
-    When *set_organized* is True the scene is marked as organized **after**
-    scraping but **before** triggering generate.  This ordering is important
-    because setting organized can trigger a Stash file-move rule; the
-    generate job (which runs asynchronously in Stash's sequential job
-    queue) must see the file at its final location.
+    Generate runs before set_organized so that the generate job sees the file
+    at its original location. After generate completes, organized is set;
+    any file-move rule runs after generate is done, avoiding races.
 
     *skip_scrape* / *skip_generate* let callers (e.g. the backfill job)
     run only the step that is actually needed.
@@ -234,8 +232,24 @@ async def run_scrape_and_generate(
         except Exception as e:
             logger.warning("Video %s: post-sync scrape failed (non-fatal): %s", video.id, e)
 
-    # 2. Mark scene as organized (before generate so any file-move rule
-    #    completes before the generate job reads the file).
+    # 2. Trigger Stash generate and wait for completion (before organized)
+    if settings.stash_generate_after_sync and not skip_generate:
+        try:
+            logger.info("Video %s: triggering Stash generate for scene %s", video.id, scene_id)
+            job_id = await stash.trigger_generate(
+                scene_ids=[scene_id],
+                covers=settings.stash_generate_covers,
+                previews=settings.stash_generate_previews,
+                sprites=settings.stash_generate_sprites,
+                phashes=settings.stash_generate_phashes,
+            )
+            if job_id:
+                await stash.wait_for_job(job_id)
+            video.generate_triggered_at = datetime.now(UTC)
+        except Exception as e:
+            logger.warning("Video %s: post-sync generate failed (non-fatal): %s", video.id, e)
+
+    # 3. Mark scene as organized (after generate; file-move happens last)
     if set_organized:
         try:
             await stash.update_scene(scene_id=scene_id, organized=True)
@@ -243,35 +257,11 @@ async def run_scrape_and_generate(
                 "Video %s: marked scene %s as organized in Stash",
                 video.id, scene_id,
             )
-            # Allow Stash to complete any file-move rule triggered by the
-            # organized flag before queuing the generate job.
-            settle = settings.stash_organized_settle_seconds
-            if settle > 0:
-                logger.info(
-                    "Video %s: waiting %ss for Stash file-move to settle",
-                    video.id, settle,
-                )
-                await asyncio.sleep(settle)
         except Exception as e:
             logger.warning(
                 "Video %s: failed to mark scene %s as organized (non-fatal): %s",
                 video.id, scene_id, e,
             )
-
-    # 3. Trigger Stash generate (covers, previews, sprites, phashes)
-    if settings.stash_generate_after_sync and not skip_generate:
-        try:
-            logger.info("Video %s: triggering Stash generate for scene %s", video.id, scene_id)
-            await stash.trigger_generate(
-                scene_ids=[scene_id],
-                covers=settings.stash_generate_covers,
-                previews=settings.stash_generate_previews,
-                sprites=settings.stash_generate_sprites,
-                phashes=settings.stash_generate_phashes,
-            )
-            video.generate_triggered_at = datetime.now(UTC)
-        except Exception as e:
-            logger.warning("Video %s: post-sync generate failed (non-fatal): %s", video.id, e)
 
     # 4. Re-sync scene from Stash to confirm scraper results were applied
     if not skip_scrape:
@@ -281,17 +271,105 @@ async def run_scrape_and_generate(
             logger.warning("Video %s: post-sync scene re-sync failed (non-fatal): %s", video.id, e)
 
 
+async def _apply_metadata_and_sync(
+    video: Video,
+    scene: dict,
+    stash: StashClient,
+    settings: Settings,
+    db: AsyncSession,
+) -> None:
+    """Resolve performers/studio, update scene metadata in Stash, mark synced, run post-sync."""
+    await db.refresh(video, ["channel"])
+    channel = video.channel
+    channel_norm = _normalize_performer_name(channel.name or "").lower() if channel else ""
+
+    ch_result = await db.execute(select(Channel))
+    channels = list(ch_result.scalars().all())
+    channel_by_name: dict[str, Channel] = {}
+    for ch in channels:
+        key = _normalize_performer_name(ch.name or "").lower()
+        if key:
+            channel_by_name[key] = ch
+
+    performer_ids: list[str] = []
+    for name in video.performers or []:
+        norm_name = _normalize_performer_name(name).lower()
+        if not norm_name:
+            continue
+        ch: Channel | None = None
+        if channel and channel_norm == norm_name:
+            ch = channel
+        elif norm_name in channel_by_name:
+            ch = channel_by_name[norm_name]
+        if ch:
+            if ch.stash_performer_id:
+                pid = ch.stash_performer_id
+            else:
+                pid = await stash.find_or_create_performer_by_url(
+                    name=name,
+                    url=ch.url,
+                    image_url=ch.performer_image_url,
+                )
+        else:
+            pid = await stash.find_or_create_performer(name)
+        performer_ids.append(pid)
+
+    studio_id: str | None = None
+    if channel and channel.stash_studio_id:
+        studio_id = channel.stash_studio_id
+
+    date_str = video.upload_date.isoformat() if video.upload_date else None
+    await stash.update_scene(
+        scene_id=scene["id"],
+        title=video.title,
+        urls=[video.url],
+        date=date_str,
+        studio_id=studio_id,
+        performer_ids=performer_ids,
+    )
+
+    video.stash_scene_id = scene["id"]
+    video.status = "synced"
+    if video.synced_at is None:
+        video.synced_at = datetime.now(UTC)
+    logger.info("Video %s: synced to Stash scene %s", video.id, scene["id"])
+
+    await run_scrape_and_generate(
+        video, scene["id"], stash, settings, db,
+        performer_ids=performer_ids, studio_id=studio_id,
+        set_organized=True,
+    )
+
+
 async def process_single_download(
     video: Video, db: AsyncSession, settings: Settings, stash: StashClient
 ) -> None:
     """Run the full lifecycle for one video: download -> oshash -> scan -> match -> tag."""
     try:
         download_control.set_active(video.id)
-        video.status = "downloading"
         video.error_message = None
         download_progress.clear(video.id)
-        await db.commit()
-        logger.info("Video %s: downloading", video.id)
+        await db.refresh(video, ["channel"])
+        channel = video.channel
+        was_import_retry = video.status == "downloaded"
+
+        # ------------------------------------------------------------------
+        # Early scene lookup: if scene already in Stash (e.g. retry after
+        # timeout, or Stash moved file), skip download and scan entirely.
+        # ------------------------------------------------------------------
+        scene: dict | None = None
+        if video.oshash:
+            scene = await stash.find_scene_by_oshash(video.oshash)
+        if scene is None and video.title:
+            scene = await stash.find_scene_by_title(video.title)
+        if scene:
+            logger.info(
+                "Video %s: scene already in Stash (id=%s), skipping download",
+                video.id, scene["id"],
+            )
+            await _apply_metadata_and_sync(video, scene, stash, settings, db)
+            await db.commit()
+            return
 
         # ------------------------------------------------------------------
         # File-existence fast-path
@@ -299,8 +377,9 @@ async def process_single_download(
         # crashed mid-import, or startup recovery reset us to pending),
         # skip the download entirely and jump to the oshash/import stage.
         # ------------------------------------------------------------------
-        await db.refresh(video, ["channel"])
-        channel = video.channel
+        video.status = "downloading"
+        await db.commit()
+        logger.info("Video %s: downloading", video.id)
         existing_filepath: str | None = None
 
         if video.original_filename:
@@ -313,6 +392,12 @@ async def process_single_download(
                 )
 
         if existing_filepath is None:
+            # Retry set status to "downloaded" but file is gone (e.g. Stash moved it)
+            # and we didn't find the scene in Stash via early lookup.
+            if was_import_retry:
+                raise RuntimeError(
+                    "File not found and scene not in Stash. Use Redownload to fetch again."
+                )
             # ------------------------------------------------------------------
             # Pre-download metadata check
             # The channel scan uses extract_flat=True which often omits duration
@@ -512,87 +597,21 @@ async def process_single_download(
             if scan_path == d or scan_path.startswith(d + "/"):
                 scan_path = s + scan_path[len(d) :]
         logger.info("Video %s: triggering Stash scan for %s", video.id, scan_path)
-        await stash.trigger_scan([scan_path])
+        scan_job_id = await stash.trigger_scan([scan_path])
 
         if download_control.is_cancel_requested(video.id):
             raise DownloadCancelled("Download cancelled by user")
 
-        logger.info("Video %s: waiting for Stash scene (oshash=%s)", video.id, oshash)
-        scene = await stash.wait_for_scene(oshash)
+        logger.info("Video %s: waiting for Stash scan job %s", video.id, scan_job_id)
+        await stash.wait_for_job(scan_job_id)
+        scene = await stash.find_scene_by_oshash(oshash)
         if scene is None:
-            raise RuntimeError("Scene not found after scan timeout")
+            scene = await stash.find_scene_by_title(video.title)
+        if scene is None:
+            raise RuntimeError("Scene not found in Stash after scan job completed")
         logger.info("Video %s: Stash scene found (id=%s)", video.id, scene["id"])
 
-        await db.refresh(video, ["channel"])
-        performer_ids: list[str] = []
-        channel = video.channel
-        channel_norm = _normalize_performer_name(channel.name or "").lower() if channel else ""
-
-        ch_result = await db.execute(select(Channel))
-        channels = list(ch_result.scalars().all())
-        channel_by_name: dict[str, Channel] = {}
-        for ch in channels:
-            key = _normalize_performer_name(ch.name or "").lower()
-            if key:
-                channel_by_name[key] = ch
-
-        for name in video.performers or []:
-            norm_name = _normalize_performer_name(name).lower()
-            if not norm_name:
-                continue
-            ch: Channel | None = None
-            if channel and channel_norm == norm_name:
-                ch = channel
-            elif norm_name in channel_by_name:
-                ch = channel_by_name[norm_name]
-            if ch:
-                if ch.stash_performer_id:
-                    pid = ch.stash_performer_id
-                    logger.info("Video %s: performer '%s' -> Stash id %s (cached)", video.id, name, pid)
-                else:
-                    pid = await stash.find_or_create_performer_by_url(
-                        name=name,
-                        url=ch.url,
-                        image_url=ch.performer_image_url,
-                    )
-                    logger.info("Video %s: performer '%s' -> Stash id %s (channel)", video.id, name, pid)
-            else:
-                pid = await stash.find_or_create_performer(name)
-                logger.info("Video %s: performer '%s' -> Stash id %s", video.id, name, pid)
-            performer_ids.append(pid)
-
-        studio_id: str | None = None
-        if channel and channel.stash_studio_id:
-            studio_id = channel.stash_studio_id
-            logger.info("Video %s: studio from channel -> Stash id %s", video.id, studio_id)
-
-        date_str = video.upload_date.isoformat() if video.upload_date else None
-        logger.info("Video %s: updating Stash scene %s with metadata", video.id, scene["id"])
-        await stash.update_scene(
-            scene_id=scene["id"],
-            title=video.title,
-            urls=[video.url],
-            date=date_str,
-            studio_id=studio_id,
-            performer_ids=performer_ids,
-        )
-
-        video.stash_scene_id = scene["id"]
-        video.status = "synced"
-        if video.synced_at is None:
-            video.synced_at = datetime.now(UTC)
-        await db.commit()
-        logger.info("Video %s: synced to Stash scene %s", video.id, scene["id"])
-
-        # ------------------------------------------------------------------
-        # Post-sync actions (best-effort — failures are logged, not raised)
-        # ------------------------------------------------------------------
-
-        await run_scrape_and_generate(
-            video, scene["id"], stash, settings, db,
-            performer_ids=performer_ids, studio_id=studio_id,
-            set_organized=True,
-        )
+        await _apply_metadata_and_sync(video, scene, stash, settings, db)
         await db.commit()
 
     except DownloadCancelled as e:
@@ -635,10 +654,18 @@ async def process_single_download(
 async def process_pending_downloads(
     db: AsyncSession, settings: Settings, stash: StashClient
 ) -> None:
-    """Process one pending video (FIFO), then wait the configured delay."""
+    """Process one pending or downloaded (import-retry) video (FIFO), then wait the configured delay."""
     result = await db.execute(
         select(Video)
-        .where(Video.status == "pending")
+        .where(
+            or_(
+                Video.status == "pending",
+                and_(
+                    Video.status == "downloaded",
+                    Video.stash_scene_id.is_(None),
+                ),
+            )
+        )
         .order_by(Video.created_at)
         .limit(1)
     )

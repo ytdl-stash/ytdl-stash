@@ -2,6 +2,7 @@
 
 import logging
 import math
+import os
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -206,14 +207,59 @@ async def retry_video(
             detail="Only failed/cancelled/skipped videos can be retried",
         )
 
-    video.status = "pending"
+    if video.oshash or video.original_filename:
+        video.status = "downloaded"  # skip download, retry import only
+    else:
+        video.status = "pending"  # full pipeline including download
     video.error_message = None
-    logger.info("Video %s reset to pending for retry", video_id)
+    logger.info("Video %s reset for retry (status=%s)", video_id, video.status)
 
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
             "videos/_status_badge.html",
             {"request": request, "video": video},
+        )
+    return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
+
+
+@router.post("/{video_id}/redownload")
+async def redownload_video(
+    video_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Force a fresh download. Clears filename/oshash, deletes existing file if present, sets pending."""
+    video = await db.get(Video, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if video.status not in {"failed", "cancelled", "skipped"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Only failed/cancelled/skipped videos can be redownloaded",
+        )
+
+    # Delete existing file if we know its path and it exists
+    if video.original_filename:
+        candidate = os.path.join(settings.download_dir, video.original_filename)
+        if os.path.isfile(candidate):
+            try:
+                os.remove(candidate)
+                logger.info("Video %s: deleted existing file %s", video_id, candidate)
+            except OSError as e:
+                logger.warning("Video %s: could not delete %s: %s", video_id, candidate, e)
+
+    video.original_filename = None
+    video.oshash = None
+    video.stash_scene_id = None
+    video.status = "pending"
+    video.error_message = None
+    logger.info("Video %s reset to pending for redownload", video_id)
+
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            "videos/_status_badge.html",
+            {"request": request, "video": video, "poll_status_badge": True},
         )
     return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
 
@@ -403,13 +449,15 @@ async def resync_video(
         # Re-generate
         if settings.stash_generate_after_sync:
             try:
-                await stash.trigger_generate(
+                job_id = await stash.trigger_generate(
                     scene_ids=[video.stash_scene_id],
                     covers=settings.stash_generate_covers,
                     previews=settings.stash_generate_previews,
                     sprites=settings.stash_generate_sprites,
                     phashes=settings.stash_generate_phashes,
                 )
+                if job_id:
+                    await stash.wait_for_job(job_id)
                 video.generate_triggered_at = datetime.now(UTC)
             except Exception as e:
                 logger.warning(
