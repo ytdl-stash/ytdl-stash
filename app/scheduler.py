@@ -13,7 +13,7 @@ from sqlalchemy import or_, select, update
 from app import database as db_module
 from app.config import get_settings
 from app.models import Channel, Video
-from app.pipeline import process_channel_scan, process_pending_downloads
+from app.pipeline import process_channel_scan, process_pending_downloads, run_scrape_and_generate
 from app.stash_client import StashClient
 from app.ytdlp_updates import check_for_update as ytdlp_check_for_update
 
@@ -65,6 +65,11 @@ job_registry: dict[str, JobInfo] = {
         id="check_ytdlp_updates",
         name="Check yt-dlp Updates",
         description="Check GitHub nightly builds for a newer yt-dlp version (does not rebuild container).",
+    ),
+    "backfill_scrape_generate": JobInfo(
+        id="backfill_scrape_generate",
+        name="Backfill Scrape & Generate",
+        description="Run scrape and generate for synced videos that haven't had them yet.",
     ),
 }
 
@@ -269,6 +274,87 @@ async def _do_retry_all_failed() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Backfill scrape & generate
+# ---------------------------------------------------------------------------
+
+
+_BACKFILL_BATCH_SIZE = 50
+_BACKFILL_DELAY_SECONDS = 2
+
+
+async def _do_backfill_scrape_generate() -> None:
+    """Run scrape and generate for synced videos missing scrape_attempted_at or generate_triggered_at."""
+    if db_module.async_session is None:
+        logger.warning("Backfill scrape/generate skipped: database session not initialized")
+        return
+
+    settings = get_settings()
+    async with db_module.async_session() as db:
+        try:
+            result = await db.execute(
+                select(Video)
+                .where(
+                    Video.status == "synced",
+                    Video.stash_scene_id.isnot(None),
+                    or_(
+                        Video.scrape_attempted_at.is_(None),
+                        Video.generate_triggered_at.is_(None),
+                    ),
+                )
+                .order_by(Video.synced_at.nullslast(), Video.id)
+                .limit(_BACKFILL_BATCH_SIZE)
+            )
+            videos = list(result.scalars().all())
+        except Exception as e:
+            await db.rollback()
+            logger.exception("Backfill scrape/generate failed while selecting videos: %s", e)
+            raise
+
+    if not videos:
+        logger.debug("Backfill scrape/generate: no videos need processing")
+        return
+
+    logger.info(
+        "Backfill scrape/generate: processing %d video(s)",
+        len(videos),
+    )
+
+    for v in videos:
+        if db_module.async_session is None:
+            return
+        video_id = v.id
+        async with db_module.async_session() as db2:
+            try:
+                async with StashClient(
+                    settings.stash_url, settings.stash_api_key
+                ) as stash:
+                    video = await db2.get(Video, video_id)
+                    if video is None:
+                        continue
+                    if video.status != "synced" or not video.stash_scene_id:
+                        continue
+                    await run_scrape_and_generate(
+                        video,
+                        video.stash_scene_id,
+                        stash,
+                        settings,
+                        db2,
+                        performer_ids=None,
+                        studio_id=None,
+                    )
+                await db2.commit()
+            except Exception as e:
+                await db2.rollback()
+                logger.warning(
+                    "Backfill scrape/generate failed for video %s: %s",
+                    video_id, e,
+                )
+
+        if _BACKFILL_DELAY_SECONDS > 0:
+            await asyncio.sleep(_BACKFILL_DELAY_SECONDS)
+
+
+# ---------------------------------------------------------------------------
 # yt-dlp update checks
 # ---------------------------------------------------------------------------
 
@@ -283,6 +369,7 @@ job_registry["check_all_channels"].coro_fn = _do_check_all_channels
 job_registry["process_downloads"].coro_fn = _do_process_downloads
 job_registry["retry_all_failed"].coro_fn = _do_retry_all_failed
 job_registry["check_ytdlp_updates"].coro_fn = _do_check_ytdlp_updates
+job_registry["backfill_scrape_generate"].coro_fn = _do_backfill_scrape_generate
 
 
 # ---------------------------------------------------------------------------

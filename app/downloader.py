@@ -428,12 +428,13 @@ def download_video(
 
 
 def extract_video_info(url: str, settings: Settings) -> dict:
-    """Extract video metadata (duration, title, etc.) without downloading.
+    """Extract video metadata (duration, title, upload_date, etc.) without downloading.
 
-    This is used for pre-download duration checks when ``extract_flat=True``
-    during the channel scan didn't return duration information.
+    Used for pre-download filter checks when ``extract_flat=True`` during the
+    channel scan didn't return duration or upload_date.
 
-    Returns dict with ``duration`` (int | None) and ``title`` (str).
+    Returns dict with ``duration`` (int | None), ``title`` (str),
+    and ``upload_date`` (str | None, yt-dlp YYYYMMDD format).
     """
     opts: dict[str, Any] = {
         "quiet": True,
@@ -453,13 +454,23 @@ def extract_video_info(url: str, settings: Settings) -> dict:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
         duration = info.get("duration") if info else None
+        upload_date_raw = info.get("upload_date") if info else None
+        # Normalize upload_date to YYYYMMDD string; yt-dlp may return int or str
+        upload_date_str: str | None = None
+        if upload_date_raw is not None:
+            parsed = _parse_date(
+                str(upload_date_raw).strip() if isinstance(upload_date_raw, str) else str(upload_date_raw)
+            )
+            if parsed is not None:
+                upload_date_str = parsed.strftime("%Y%m%d")
         return {
             "duration": int(duration) if duration is not None else None,
             "title": (info.get("title") or "") if info else "",
+            "upload_date": upload_date_str,
         }
     except DownloadError as e:
         logger.warning("Metadata extraction failed for %s: %s", url, e)
-        return {"duration": None, "title": ""}
+        return {"duration": None, "title": "", "upload_date": None}
 
 
 async def async_compute_oshash(filepath: str) -> str:

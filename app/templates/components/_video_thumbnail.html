@@ -1,0 +1,31 @@
+{# Reusable video thumbnail. Pass: video, settings, size (sm|md|lg).
+   Optional: link_url, alt (defaults to video.title), placeholder_text (defaults by size).
+   sm = w-16 h-12, md = w-24 h-14, lg = w-64 h-36
+#}
+{% set size_classes = {
+  'sm': ('w-16 h-12', 'No thumb'),
+  'md': ('w-24 h-14', 'No thumb'),
+  'lg': ('w-64 h-36', 'No thumbnail')
+} %}
+{% set dims, default_placeholder = size_classes.get(size, size_classes['md']) %}
+{% set placeholder = placeholder_text | default(default_placeholder) %}
+{% set img_alt = alt | default(video.title) %}
+{% set img_classes = 'rounded ' ~ dims ~ ' object-cover bg-base-300' %}
+{% set placeholder_classes = 'rounded ' ~ dims ~ ' bg-base-300 flex items-center justify-center text-base-content/30 text-xs' %}
+{% if video.stash_scene_id and settings %}
+  {% set img_src = settings.stash_url.rstrip('/') ~ '/scene/' ~ video.stash_scene_id ~ '/screenshot' %}
+  {% if settings.stash_api_key %}{% set img_src = img_src ~ '?apikey=' ~ settings.stash_api_key %}{% endif %}
+  {% if link_url %}
+  <a href="{{ link_url }}"><img src="{{ img_src }}" alt="{{ img_alt }}" class="{{ img_classes }}" loading="lazy"></a>
+  {% else %}
+  <img src="{{ img_src }}" alt="{{ img_alt }}" class="{{ img_classes }}" loading="lazy">
+  {% endif %}
+{% elif video.thumbnail_url %}
+  {% if link_url %}
+  <a href="{{ link_url }}"><img src="{{ video.thumbnail_url }}" alt="{{ img_alt }}" class="{{ img_classes }}" loading="lazy"></a>
+  {% else %}
+  <img src="{{ video.thumbnail_url }}" alt="{{ img_alt }}" class="{{ img_classes }}" loading="lazy">
+  {% endif %}
+{% else %}
+  <div class="{{ placeholder_classes }}">{{ placeholder }}</div>
+{% endif %}

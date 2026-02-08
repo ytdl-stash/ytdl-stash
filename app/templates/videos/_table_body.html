@@ -1,25 +1,9 @@
 {% for video in videos %}
 <tr id="video-row-{{ video.id }}">
   <td data-label="Thumb" class="w-24 p-1">
-    {% if video.stash_scene_id and settings %}
-    <a href="/videos/{{ video.id }}">
-      <img src="{{ settings.stash_url.rstrip('/') }}/scene/{{ video.stash_scene_id }}/screenshot{% if settings.stash_api_key %}?apikey={{ settings.stash_api_key }}{% endif %}"
-           alt="{{ video.title }}"
-           class="rounded w-24 h-14 object-cover bg-base-300"
-           loading="lazy">
-    </a>
-    {% elif video.thumbnail_url %}
-    <a href="/videos/{{ video.id }}">
-      <img src="{{ video.thumbnail_url }}"
-           alt="{{ video.title }}"
-           class="rounded w-24 h-14 object-cover bg-base-300"
-           loading="lazy">
-    </a>
-    {% else %}
-    <div class="rounded w-24 h-14 bg-base-300 flex items-center justify-center text-base-content/30 text-xs">
-      No thumb
-    </div>
-    {% endif %}
+    {% with size='md', link_url='/videos/' ~ video.id %}
+    {% include "components/_video_thumbnail.html" with context %}
+    {% endwith %}
   </td>
   <td data-label="Title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
   <td data-label="Channel">{{ video.channel.name if video.channel else '—' }}</td>
@@ -27,48 +11,9 @@
   <td data-label="Upload Date">{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>
   <td data-label="Duration">{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</td>
   <td data-label="Actions">
-    <a href="/videos/{{ video.id }}" class="btn btn-sm btn-ghost tooltip tooltip-top" data-tip="View full video details">Detail</a>
-    {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
-    <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel this download"
-            hx-post="/videos/{{ video.id }}/stop"
-            hx-target="#video-status-{{ video.id }}"
-            hx-swap="outerHTML"
-            hx-confirm="Stop processing for '{{ video.title|e }}'? (If downloading, this may take a moment)">
-      Stop
-    </button>
-    {% elif video.status == 'cancelling' %}
-    <button type="button" class="btn btn-sm btn-ghost" disabled>
-      <span class="loading loading-spinner loading-sm"></span>
-      Stopping…
-    </button>
-    {% endif %}
-    {% if video.status in ['failed', 'cancelled', 'skipped'] %}
-    <button type="button" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Reset to pending and re-download"
-            hx-post="/videos/{{ video.id }}/retry"
-            hx-target="#video-status-{{ video.id }}"
-            hx-swap="outerHTML"
-            hx-confirm="Retry download for '{{ video.title|e }}'?">
-      Retry
-    </button>
-    {% endif %}
-    {% if video.stash_scene_id %}
-    <button type="button" class="btn btn-sm btn-info tooltip tooltip-top" data-tip="Re-scrape metadata and regenerate from Stash"
-            hx-post="/videos/{{ video.id }}/resync"
-            hx-target="#video-status-{{ video.id }}"
-            hx-swap="outerHTML"
-            hx-disabled-elt="this"
-            hx-indicator="this">
-      <span class="htmx-indicator loading loading-spinner loading-xs"></span>
-      Re-sync
-    </button>
-    {% endif %}
-    <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Remove this video record"
-            hx-delete="/videos/{{ video.id }}"
-            hx-target="#video-row-{{ video.id }}"
-            hx-swap="outerHTML swap:1s"
-            hx-confirm="Delete this video?">
-      Delete
-    </button>
+    {% with layout='table', hx_status_target='#video-status-' ~ video.id, hx_row_target='#video-row-' ~ video.id %}
+    {% include "components/_video_actions.html" with context %}
+    {% endwith %}
   </td>
 </tr>
 {% endfor %}

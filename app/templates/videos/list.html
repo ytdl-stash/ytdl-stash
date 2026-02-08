@@ -13,7 +13,11 @@
     </button>
   </span>
 </div>
-<form id="filter-form" class="mb-4"
+{% from "components/_macros.html" import collapse %}
+{% call collapse("Active downloads", open=true) %}
+    {% include "videos/_active_downloads.html" %}
+{% endcall %}
+<form id="filter-form" class="mb-2"
       hx-get="/videos"
       hx-target="#video-list-content"
       hx-swap="innerHTML"
@@ -22,7 +26,7 @@
       hx-vals='{"page": 1}'
       hx-on::before-request="if(event.detail.elt===this) document.getElementById('page-input').value='1'">
   <input type="hidden" name="page" id="page-input" value="{{ page }}">
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 items-end">
     <label class="form-control w-full max-w-xs">
       <span class="label-text tooltip tooltip-bottom" data-tip="Show videos from a specific channel">Channel</span>
       <select name="channel_id" class="select select-bordered w-full">
@@ -50,7 +54,7 @@
     </label>
   </div>
 </form>
-{% include "videos/_active_downloads.html" %}
+{% include "videos/_status_legend.html" %}
 <div hx-get="/videos"
      hx-trigger="every 10s"
      hx-target="#video-list-content"

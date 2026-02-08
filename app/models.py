@@ -115,5 +115,7 @@ class Video(Base):
     )
     downloaded_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     synced_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
+    scrape_attempted_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
+    generate_triggered_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
 
     channel: Mapped["Channel"] = relationship(back_populates="videos")

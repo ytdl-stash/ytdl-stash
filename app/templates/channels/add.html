@@ -2,7 +2,9 @@
 {% block title %}Add Channel — ytdl-stash{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-bold mb-2">Add Channel</h1>
-<p class="mb-4"><a href="/channels" class="link link-hover">← Back to Channels</a></p>
+{% with url="/channels", label="Channels" %}
+{% include "components/_back_link.html" with context %}
+{% endwith %}
 <form method="post" action="/channels" class="space-y-4 max-w-xl">
   <label class="form-control w-full">
     <span class="label-text tooltip tooltip-bottom" data-tip="Paste the full channel/user page URL from the video site">URL</span>

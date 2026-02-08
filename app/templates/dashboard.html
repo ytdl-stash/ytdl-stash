@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/_macros.html" import th_tooltip %}
 {% block title %}Dashboard — ytdl-stash{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-bold mb-4">Dashboard</h1>
@@ -25,7 +26,7 @@
     <div class="card-body py-4">
       <h2 class="card-title text-base">Downloads by day</h2>
       <div class="w-full h-32">
-        <canvas id="downloads-chart" aria-label="Videos downloaded per day (last 90 days)"></canvas>
+        <canvas id="downloads-chart" aria-label="Videos downloaded per day (last 30 days)"></canvas>
       </div>
     </div>
   </div>
@@ -39,26 +40,16 @@
         <th>Preview</th>
         <th>Title</th>
         <th>Channel</th>
-        <th class="tooltip tooltip-bottom" data-tip="When this video was synced to Stash">Synced at</th>
+        {% call th_tooltip("When this video was synced to Stash") %}Synced at{% endcall %}
       </tr>
     </thead>
     <tbody>
       {% for video in recent_downloads %}
       <tr>
         <td data-label="Preview" class="w-20">
-          {% if video.stash_scene_id and settings %}
-          <img src="{{ settings.stash_url.rstrip('/') }}/scene/{{ video.stash_scene_id }}/screenshot{% if settings.stash_api_key %}?apikey={{ settings.stash_api_key }}{% endif %}"
-               alt=""
-               class="rounded w-16 h-12 object-cover bg-base-300"
-               loading="lazy">
-          {% elif video.thumbnail_url %}
-          <img src="{{ video.thumbnail_url }}"
-               alt=""
-               class="rounded w-16 h-12 object-cover bg-base-300"
-               loading="lazy">
-          {% else %}
-          <div class="rounded w-16 h-12 bg-base-300 flex items-center justify-center text-base-content/30 text-xs">—</div>
-          {% endif %}
+          {% with size='sm', alt='', placeholder_text='—' %}
+          {% include "components/_video_thumbnail.html" with context %}
+          {% endwith %}
         </td>
         <td data-label="Title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
         <td data-label="Channel">{{ video.channel.name if video.channel else '—' }}</td>
@@ -100,25 +91,50 @@
         data: data.values,
         borderColor: chartColor,
         backgroundColor: bgAlpha,
+        borderCapStyle: 'round',
+        borderJoinStyle: 'round',
+        borderWidth: 2,
         fill: true,
         tension: 0.3,
         pointRadius: 0,
-        pointHoverRadius: 4
+        pointHoverRadius: 6,
+        pointHoverBackgroundColor: chartColor,
+        pointHoverBorderColor: '#fff',
+        pointHoverBorderWidth: 2
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: {
+        mode: 'nearest',
+        intersect: false
+      },
       plugins: {
-        legend: { display: false }
+        legend: { display: false },
+        tooltip: {
+          enabled: true,
+          callbacks: {
+            label: function(ctx) {
+              var v = ctx.parsed && typeof ctx.parsed.y !== 'undefined' ? ctx.parsed.y : 0;
+              return v === 1 ? '1 download' : v + ' downloads';
+            },
+            title: function(_, tooltipItems) {
+              var items = Array.isArray(_) ? _ : tooltipItems;
+              return items && items[0] && items[0].label ? items[0].label : '';
+            }
+          }
+        }
       },
       scales: {
         x: {
-          ticks: { maxTicksLimit: 10 }
+          grid: { color: 'rgba(0,0,0,0.06)', drawBorder: false },
+          ticks: { maxTicksLimit: 8, font: { size: 11 } }
         },
         y: {
           beginAtZero: true,
-          ticks: { precision: 0 }
+          grid: { color: 'rgba(0,0,0,0.06)', drawBorder: false },
+          ticks: { precision: 0, font: { size: 11 } }
         }
       }
     }

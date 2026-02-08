@@ -193,21 +193,54 @@ async def _resync_scene_from_stash(video: Video, stash: StashClient) -> None:
         len(scene.get("tags") or []),
     )
 
-    if scene.get("organized") is not True:
+
+async def run_scrape_and_generate(
+    video: Video,
+    scene_id: str,
+    stash: StashClient,
+    settings: Settings,
+    db: AsyncSession,
+    *,
+    performer_ids: list[str] | None = None,
+    studio_id: str | None = None,
+) -> None:
+    """Run scrape and generate for a synced scene, update tracking timestamps on success."""
+    # 1. Scrape the video URL via Stash's configured scrapers
+    if settings.stash_scrape_after_sync:
         try:
-            await stash.update_scene(scene_id=video.stash_scene_id, organized=True)
-            logger.info(
-                "Video %s: marked scene %s as organized in Stash",
-                video.id,
-                video.stash_scene_id,
-            )
+            logger.info("Video %s: scraping URL %s via Stash", video.id, video.url)
+            scraped = await stash.scrape_scene_url(video.url)
+            if scraped:
+                await stash.apply_scraped_scene(
+                    scene_id=scene_id,
+                    scraped=scraped,
+                    existing_performer_ids=performer_ids or None,
+                    existing_studio_id=studio_id,
+                )
+            video.scrape_attempted_at = datetime.now(UTC)
         except Exception as e:
-            logger.warning(
-                "Video %s: failed to mark scene %s as organized (non-fatal): %s",
-                video.id,
-                video.stash_scene_id,
-                e,
+            logger.warning("Video %s: post-sync scrape failed (non-fatal): %s", video.id, e)
+
+    # 2. Trigger Stash generate (covers, previews, sprites, phashes)
+    if settings.stash_generate_after_sync:
+        try:
+            logger.info("Video %s: triggering Stash generate for scene %s", video.id, scene_id)
+            await stash.trigger_generate(
+                scene_ids=[scene_id],
+                covers=settings.stash_generate_covers,
+                previews=settings.stash_generate_previews,
+                sprites=settings.stash_generate_sprites,
+                phashes=settings.stash_generate_phashes,
             )
+            video.generate_triggered_at = datetime.now(UTC)
+        except Exception as e:
+            logger.warning("Video %s: post-sync generate failed (non-fatal): %s", video.id, e)
+
+    # 3. Re-sync scene from Stash to confirm scraper results were applied
+    try:
+        await _resync_scene_from_stash(video, stash)
+    except Exception as e:
+        logger.warning("Video %s: post-sync scene re-sync failed (non-fatal): %s", video.id, e)
 
 
 async def process_single_download(
@@ -223,42 +256,72 @@ async def process_single_download(
         logger.info("Video %s: downloading", video.id)
 
         # ------------------------------------------------------------------
-        # Pre-download duration check
-        # The channel scan uses extract_flat=True which often omits duration.
-        # If min_duration_seconds is set and we don't have a duration yet,
-        # extract full metadata (no download) to check before wasting bandwidth.
+        # Pre-download metadata check
+        # The channel scan uses extract_flat=True which often omits duration
+        # and upload_date. If min_duration_seconds or max_video_age_days is
+        # set and we're missing those fields, extract full metadata (no
+        # download) to check before wasting bandwidth.
         # ------------------------------------------------------------------
         await db.refresh(video, ["channel"])
         channel = video.channel
-        if channel.min_duration_seconds is not None:
-            if video.duration_seconds is None:
-                logger.info(
-                    "Video %s: extracting metadata to check duration (min=%ds)",
-                    video.id, channel.min_duration_seconds,
+        needs_metadata = (
+            (channel.min_duration_seconds is not None and video.duration_seconds is None)
+            or (channel.max_video_age_days is not None and video.upload_date is None)
+        )
+        if needs_metadata:
+            logger.info(
+                "Video %s: extracting metadata to check filters (min_duration=%s, max_age=%s)",
+                video.id,
+                channel.min_duration_seconds,
+                channel.max_video_age_days,
+            )
+            try:
+                info = await async_extract_video_info(video.url, settings)
+                if info.get("duration") is not None:
+                    video.duration_seconds = int(info["duration"])
+                if info.get("upload_date") is not None:
+                    video.upload_date = _parse_date(info["upload_date"])
+                await db.commit()
+            except Exception:
+                logger.debug(
+                    "Video %s: metadata extraction failed, will check after download",
+                    video.id,
+                    exc_info=True,
                 )
-                try:
-                    info = await async_extract_video_info(video.url, settings)
-                    if info.get("duration") is not None:
-                        video.duration_seconds = int(info["duration"])
-                        await db.commit()
-                except Exception:
-                    logger.debug(
-                        "Video %s: metadata extraction failed, will check after download",
-                        video.id, exc_info=True,
-                    )
 
-            if (
-                video.duration_seconds is not None
-                and video.duration_seconds < channel.min_duration_seconds
-            ):
+        # Filter: skip if duration below min (when known)
+        if (
+            channel.min_duration_seconds is not None
+            and video.duration_seconds is not None
+            and video.duration_seconds < channel.min_duration_seconds
+        ):
+            logger.info(
+                "Video %s: skipped — duration %ds < min %ds",
+                video.id, video.duration_seconds, channel.min_duration_seconds,
+            )
+            video.status = "skipped"
+            video.error_message = (
+                f"Too short ({video.duration_seconds}s < "
+                f"{channel.min_duration_seconds}s minimum)"
+            )
+            await db.commit()
+            download_progress.clear(video.id)
+            return
+
+        # Filter: skip if older than max age (when known)
+        if channel.max_video_age_days is not None and video.upload_date is not None:
+            min_upload_date = (
+                datetime.now(UTC) - timedelta(days=channel.max_video_age_days)
+            ).date()
+            if video.upload_date < min_upload_date:
                 logger.info(
-                    "Video %s: skipped — duration %ds < min %ds",
-                    video.id, video.duration_seconds, channel.min_duration_seconds,
+                    "Video %s: skipped — upload date %s older than max %d days",
+                    video.id, video.upload_date, channel.max_video_age_days,
                 )
                 video.status = "skipped"
                 video.error_message = (
-                    f"Too short ({video.duration_seconds}s < "
-                    f"{channel.min_duration_seconds}s minimum)"
+                    f"Too old (uploaded {video.upload_date}, max age "
+                    f"{channel.max_video_age_days} days)"
                 )
                 await db.commit()
                 download_progress.clear(video.id)
@@ -303,19 +366,11 @@ async def process_single_download(
         video.metadata_json = result.get("metadata_json")
 
         # ------------------------------------------------------------------
-        # Post-download duration safety net
-        # Catches videos whose duration was unavailable during both the
-        # channel scan AND the pre-download metadata extraction.
+        # Post-download filter safety nets
+        # Catches videos whose duration/upload_date was unavailable during
+        # both the channel scan AND the pre-download metadata extraction.
         # ------------------------------------------------------------------
-        if (
-            channel.min_duration_seconds is not None
-            and video.duration_seconds is not None
-            and video.duration_seconds < channel.min_duration_seconds
-        ):
-            logger.info(
-                "Video %s: skipped after download — duration %ds < min %ds",
-                video.id, video.duration_seconds, channel.min_duration_seconds,
-            )
+        def _skip_after_download(error_msg: str) -> None:
             try:
                 os.remove(result["filepath"])
                 logger.info("Video %s: deleted file %s", video.id, result["filepath"])
@@ -325,13 +380,44 @@ async def process_single_download(
                     video.id, result["filepath"], exc,
                 )
             video.status = "skipped"
-            video.error_message = (
+            video.error_message = error_msg
+
+        if (
+            channel.min_duration_seconds is not None
+            and video.duration_seconds is not None
+            and video.duration_seconds < channel.min_duration_seconds
+        ):
+            logger.info(
+                "Video %s: skipped after download — duration %ds < min %ds",
+                video.id, video.duration_seconds, channel.min_duration_seconds,
+            )
+            _skip_after_download(
                 f"Too short ({video.duration_seconds}s < "
-                f"{channel.min_duration_seconds}s minimum)"
+                f"{channel.min_duration_seconds}s minimum)",
             )
             await db.commit()
             download_progress.clear(video.id)
             return
+
+        if (
+            channel.max_video_age_days is not None
+            and video.upload_date is not None
+        ):
+            min_upload_date = (
+                datetime.now(UTC) - timedelta(days=channel.max_video_age_days)
+            ).date()
+            if video.upload_date < min_upload_date:
+                logger.info(
+                    "Video %s: skipped after download — upload date %s older than max %d days",
+                    video.id, video.upload_date, channel.max_video_age_days,
+                )
+                _skip_after_download(
+                    f"Too old (uploaded {video.upload_date}, max age "
+                    f"{channel.max_video_age_days} days)",
+                )
+                await db.commit()
+                download_progress.clear(video.id)
+                return
 
         video.status = "downloaded"
         if video.downloaded_at is None:
@@ -442,40 +528,27 @@ async def process_single_download(
         # Post-sync actions (best-effort — failures are logged, not raised)
         # ------------------------------------------------------------------
 
-        # 1. Scrape the video URL via Stash's configured scrapers
-        if settings.stash_scrape_after_sync:
-            try:
-                logger.info("Video %s: scraping URL %s via Stash", video.id, video.url)
-                scraped = await stash.scrape_scene_url(video.url)
-                if scraped:
-                    await stash.apply_scraped_scene(
-                        scene_id=scene["id"],
-                        scraped=scraped,
-                        existing_performer_ids=performer_ids or None,
-                        existing_studio_id=studio_id,
-                    )
-            except Exception as e:
-                logger.warning("Video %s: post-sync scrape failed (non-fatal): %s", video.id, e)
+        await run_scrape_and_generate(
+            video, scene["id"], stash, settings, db,
+            performer_ids=performer_ids, studio_id=studio_id,
+        )
+        await db.commit()
 
-        # 2. Trigger Stash generate (covers, previews, sprites, phashes)
-        if settings.stash_generate_after_sync:
-            try:
-                logger.info("Video %s: triggering Stash generate for scene %s", video.id, scene["id"])
-                await stash.trigger_generate(
-                    scene_ids=[scene["id"]],
-                    covers=settings.stash_generate_covers,
-                    previews=settings.stash_generate_previews,
-                    sprites=settings.stash_generate_sprites,
-                    phashes=settings.stash_generate_phashes,
-                )
-            except Exception as e:
-                logger.warning("Video %s: post-sync generate failed (non-fatal): %s", video.id, e)
-
-        # 3. Re-sync scene from Stash to confirm scraper results were applied
+        # Mark scene as organized (after scrape and generate have been run)
         try:
-            await _resync_scene_from_stash(video, stash)
+            await stash.update_scene(scene_id=scene["id"], organized=True)
+            logger.info(
+                "Video %s: marked scene %s as organized in Stash",
+                video.id,
+                scene["id"],
+            )
         except Exception as e:
-            logger.warning("Video %s: post-sync scene re-sync failed (non-fatal): %s", video.id, e)
+            logger.warning(
+                "Video %s: failed to mark scene %s as organized (non-fatal): %s",
+                video.id,
+                scene["id"],
+                e,
+            )
 
     except DownloadCancelled as e:
         download_progress.clear(video.id)

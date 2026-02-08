@@ -1,35 +1,26 @@
 {% extends "base.html" %}
 {% block title %}{{ video.title }} — ytdl-stash{% endblock %}
 {% block content %}
-<p class="mb-4"><a href="/videos" class="link link-hover">← Back to Videos</a></p>
+{% with url="/videos", label="Videos" %}
+{% include "components/_back_link.html" with context %}
+{% endwith %}
 <div class="card bg-base-200">
   <div class="card-body">
     <div class="flex flex-col md:flex-row gap-4">
       {# -- Thumbnail -- #}
       <div class="flex-shrink-0">
-        {% if video.stash_scene_id and settings %}
-        <img src="{{ settings.stash_url.rstrip('/') }}/scene/{{ video.stash_scene_id }}/screenshot{% if settings.stash_api_key %}?apikey={{ settings.stash_api_key }}{% endif %}"
-             alt="{{ video.title }}"
-             class="rounded w-64 h-36 object-cover bg-base-300"
-             loading="lazy">
-        {% elif video.thumbnail_url %}
-        <img src="{{ video.thumbnail_url }}"
-             alt="{{ video.title }}"
-             class="rounded w-64 h-36 object-cover bg-base-300"
-             loading="lazy">
-        {% else %}
-        <div class="rounded w-64 h-36 bg-base-300 flex items-center justify-center text-base-content/30">
-          No thumbnail
-        </div>
-        {% endif %}
+        {% with size='lg' %}
+        {% include "components/_video_thumbnail.html" with context %}
+        {% endwith %}
       </div>
       {# -- Title & Status -- #}
       <div class="flex-1 min-w-0">
         <h2 class="card-title text-xl">{{ video.title }}</h2>
-        <p class="flex flex-wrap items-center gap-2 mt-1">
+        <div class="mt-1">
+          {% with progress_own_line=true, channel=video.channel %}
           {% include "videos/_status_badge.html" %}
-          {% if video.channel %}<a href="/videos?channel_id={{ video.channel.id }}" class="link link-hover">{{ video.channel.name }}</a>{% else %}—{% endif %}
-        </p>
+          {% endwith %}
+        </div>
       </div>
     </div>
     <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 mt-4">
@@ -68,45 +59,9 @@
       </dd>
     </dl>
     <div class="card-actions justify-start mt-4 flex-wrap gap-2">
-      {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
-      <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel processing for this video"
-              hx-post="/videos/{{ video.id }}/stop"
-              hx-target="#video-status-{{ video.id }}"
-              hx-swap="outerHTML"
-              hx-confirm="Stop processing for '{{ video.title|e }}'? (If downloading, this may take a moment)">
-        Stop
-      </button>
-      {% elif video.status == 'cancelling' %}
-      <button type="button" class="btn btn-sm btn-ghost" disabled>
-        <span class="loading loading-spinner loading-sm"></span>
-        Stopping…
-      </button>
-      {% endif %}
-      {% if video.status in ['failed', 'cancelled', 'skipped'] %}
-      <button type="button" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Reset to pending and re-download this video"
-              hx-post="/videos/{{ video.id }}/retry"
-              hx-target="#video-status-{{ video.id }}"
-              hx-swap="outerHTML"
-              hx-confirm="Retry download for '{{ video.title|e }}'?">
-        Retry
-      </button>
-      {% endif %}
-      {% if video.stash_scene_id %}
-      <button type="button" class="btn btn-sm btn-info tooltip tooltip-top" data-tip="Re-scrape metadata and regenerate from Stash"
-              hx-post="/videos/{{ video.id }}/resync"
-              hx-target="#video-status-{{ video.id }}"
-              hx-swap="outerHTML"
-              hx-disabled-elt="this"
-              hx-indicator="this">
-        <span class="htmx-indicator loading loading-spinner loading-xs"></span>
-        Re-sync from Stash
-      </button>
-      {% endif %}
-      <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Permanently remove this video record"
-              hx-delete="/videos/{{ video.id }}"
-              hx-confirm="Delete this video?">
-        Delete
-      </button>
+      {% with layout='detail', hx_status_target='#video-status-' ~ video.id, hx_row_target='', detail_page=true %}
+      {% include "components/_video_actions.html" with context %}
+      {% endwith %}
     </div>
   </div>
 </div>

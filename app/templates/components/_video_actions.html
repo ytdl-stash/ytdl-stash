@@ -1,0 +1,63 @@
+{# Reusable video action buttons. Pass: video, layout (table|detail|active).
+   For layout=table or detail: hx_status_target (e.g. #video-status-123), hx_row_target (e.g. #video-row-123).
+   For layout=detail: detail_page=true (Delete has no hx-target, triggers full reload).
+   For layout=active: hx_container_target (e.g. #active-downloads).
+#}
+{% if layout == 'active' %}
+  {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
+  <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel this download (may take a moment)"
+          hx-post="/videos/{{ video.id }}/stop"
+          hx-target="{{ hx_container_target }}"
+          hx-swap="outerHTML"
+          hx-confirm="Stop processing for '{{ video.title|e }}'? (If downloading, this may take a moment)">
+    Stop
+  </button>
+  {% elif video.status == 'cancelling' %}
+  {% with label="Stopping…" %}
+  {% include "components/_loading_button.html" with context %}
+  {% endwith %}
+  {% endif %}
+{% else %}
+  {% if layout == 'table' %}
+  <a href="/videos/{{ video.id }}" class="btn btn-sm btn-ghost tooltip tooltip-top" data-tip="View full video details">Detail</a>
+  {% endif %}
+  {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
+  <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="{% if layout == 'detail' %}Cancel processing for this video{% else %}Cancel this download{% endif %}"
+          hx-post="/videos/{{ video.id }}/stop"
+          hx-target="{{ hx_status_target }}"
+          hx-swap="outerHTML"
+          hx-confirm="Stop processing for '{{ video.title|e }}'? (If downloading, this may take a moment)">
+    Stop
+  </button>
+  {% elif video.status == 'cancelling' %}
+  {% with label="Stopping…" %}
+  {% include "components/_loading_button.html" with context %}
+  {% endwith %}
+  {% endif %}
+  {% if video.status in ['failed', 'cancelled', 'skipped'] %}
+  <button type="button" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="{% if layout == 'detail' %}Reset to pending and re-download this video{% else %}Reset to pending and re-download{% endif %}"
+          hx-post="/videos/{{ video.id }}/retry"
+          hx-target="{{ hx_status_target }}"
+          hx-swap="outerHTML"
+          hx-confirm="Retry download for '{{ video.title|e }}'?">
+    Retry
+  </button>
+  {% endif %}
+  {% if video.stash_scene_id %}
+  <button type="button" class="btn btn-sm btn-info tooltip tooltip-top" data-tip="Re-scrape metadata and regenerate from Stash"
+          hx-post="/videos/{{ video.id }}/resync"
+          hx-target="{{ hx_status_target }}"
+          hx-swap="outerHTML"
+          hx-disabled-elt="this"
+          hx-indicator="this">
+    <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+    {{ 'Re-sync from Stash' if layout == 'detail' else 'Re-sync' }}
+  </button>
+  {% endif %}
+  <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="{% if layout == 'detail' %}Permanently remove this video record{% else %}Remove this video record{% endif %}"
+          hx-delete="/videos/{{ video.id }}"
+          {% if layout != 'detail' and not detail_page %}hx-target="{{ hx_row_target }}" hx-swap="outerHTML swap:1s"{% endif %}
+          hx-confirm="Delete this video?">
+    Delete
+  </button>
+{% endif %}

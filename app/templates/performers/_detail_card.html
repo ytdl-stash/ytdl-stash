@@ -60,6 +60,17 @@
         <button type="submit" class="btn btn-sm btn-primary tooltip tooltip-bottom" data-tip="Sync both performer and studio to Stash">Sync Both</button>
         <span id="spinner-sync-both-detail" class="htmx-indicator">Syncing…</span>
       </form>
+      {% if channel.stash_performer_id or channel.stash_studio_id %}
+      <form hx-post="/performers/{{ channel.id }}/relink"
+            hx-target="#performer-detail-card"
+            hx-swap="outerHTML"
+            hx-confirm="Clear Stash links and re-lookup performer/studio by channel URL?"
+            hx-indicator="#spinner-relink-detail"
+            class="inline">
+        <button type="submit" class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Clear links and re-lookup performer/studio by channel URL in Stash">Re-link</button>
+        <span id="spinner-relink-detail" class="htmx-indicator">Re-linking…</span>
+      </form>
+      {% endif %}
       <form hx-delete="/performers/{{ channel.id }}"
             hx-confirm="Delete performer '{{ channel.name|e }}' and all its videos?"
             hx-on::after-request="if(event.detail.successful) window.location='/performers'"

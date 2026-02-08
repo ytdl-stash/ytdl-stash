@@ -203,6 +203,30 @@ async def performer_sync_both(
     return await _performers_sync_response(channel_id, request, db, settings)
 
 
+@router.post("/{channel_id}/relink")
+async def performer_relink(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Clear Stash links and re-lookup performer/studio by channel URL in Stash."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Performer not found")
+    channel.stash_performer_id = None
+    channel.stash_performer_data = None
+    channel.stash_studio_id = None
+    channel.stash_studio_data = None
+    try:
+        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+            await sync_channel_performer(channel, db, stash, settings)
+            await sync_channel_studio(channel, db, stash, settings)
+    except Exception:
+        logger.warning("Re-link failed for channel %s", channel_id, exc_info=True)
+    return await _performers_sync_response(channel_id, request, db, settings)
+
+
 @router.post("/{channel_id}/toggle")
 async def performer_toggle(
     channel_id: int,

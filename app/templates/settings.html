@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/_macros.html" import th_tooltip %}
 {% block title %}Settings — ytdl-stash{% endblock %}
 {% block content %}
 <div class="flex items-center justify-between mb-4">
@@ -8,16 +9,16 @@
 <div class="overflow-x-auto">
   <table class="table mb-6">
     <tbody>
-      <tr><th class="tooltip tooltip-bottom" data-tip="Base URL of your Stash instance">Stash URL</th><td class="break-all">{{ settings.stash_url }}</td></tr>
-      <tr><th class="tooltip tooltip-bottom" data-tip="API key for authenticating with Stash">Stash API Key</th><td>{{ '***' if settings.stash_api_key else '(empty)' }}</td></tr>
-      <tr><th class="tooltip tooltip-bottom" data-tip="Where yt-dlp saves downloaded files">Download directory</th><td class="break-all">{{ settings.download_dir }}</td></tr>
-      <tr><th class="tooltip tooltip-bottom" data-tip="How Stash sees the download path (for Docker volume mapping)">Stash download dir (path mapping)</th><td class="break-all">{{ settings.stash_download_dir or '—' }}</td></tr>
-      <tr><th class="tooltip tooltip-bottom" data-tip="Where the SQLite database and logs are stored">Data directory</th><td class="break-all">{{ settings.data_dir }}</td></tr>
-      <tr><th class="tooltip tooltip-bottom" data-tip="Default hours between channel scans">Default check interval (hours)</th><td>{{ settings.default_check_interval_hours }}</td></tr>
-      <tr><th class="tooltip tooltip-bottom" data-tip="How many videos download simultaneously">Max concurrent downloads</th><td>{{ settings.max_concurrent_downloads }}</td></tr>
-      <tr><th class="tooltip tooltip-bottom" data-tip="Seconds to wait between starting each download">Download delay (seconds)</th><td>{{ settings.download_delay_seconds }}</td></tr>
-      <tr><th class="tooltip tooltip-bottom" data-tip="Path to a Netscape-format cookies file for authenticated downloads">Cookies file</th><td class="break-all">{{ settings.cookies_file or '—' }}</td></tr>
-      <tr><th class="tooltip tooltip-bottom" data-tip="Filename template passed to yt-dlp">yt-dlp output template</th><td class="break-all"><code>{{ settings.ytdlp_output_template }}</code></td></tr>
+      <tr>{% call th_tooltip("Base URL of your Stash instance") %}Stash URL{% endcall %}<td class="break-all">{{ settings.stash_url }}</td></tr>
+      <tr>{% call th_tooltip("API key for authenticating with Stash") %}Stash API Key{% endcall %}<td>{{ '***' if settings.stash_api_key else '(empty)' }}</td></tr>
+      <tr>{% call th_tooltip("Where yt-dlp saves downloaded files") %}Download directory{% endcall %}<td class="break-all">{{ settings.download_dir }}</td></tr>
+      <tr>{% call th_tooltip("How Stash sees the download path (for Docker volume mapping)") %}Stash download dir (path mapping){% endcall %}<td class="break-all">{{ settings.stash_download_dir or '—' }}</td></tr>
+      <tr>{% call th_tooltip("Where the SQLite database and logs are stored") %}Data directory{% endcall %}<td class="break-all">{{ settings.data_dir }}</td></tr>
+      <tr>{% call th_tooltip("Default hours between channel scans") %}Default check interval (hours){% endcall %}<td>{{ settings.default_check_interval_hours }}</td></tr>
+      <tr>{% call th_tooltip("How many videos download simultaneously") %}Max concurrent downloads{% endcall %}<td>{{ settings.max_concurrent_downloads }}</td></tr>
+      <tr>{% call th_tooltip("Seconds to wait between starting each download") %}Download delay (seconds){% endcall %}<td>{{ settings.download_delay_seconds }}</td></tr>
+      <tr>{% call th_tooltip("Path to a Netscape-format cookies file for authenticated downloads") %}Cookies file{% endcall %}<td class="break-all">{{ settings.cookies_file or '—' }}</td></tr>
+      <tr>{% call th_tooltip("Filename template passed to yt-dlp") %}yt-dlp output template{% endcall %}<td class="break-all"><code>{{ settings.ytdlp_output_template }}</code></td></tr>
     </tbody>
   </table>
 </div>
@@ -31,7 +32,7 @@
   <table class="table mb-6">
     <tbody>
       <tr>
-        <th class="tooltip tooltip-bottom" data-tip="Fetch scene page from Stash URL after sync">Scrape scene URL after sync</th>
+        {% call th_tooltip("Fetch scene page from Stash URL after sync") %}Scrape scene URL after sync{% endcall %}
         <td>
           {% if settings.stash_scrape_after_sync %}
             <span class="badge badge-success tooltip tooltip-bottom" data-tip="Stash will scrape the scene URL after sync">Enabled</span>
@@ -42,7 +43,7 @@
         </td>
       </tr>
       <tr>
-        <th class="tooltip tooltip-bottom" data-tip="Run Stash generate (covers, previews, etc.) after sync">Generate after sync</th>
+        {% call th_tooltip("Run Stash generate (covers, previews, etc.) after sync") %}Generate after sync{% endcall %}
         <td>
           {% if settings.stash_generate_after_sync %}
             <span class="badge badge-success tooltip tooltip-bottom" data-tip="Stash will generate previews/covers/sprites/phashes after sync">Enabled</span>

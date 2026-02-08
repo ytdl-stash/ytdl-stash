@@ -294,7 +294,7 @@ The `Channel` model includes: `id`, `name`, `url`, `site`, `enabled`, `check_int
 
 ## Schema (Video)
 
-The `Video` model includes: `id`, `channel_id`, `site_video_id`, `title`, `url`, `upload_date`, `performers`, `studio`, `duration_seconds`, `thumbnail_url`, `original_filename`, `oshash`, `status`, `error_message`, `stash_scene_id`, `metadata_json`, `created_at`, `updated_at`, **`downloaded_at`** (nullable, set once when status becomes `downloaded`), and **`synced_at`** (nullable, set once when status becomes `synced`). The milestone timestamps `downloaded_at` and `synced_at` are used for the dashboard “videos downloaded by day” chart; the chart counts by the date of `COALESCE(downloaded_at, synced_at)` over the last 90 days.
+The `Video` model includes: `id`, `channel_id`, `site_video_id`, `title`, `url`, `upload_date`, `performers`, `studio`, `duration_seconds`, `thumbnail_url`, `original_filename`, `oshash`, `status`, `error_message`, `stash_scene_id`, `metadata_json`, `created_at`, `updated_at`, **`downloaded_at`** (nullable, set once when status becomes `downloaded`), **`synced_at`** (nullable, set once when status becomes `synced`), **`scrape_attempted_at`** (nullable, set when post-sync scrape completes successfully), and **`generate_triggered_at`** (nullable, set when post-sync Stash generate completes successfully). The milestone timestamps `downloaded_at` and `synced_at` are used for the dashboard “videos downloaded by day” chart; the chart counts by the date of `COALESCE(downloaded_at, synced_at)` over the last 90 days. `scrape_attempted_at` and `generate_triggered_at` enable the Backfill Scrape & Generate job to find synced videos that haven't had scrape/generate run yet.
 
 ## Video Status Lifecycle
 
@@ -310,7 +310,7 @@ pending -> downloading -> downloaded -> importing -> synced
 
 - **pending**: Video discovered during channel scan, queued for download.
 - **downloading**: Download in progress via yt-dlp.
-- **skipped**: Video skipped because it did not meet filter criteria (e.g. duration shorter than `min_duration_seconds`). `error_message` explains the reason. Can be retried.
+- **skipped**: Video skipped because it did not meet filter criteria (e.g. duration shorter than `min_duration_seconds`, or older than `max_video_age_days`). `error_message` explains the reason. Can be retried.
 - **downloaded**: File saved to disk, oshash computed.
 - **importing**: Stash `metadataScan` triggered, waiting for scene to appear.
 - **synced**: Scene found in Stash, metadata (title, performers, studio, date) applied.

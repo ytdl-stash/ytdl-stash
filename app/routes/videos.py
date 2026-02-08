@@ -2,6 +2,7 @@
 
 import logging
 import math
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -40,7 +41,7 @@ async def list_videos(
             channel_id_int = int(channel_id)
         except ValueError:
             pass
-    status_clean = status.strip() if status else None
+    status_clean = (status.strip() or None) if status else None
 
     base_stmt = select(Video).order_by(Video.created_at.desc())
     if channel_id_int is not None:
@@ -165,20 +166,28 @@ async def video_status_badge(
     video_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    detail: int | None = Query(None, description="1 for detail-page layout (status + channel on one line, progress on next)"),
 ):
     """HTMX partial: status badge (optionally includes download progress)."""
-    video = await db.get(Video, video_id)
+    if detail:
+        result = await db.execute(
+            select(Video).where(Video.id == video_id).options(selectinload(Video.channel))
+        )
+        video = result.scalar_one_or_none()
+    else:
+        video = await db.get(Video, video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-    return templates.TemplateResponse(
-        "videos/_status_badge.html",
-        {
-            "request": request,
-            "video": video,
-            "download_progress": download_progress.snapshot(),
-            "poll_status_badge": True,
-        },
-    )
+    ctx = {
+        "request": request,
+        "video": video,
+        "download_progress": download_progress.snapshot(),
+        "poll_status_badge": True,
+    }
+    if detail:
+        ctx["progress_own_line"] = True
+        ctx["channel"] = video.channel
+    return templates.TemplateResponse("videos/_status_badge.html", ctx)
 
 
 @router.post("/{video_id}/retry")
@@ -357,6 +366,7 @@ async def resync_video(
                     video_id,
                     video.stash_scene_id,
                 )
+            video.scrape_attempted_at = datetime.now(UTC)
         except Exception as e:
             logger.warning(
                 "Video %s: re-sync scrape failed: %s", video_id, e
@@ -372,6 +382,7 @@ async def resync_video(
                     sprites=settings.stash_generate_sprites,
                     phashes=settings.stash_generate_phashes,
                 )
+                video.generate_triggered_at = datetime.now(UTC)
             except Exception as e:
                 logger.warning(
                     "Video %s: re-sync generate failed: %s", video_id, e

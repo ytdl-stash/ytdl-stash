@@ -1,0 +1,15 @@
+{% from "components/_macros.html" import collapse %}
+{% call collapse("Status legend") %}
+    <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+      <span class="inline-flex items-center gap-2"><span class="{{ 'pending' | status_badge_class }}">pending</span>Discovered, queued for download</span>
+      <span class="inline-flex items-center gap-2"><span class="{{ 'downloading' | status_badge_class }}">downloading</span>Download in progress</span>
+      <span class="inline-flex items-center gap-2"><span class="{{ 'cancelling' | status_badge_class }}">cancelling</span>User requested stop, aborting</span>
+      <span class="inline-flex items-center gap-2"><span class="{{ 'downloaded' | status_badge_class }}">downloaded</span>File saved, oshash computed</span>
+      <span class="inline-flex items-center gap-2"><span class="{{ 'importing' | status_badge_class }}">importing</span>Stash scan triggered, waiting for scene</span>
+      <span class="inline-flex items-center gap-2"><span class="{{ 'imported' | status_badge_class }}">imported</span>From YoutubeDL-Material; not downloaded here</span>
+      <span class="inline-flex items-center gap-2"><span class="{{ 'synced' | status_badge_class }}">synced</span>Scene in Stash, metadata applied</span>
+      <span class="inline-flex items-center gap-2"><span class="{{ 'failed' | status_badge_class }}">failed</span>Error; can retry</span>
+      <span class="inline-flex items-center gap-2"><span class="{{ 'skipped' | status_badge_class }}">skipped</span>Filtered out (e.g. too short)</span>
+      <span class="inline-flex items-center gap-2"><span class="{{ 'cancelled' | status_badge_class }}">cancelled</span>User cancelled</span>
+    </div>
+{% endcall %}

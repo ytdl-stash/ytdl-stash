@@ -197,7 +197,7 @@ yt-dlp flat extract -> {entries: [...], channel_meta: {name, thumbnail}}
 1. Query up to `settings.max_concurrent_downloads` `Video` row(s) with `status="pending"`, ordered by `created_at ASC` (FIFO).
 2. If none found, exit.
 3. For each picked video, set `video.status = "downloading"`.
-4. **Pre-download duration check**: If `channel.min_duration_seconds` is set and `video.duration_seconds` is unknown (flat scan didn't return it), extract full metadata via `extract_video_info()` (no download). If the duration is now known and below the threshold, set `video.status = "skipped"` and skip the download entirely.
+4. **Pre-download metadata check**: If `channel.min_duration_seconds` or `channel.max_video_age_days` is set and the corresponding field (`duration_seconds` or `upload_date`) is unknown (flat scan often omits them), extract full metadata via `extract_video_info()` (no download). If duration is now known and below the threshold, or upload_date is known and older than max age, set `video.status = "skipped"` and skip the download entirely.
 5. Call `download_video(video.url, settings.download_dir, settings.ytdlp_output_template, settings.cookies_file)` via `asyncio.to_thread()` (each download runs in a worker thread).
 6. While downloading, yt-dlp `progress_hooks` update an **in-memory** progress store (percent/ETA/speed) so the web UI can render a progress bar.
 7. If the user clicks **Stop** while a video is pending or in-flight:
@@ -205,7 +205,7 @@ yt-dlp flat extract -> {entries: [...], channel_meta: {name, thumbnail}}
    - In-flight videos are marked `status="cancelling"` and a cooperative cancel flag is set; the yt-dlp hook aborts the download and the pipeline finalizes with `status="cancelled"`.
 8. On success:
    a. Save `filepath`, `filename`, `performers`, `studio`, `duration`, `thumbnail_url`, `metadata_json` to the video row.
-   b. **Post-download duration safety net**: If `channel.min_duration_seconds` is set and the just-downloaded video is too short (duration was unknown until now), delete the file and set `video.status = "skipped"`.
+   b. **Post-download filter safety nets**: If `channel.min_duration_seconds` is set and the just-downloaded video is too short (duration was unknown until now), or if `channel.max_video_age_days` is set and the video is older than the threshold, delete the file and set `video.status = "skipped"`.
    c. Otherwise, set `video.status = "downloaded"`.
 9. On failure:
    a. Set `video.status = "failed"`, `video.error_message = str(error)`.
@@ -221,7 +221,7 @@ Video (status=pending)
 status = downloading
     |
     v
-channel.min_duration_seconds set & duration unknown?
+min_duration or max_age set & (duration or upload_date) unknown?
    /     \
   Yes     No
   |        |
@@ -229,7 +229,7 @@ channel.min_duration_seconds set & duration unknown?
 extract_video_info() (metadata only, no download)
   |        |
   v        |
-duration < min?
+duration < min? OR upload_date older than max_age?
    /  \    |
   Yes  No  |
   |    |   |
@@ -239,7 +239,7 @@ skipped    v
         yt-dlp download_video() -> {filepath, ...}
             |
             v
-        duration < min? (safety net)
+        duration < min? OR upload_date older than max_age? (safety net)
            /     \
           Yes     No
           |        |
@@ -470,7 +470,7 @@ The videos page displays scene thumbnails from Stash for synced videos. The thum
 | Step | Error | Handling |
 |------|-------|----------|
 | 3 - Scan | yt-dlp extraction fails | Log error, skip channel this cycle |
-| 4 - Download | Video shorter than `min_duration_seconds` | `status=skipped`, `error_message` explains threshold. File deleted if already downloaded. Retryable. |
+| 4 - Download | Video shorter than `min_duration_seconds` or older than `max_video_age_days` | `status=skipped`, `error_message` explains threshold. File deleted if already downloaded. Retryable. |
 | 4 - Download | yt-dlp download fails | `status=failed`, `error_message` saved |
 | 4 - Download | user stop requested | `status=cancelled`, `error_message="Cancelled by user"` |
 | 5 - oshash | File read error | `status=failed`, `error_message` saved |
@@ -478,8 +478,8 @@ The videos page displays scene thumbnails from Stash for synced videos. The thum
 | 7 - Poll | Timeout (scene not found) | `status=failed`, retry possible |
 | 8 - Performers | Stash API error | `status=failed`, `error_message` saved |
 | 9 - Update | Stash API error | `status=failed`, `error_message` saved |
-| 10 - Scrape | No scraper / scrape error | Logged as warning, video stays `synced` |
-| 11 - Generate | Stash API error | Logged as warning, video stays `synced` |
+| 10 - Scrape | No scraper / scrape error | Logged as warning, video stays `synced`; `scrape_attempted_at` not set so Backfill job can retry |
+| 11 - Generate | Stash API error | Logged as warning, video stays `synced`; `generate_triggered_at` not set so Backfill job can retry |
 | 12 - Re-sync | Stash scene not found | Logged as warning (auto), or HTTP 404 (manual) |
 
 All failures in steps 1–9 result in `status=failed` with the error message saved to the database. The user can retry from the UI, which resets the video to `status=pending`. Steps 10–12 are best-effort and never change the video status.
@@ -510,6 +510,7 @@ If a job is running, a **Stop** button is available:
 | **Check All Channels** | `POST /jobs/check_all_channels/trigger` | Scans all enabled channels that are due for new videos (same as the scheduled `channel_checker`). |
 | **Process Downloads** | `POST /jobs/process_downloads/trigger` | Downloads and imports pending videos in the queue (up to configured concurrency, same as the scheduled `download_processor`). |
 | **Retry All Failed** | `POST /jobs/retry_all_failed/trigger` | Resets every `status=failed` video back to `status=pending` so the download processor retries them. |
+| **Backfill Scrape & Generate** | `POST /jobs/backfill_scrape_generate/trigger` | Runs scrape and generate for synced videos missing `scrape_attempted_at` or `generate_triggered_at` (bulk backfill or retry for failed post-sync steps). |
 
 ### Contextual Triggers
 

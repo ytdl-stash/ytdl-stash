@@ -1,0 +1,11 @@
+{# Reusable macros. Import with: {% from "components/_macros.html" import collapse, th_tooltip %} #}
+{% macro collapse(summary, open=false) %}
+<details class="mb-4 collapse collapse-arrow bg-base-200" {{ 'open' if open else '' }}>
+  <summary class="collapse-title text-sm font-medium py-2 min-h-0 cursor-pointer">{{ summary }}</summary>
+  <div class="collapse-content px-4 pb-4">{{ caller() }}</div>
+</details>
+{% endmacro %}
+
+{% macro th_tooltip(tip, position='bottom') %}
+<th class="tooltip tooltip-{{ position }}" data-tip="{{ tip }}">{{ caller() }}</th>
+{% endmacro %}

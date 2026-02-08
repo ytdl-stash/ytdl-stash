@@ -52,8 +52,8 @@ async def dashboard(
     )
     recent_downloads = list(result.scalars().all())
 
-    # Downloads by day (last 90 days): count by COALESCE(downloaded_at, synced_at) date
-    start_date = (datetime.now(UTC) - timedelta(days=89)).date()
+    # Downloads by day (last 30 days): count by COALESCE(downloaded_at, synced_at) date
+    start_date = (datetime.now(UTC) - timedelta(days=29)).date()
     day_count_result = await db.execute(
         text(
             "SELECT date(COALESCE(downloaded_at, synced_at)) AS d, COUNT(*) AS c "
@@ -68,7 +68,7 @@ async def dashboard(
 
     chart_labels = []
     chart_values = []
-    for i in range(90):
+    for i in range(30):
         d = start_date + timedelta(days=i)
         key = d.isoformat()
         chart_labels.append(key)

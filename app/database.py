@@ -33,6 +33,8 @@ _CHANNEL_MIGRATION_COLUMNS: list[tuple[str, str]] = [
 _VIDEO_MIGRATION_COLUMNS: list[tuple[str, str]] = [
     ("downloaded_at", "TEXT"),
     ("synced_at", "TEXT"),
+    ("scrape_attempted_at", "TEXT"),
+    ("generate_triggered_at", "TEXT"),
 ]
 
 
@@ -116,18 +118,20 @@ async def _recover_stuck_videos(conn) -> None:
 
     If the server crashed mid-download or mid-import, videos may be left in
     'downloading' or 'importing' status with no running task to complete them.
+    We do not reset 'downloaded': those have a file on disk; resetting to
+    pending would cause a full re-download and overwrite. Stuck 'downloaded'
+    videos can be retried manually (retry sets to pending and re-downloads).
     """
-    _STUCK_STATUSES = ("downloading", "downloaded", "importing", "cancelling")
+    _STUCK_STATUSES = ("downloading", "importing", "cancelling")
     result = await conn.execute(
         text(
             "UPDATE videos SET status = 'pending', error_message = NULL "
-            "WHERE status IN (:s1, :s2, :s3, :s4)"
+            "WHERE status IN (:s1, :s2, :s3)"
         ),
         {
             "s1": _STUCK_STATUSES[0],
             "s2": _STUCK_STATUSES[1],
             "s3": _STUCK_STATUSES[2],
-            "s4": _STUCK_STATUSES[3],
         },
     )
     if result.rowcount:

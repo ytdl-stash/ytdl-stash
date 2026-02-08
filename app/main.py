@@ -20,6 +20,28 @@ BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 # Add global function to check if password is set
 templates.env.globals["is_password_set"] = lambda: get_password_hash() is not None
+
+
+def status_badge_class(status: str | None) -> str:
+    """Return DaisyUI badge class for a video status (used in templates)."""
+    if status is None:
+        return "badge badge-ghost"
+    mapping = {
+        "synced": "badge badge-success",
+        "pending": "badge badge-warning",
+        "cancelling": "badge badge-warning",
+        "downloaded": "badge badge-primary",
+        "downloading": "badge badge-primary",
+        "importing": "badge badge-primary",
+        "failed": "badge badge-error",
+        "cancelled": "badge badge-ghost",
+        "skipped": "badge badge-ghost",
+        "imported": "badge badge-secondary",
+    }
+    return mapping.get(status, "badge badge-ghost")
+
+
+templates.env.filters["status_badge_class"] = status_badge_class
 logger = logging.getLogger(__name__)
 
 

@@ -15,6 +15,124 @@ Omitting `type` defaults to `submit` in HTML, which can cause accidental form su
 
 ---
 
+## Filter/Toggle button groups
+
+For filter, sort, or pagination button groups (e.g. All / Watched / Not Watched on the Performers page), use:
+
+- **DaisyUI `join`** — wrap buttons in `<div class="join">` for a cohesive grouped look
+- **`join-item btn btn-sm`** — each button gets `join-item` so it visually connects to its neighbours
+- **`btn-active`** — add for the currently selected/active option (DaisyUI semantic for pressed state)
+
+**Reusable partial:** Use `app/templates/components/_filter_button.html` for link-based filter/toggle buttons. Pass: `url`, `label`, `is_active`, `hx_target`. Optional: `tooltip`, `tooltip_classes` (e.g. `tooltip tooltip-bottom`).
+
+**Example:**
+
+```html
+<div class="join">
+  {% include "components/_filter_button.html" with context
+     url='/performers?filter=all&sort=' ~ sort,
+     label='All',
+     is_active=(filter == 'all'),
+     hx_target='#performer-grid'
+  %}
+  {% include "components/_filter_button.html" with context
+     url='/performers?filter=watched&sort=' ~ sort,
+     label='Watched',
+     is_active=(filter == 'watched'),
+     hx_target='#performer-grid',
+     tooltip='Channels that are actively monitored',
+     tooltip_classes='tooltip tooltip-bottom'
+  %}
+</div>
+```
+
+The same pattern applies to pagination (see `videos/_video_list.html`): use `join` + `join-item` + `btn-active` for the current page.
+
+---
+
+## Reusable components
+
+Shared partials and macros live in `app/templates/components/` and `app/templates/components/_macros.html`.
+
+**Passing variables to includes:** Jinja2's `include` does not support `variable=value` syntax. Use `{% with %}` blocks to set variables before including:
+
+```html
+{% with url="/videos", label="Videos" %}
+{% include "components/_back_link.html" with context %}
+{% endwith %}
+```
+
+### Back link (`_back_link.html`)
+
+Breadcrumb-style "← Back to X" navigation. Pass: `url`, `label`.
+
+```html
+{% with url="/videos", label="Videos" %}
+{% include "components/_back_link.html" with context %}
+{% endwith %}
+```
+
+### Loading button (`_loading_button.html`)
+
+Disabled button with spinner for in-progress HTMX actions. Pass: `label`. Optional: `size` (`sm`|`xs`), default `sm`.
+
+```html
+{% with label="Stopping…" %}
+{% include "components/_loading_button.html" with context %}
+{% endwith %}
+```
+
+### Video thumbnail (`_video_thumbnail.html`)
+
+Renders video preview from Stash screenshot, `thumbnail_url`, or placeholder. Pass: `video`, `settings`, `size` (`sm`|`md`|`lg`). Optional: `link_url`, `alt`, `placeholder_text`.
+
+```html
+{% with size='md', link_url='/videos/' ~ video.id %}
+{% include "components/_video_thumbnail.html" with context %}
+{% endwith %}
+```
+
+### Video actions (`_video_actions.html`)
+
+Detail, Stop, Retry, Re-sync, Delete buttons for video rows/cards. Pass: `video`, `layout` (`table`|`detail`|`active`). For `table`/`detail`: `hx_status_target`, `hx_row_target`. For `detail`: `detail_page=true`. For `active`: `hx_container_target`.
+
+```html
+{% with layout='table', hx_status_target='#video-status-' ~ video.id, hx_row_target='#video-row-' ~ video.id %}
+{% include "components/_video_actions.html" with context %}
+{% endwith %}
+```
+
+### Collapse macro (`_macros.html`)
+
+DaisyUI collapse with arrow. Import and use with `call`:
+
+```html
+{% from "components/_macros.html" import collapse %}
+{% call collapse("Status legend") %}
+  <div>...content...</div>
+{% endcall %}
+{% call collapse("Active downloads", open=true) %}...{% endcall %}
+```
+
+### Table header with tooltip (`th_tooltip` macro)
+
+`<th>` with tooltip. Import and use:
+
+```html
+{% from "components/_macros.html" import th_tooltip %}
+<tr>{% call th_tooltip("Base URL of your Stash instance") %}Stash URL{% endcall %}<td>...</td></tr>
+```
+
+### Status badge class filter
+
+Template filter `status_badge_class` returns DaisyUI badge class for a video status. Registered in `app/main.py`.
+
+```html
+<span class="{{ video.status | status_badge_class }}">{{ video.status }}</span>
+```
+
+---
+
 ## Tooltips
 
 We use **DaisyUI’s tooltip component** for inline help on buttons, labels, table headers, and indicators. No JavaScript is required: add `class="tooltip"` and `data-tip="Help text"` to the element.

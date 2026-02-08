@@ -1,0 +1,5 @@
+{# Reusable disabled button with spinner. Pass: label. Optional: size (sm|xs), default sm #}
+<button type="button" class="btn btn-sm btn-ghost" disabled>
+  <span class="loading loading-spinner {{ 'loading-xs' if size == 'xs' else 'loading-sm' }}"></span>
+  {{ label }}
+</button>

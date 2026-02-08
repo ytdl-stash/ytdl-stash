@@ -1,0 +1,12 @@
+{# Reusable filter/toggle button for link-based filter groups.
+   Use inside a DaisyUI join container. Pass: url, label, is_active, hx_target.
+   Optional: tooltip, tooltip_classes (default: tooltip tooltip-bottom)
+#}
+<a href="{{ url }}"
+   hx-get="{{ url }}"
+   hx-target="{{ hx_target }}"
+   hx-swap="{{ hx_swap | default('innerHTML') }}"
+   hx-push-url="true"
+   class="join-item btn btn-sm {{ 'btn-active' if is_active else '' }} {{ tooltip_classes | default('') }}"
+   {% if tooltip %}data-tip="{{ tooltip }}"{% endif %}
+>{{ label }}</a>
