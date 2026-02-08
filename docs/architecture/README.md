@@ -128,6 +128,9 @@ ytdl-stash/
       phase-08-ui.md
       phase-09-docker.md
       phase-10-polish.md
+    journal/
+      README.md                 # Development journal conventions + template
+      2026-02-07-add-development-journal.md
   app/
     __init__.py
     main.py                     # FastAPI app factory + lifespan

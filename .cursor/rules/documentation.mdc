@@ -27,6 +27,7 @@ Docs live in `docs/`. Read them only when you genuinely need context you don't a
 
 Update docs to reflect your changes:
 
+- Completed task → add a journal entry in `docs/journal/` (see `docs/journal/README.md` for naming + template).
 - New config setting → update `docs/architecture/README.md` config table.
 - New model/field → update `docs/architecture/README.md` schema section.
 - New architectural decision → write a new ADR in `docs/adr/`.

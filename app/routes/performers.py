@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from starlette.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -110,7 +111,7 @@ async def _performers_sync_response(
     request: Request,
     db: AsyncSession,
     settings: Settings,
-) -> templates.TemplateResponse | RedirectResponse:
+) -> Response:
     """Reload channel and return card (HTMX) or redirect to detail."""
     result = await db.execute(
         select(Channel)

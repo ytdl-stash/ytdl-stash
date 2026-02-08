@@ -11,6 +11,9 @@ When starting a phase:
 4. After completing a deliverable, mark it `[x]` in the phase file.
 5. Log any deviations from the original plan in the **Deviations** section.
 
+When completing a task:
+- Add a development journal entry in `docs/journal/` (see `docs/journal/README.md`) to capture what changed, why, and any trade-offs.
+
 ## Phase Status Overview
 
 | Phase | Name | Status | Key Deliverables |

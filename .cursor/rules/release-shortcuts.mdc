@@ -1,0 +1,29 @@
+---
+description: Shorthand commands for commit/push/release workflow
+alwaysApply: true
+---
+
+# Release / Push Shortcuts (ytdl-stash)
+
+## Keyword shortcut: "push"
+
+When the user says **"push"** (or "push and release", "release a new version"), interpret it as an explicit request to run the repo's release recipe (see `docs/recipes/release.md`) using the **manual path**:
+
+- **Preflight**: `git status`, `git diff --stat`, `git log --oneline -10`, `git tag --sort=-creatordate | Select-Object -First 1`
+- **Commit all**: `git add -A` then `git commit -m "<message>"`
+- **Version/tag**:
+  - Default bump is **minor** (e.g. `v0.13.0` → `v0.14.0`) unless the user specifies `patch`, `major`, or an explicit version.
+  - Verify tag doesn't exist: `git tag -l vX.Y.Z` should be empty.
+  - Create tag: `git tag vX.Y.Z`
+- **Push**: `git push origin main` then `git push origin vX.Y.Z`
+- **GitHub release**: `gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes`
+- **Observe build** (optional): `gh run list -L 5` and/or `gh run watch <run_id>`
+
+## Windows/PowerShell constraints
+
+- Do **not** use `head`, `bash`, or `&&` chaining; prefer PowerShell pipelines and run commands sequentially.
+
+## Safety / intent
+
+- This shortcut is only for the user’s explicit "push" instruction; otherwise do not push or release.
+- Never force-push; never bypass hooks unless the user explicitly asks.
