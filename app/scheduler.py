@@ -71,6 +71,11 @@ job_registry: dict[str, JobInfo] = {
         name="Backfill Scrape & Generate",
         description="Run scrape and generate for synced videos that haven't had them yet.",
     ),
+    "regenerate_all": JobInfo(
+        id="regenerate_all",
+        name="Regenerate All",
+        description="Re-trigger Stash generate (previews, sprites, etc.) for all synced videos.",
+    ),
 }
 
 
@@ -323,6 +328,9 @@ async def _do_backfill_scrape_generate() -> None:
         if db_module.async_session is None:
             return
         video_id = v.id
+        # Remember which steps are already done so we only run what's missing.
+        already_scraped = v.scrape_attempted_at is not None
+        already_generated = v.generate_triggered_at is not None
         async with db_module.async_session() as db2:
             try:
                 async with StashClient(
@@ -341,6 +349,8 @@ async def _do_backfill_scrape_generate() -> None:
                         db2,
                         performer_ids=None,
                         studio_id=None,
+                        skip_scrape=already_scraped,
+                        skip_generate=already_generated,
                     )
                 await db2.commit()
             except Exception as e:
@@ -352,6 +362,110 @@ async def _do_backfill_scrape_generate() -> None:
 
         if _BACKFILL_DELAY_SECONDS > 0:
             await asyncio.sleep(_BACKFILL_DELAY_SECONDS)
+
+
+# ---------------------------------------------------------------------------
+# Regenerate all
+# ---------------------------------------------------------------------------
+
+
+async def _do_regenerate_all() -> None:
+    """Re-trigger Stash generate for every synced video.
+
+    Resets ``generate_triggered_at`` to NULL so each video is treated as
+    un-generated, then walks through them in batches calling
+    ``trigger_generate``.  Useful after fixing a bug that caused generate
+    to silently fail (e.g. the organized-flag file-move race).
+    """
+    if db_module.async_session is None:
+        logger.warning("Regenerate all skipped: database session not initialized")
+        return
+
+    settings = get_settings()
+    if not settings.stash_generate_after_sync:
+        logger.info("Regenerate all skipped: YTDL_STASH_GENERATE_AFTER_SYNC is disabled")
+        return
+
+    # 1. Reset generate_triggered_at for all synced videos.
+    async with db_module.async_session() as db:
+        try:
+            result = await db.execute(
+                update(Video)
+                .where(
+                    Video.status == "synced",
+                    Video.stash_scene_id.isnot(None),
+                    Video.generate_triggered_at.isnot(None),
+                )
+                .values(generate_triggered_at=None)
+            )
+            count = result.rowcount  # type: ignore[union-attr]
+            await db.commit()
+            logger.info("Regenerate all: reset generate_triggered_at on %d video(s)", count)
+        except Exception as e:
+            await db.rollback()
+            logger.exception("Regenerate all: failed to reset timestamps: %s", e)
+            raise
+
+    if count == 0:
+        logger.info("Regenerate all: no videos to regenerate")
+        return
+
+    # 2. Walk through all synced videos with NULL generate_triggered_at.
+    processed = 0
+    while True:
+        if db_module.async_session is None:
+            return
+        async with db_module.async_session() as db:
+            try:
+                result = await db.execute(
+                    select(Video)
+                    .where(
+                        Video.status == "synced",
+                        Video.stash_scene_id.isnot(None),
+                        Video.generate_triggered_at.is_(None),
+                    )
+                    .order_by(Video.id)
+                    .limit(_BACKFILL_BATCH_SIZE)
+                )
+                batch = list(result.scalars().all())
+            except Exception as e:
+                await db.rollback()
+                logger.exception("Regenerate all: failed selecting batch: %s", e)
+                break
+
+        if not batch:
+            break
+
+        for v in batch:
+            if db_module.async_session is None:
+                return
+            async with db_module.async_session() as db2:
+                try:
+                    async with StashClient(
+                        settings.stash_url, settings.stash_api_key
+                    ) as stash:
+                        video = await db2.get(Video, v.id)
+                        if video is None or video.status != "synced" or not video.stash_scene_id:
+                            continue
+                        await run_scrape_and_generate(
+                            video,
+                            video.stash_scene_id,
+                            stash,
+                            settings,
+                            db2,
+                            skip_scrape=True,
+                            skip_generate=False,
+                        )
+                    await db2.commit()
+                    processed += 1
+                except Exception as e:
+                    await db2.rollback()
+                    logger.warning("Regenerate all: failed for video %s: %s", v.id, e)
+
+            if _BACKFILL_DELAY_SECONDS > 0:
+                await asyncio.sleep(_BACKFILL_DELAY_SECONDS)
+
+    logger.info("Regenerate all: triggered generate for %d video(s)", processed)
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +484,7 @@ job_registry["process_downloads"].coro_fn = _do_process_downloads
 job_registry["retry_all_failed"].coro_fn = _do_retry_all_failed
 job_registry["check_ytdlp_updates"].coro_fn = _do_check_ytdlp_updates
 job_registry["backfill_scrape_generate"].coro_fn = _do_backfill_scrape_generate
+job_registry["regenerate_all"].coro_fn = _do_regenerate_all
 
 
 # ---------------------------------------------------------------------------

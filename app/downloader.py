@@ -8,6 +8,7 @@ import re
 import struct
 from datetime import date
 from typing import Any
+from urllib.parse import urlparse
 
 import yt_dlp
 from yt_dlp.utils import DownloadError
@@ -49,24 +50,46 @@ def _looks_like_site_name(value: str, info: dict) -> bool:
     """Return True if *value* appears to be a site/domain name rather than a real channel name.
 
     Heuristics:
-    - Matches the yt-dlp extractor key (e.g. "PornHub", "RedTube") case-insensitively.
+    - Matches the yt-dlp extractor key (e.g. "PornHub", "RedTube") case-insensitively,
+      or when the extractor key starts with the value (e.g. "Pornhub" vs "PornHubUser").
     - Looks like a bare domain (e.g. "pornhub.com") based on TLD matching.
+    - Matches the second-level domain from the channel URL (e.g. "pornhub" from pornhub.com).
     """
     v = value.strip().lower()
     if not v:
         return True
 
+    v_clean = v.replace(".", "").replace(" ", "").replace("-", "").replace("_", "")
+
     # Compare against the extractor name (e.g. "PornHub", "PornHubUser")
     extractor = (info.get("extractor_key") or info.get("extractor") or "").strip().lower()
+    extractor_clean = extractor.replace(".", "").replace(" ", "") if extractor else ""
     if extractor and v == extractor:
         return True
     # e.g. "Pornhub.com" vs extractor "PornHub"
-    if extractor and v.replace(".", "").replace(" ", "") == extractor.replace(" ", ""):
+    if extractor_clean and v_clean == extractor_clean:
+        return True
+    # e.g. "Pornhub" vs extractor "PornHubUser" — site name is prefix of extractor key
+    if extractor_clean and v_clean and extractor_clean.startswith(v_clean):
         return True
 
     # Bare domain with a recognized TLD (e.g. "pornhub.com")
     if _DOMAIN_RE.match(v):
         return True
+
+    # Compare against the URL's domain base (e.g. "pornhub" from https://www.pornhub.com/...)
+    for url_field in ("webpage_url", "original_url", "url"):
+        raw_url = info.get(url_field)
+        if raw_url:
+            hostname = urlparse(str(raw_url)).hostname or ""
+            if hostname.lower().startswith("www."):
+                hostname = hostname[4:]
+            parts = hostname.rsplit(".", 1)
+            domain_base = (parts[0].split(".")[-1] if parts else "") or ""
+            domain_base_clean = domain_base.lower().replace("-", "").replace("_", "")
+            if domain_base_clean and v_clean == domain_base_clean:
+                return True
+            break
 
     return False
 
@@ -132,7 +155,7 @@ def _extract_channel_name(info: dict) -> str:
     Tries several fields that different extractors populate, in priority order.
     Skips values that look like a site or domain name (e.g. "Pornhub.com").
     """
-    for field in ("channel", "uploader", "title", "playlist_title"):
+    for field in ("channel", "uploader", "uploader_id", "title", "playlist_title"):
         raw = info.get(field)
         if raw:
             candidate = str(raw).strip()

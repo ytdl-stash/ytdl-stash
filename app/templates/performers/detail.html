@@ -1,8 +1,0 @@
-{% extends "base.html" %}
-{% block title %}{{ channel.name }} — Performers — ytdl-stash{% endblock %}
-{% block content %}
-{% with url="/performers", label="Performers" %}
-{% include "components/_back_link.html" with context %}
-{% endwith %}
-{% include "performers/_detail_card.html" %}
-{% endblock %}

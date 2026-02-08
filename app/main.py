@@ -145,7 +145,6 @@ def create_app() -> FastAPI:
         health as health_routes,
         jobs as jobs_routes,
         logs as logs_routes,
-        performers,
         videos,
         settings as settings_routes,
     )
@@ -154,7 +153,6 @@ def create_app() -> FastAPI:
     app.include_router(auth_routes.router)
     app.include_router(dashboard.router)
     app.include_router(channels.router)
-    app.include_router(performers.router)
     app.include_router(videos.router)
     app.include_router(jobs_routes.router)
     app.include_router(settings_routes.router)

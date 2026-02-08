@@ -1,6 +1,6 @@
 {% set p = channel.stash_performer_data or {} %}
 {% set s = channel.stash_studio_data or {} %}
-<div id="performer-detail-card" class="card bg-base-200">
+<div id="channel-detail-card" class="card bg-base-200">
   <div class="card-body">
     <div class="flex flex-col sm:flex-row gap-6 items-start mb-4">
       {% if channel.performer_image_url %}
@@ -30,30 +30,30 @@
     </div>
 
     <div class="flex flex-wrap gap-2 my-4">
-      <form hx-post="/performers/{{ channel.id }}/toggle"
-            hx-target="#performer-detail-card"
+      <form hx-post="/channels/{{ channel.id }}/toggle"
+            hx-target="#channel-detail-card"
             hx-swap="outerHTML"
             class="inline">
         <button type="submit" class="btn btn-sm {{ 'btn-primary' if not channel.enabled else 'btn-ghost' }} tooltip tooltip-bottom" data-tip="Toggle auto-scanning for this channel">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
       </form>
-      <form hx-post="/performers/{{ channel.id }}/sync-performer"
-            hx-target="#performer-detail-card"
+      <form hx-post="/channels/{{ channel.id }}/sync-performer"
+            hx-target="#channel-detail-card"
             hx-swap="outerHTML"
             hx-indicator="#spinner-sync-performer-detail"
             class="inline">
         <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-bottom" data-tip="Create or update performer in Stash only">Sync Performer</button>
         <span id="spinner-sync-performer-detail" class="htmx-indicator">Syncing…</span>
       </form>
-      <form hx-post="/performers/{{ channel.id }}/sync-studio"
-            hx-target="#performer-detail-card"
+      <form hx-post="/channels/{{ channel.id }}/sync-studio"
+            hx-target="#channel-detail-card"
             hx-swap="outerHTML"
             hx-indicator="#spinner-sync-studio-detail"
             class="inline">
         <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-bottom" data-tip="Link channel URL to a Stash studio">Sync Studio</button>
         <span id="spinner-sync-studio-detail" class="htmx-indicator">Syncing…</span>
       </form>
-      <form hx-post="/performers/{{ channel.id }}/sync"
-            hx-target="#performer-detail-card"
+      <form hx-post="/channels/{{ channel.id }}/sync"
+            hx-target="#channel-detail-card"
             hx-swap="outerHTML"
             hx-indicator="#spinner-sync-both-detail"
             class="inline">
@@ -61,8 +61,8 @@
         <span id="spinner-sync-both-detail" class="htmx-indicator">Syncing…</span>
       </form>
       {% if channel.stash_performer_id or channel.stash_studio_id %}
-      <form hx-post="/performers/{{ channel.id }}/relink"
-            hx-target="#performer-detail-card"
+      <form hx-post="/channels/{{ channel.id }}/relink"
+            hx-target="#channel-detail-card"
             hx-swap="outerHTML"
             hx-confirm="Clear Stash links and re-lookup performer/studio by channel URL?"
             hx-indicator="#spinner-relink-detail"
@@ -71,13 +71,55 @@
         <span id="spinner-relink-detail" class="htmx-indicator">Re-linking…</span>
       </form>
       {% endif %}
-      <form hx-delete="/performers/{{ channel.id }}"
-            hx-confirm="Delete performer '{{ channel.name|e }}' and all its videos?"
-            hx-on::after-request="if(event.detail.successful) window.location='/performers'"
+      <form hx-delete="/channels/{{ channel.id }}"
+            hx-confirm="Delete channel '{{ channel.name|e }}' and all its videos?"
+            hx-on::after-request="if(event.detail.successful) window.location='/channels'"
             class="inline">
-        <button type="submit" class="btn btn-sm btn-error tooltip tooltip-bottom" data-tip="Remove this performer and all videos">Delete</button>
+        <button type="submit" class="btn btn-sm btn-error tooltip tooltip-bottom" data-tip="Remove this channel and all videos">Delete</button>
       </form>
     </div>
+
+    {# ── Channel Settings (interval, max age, min duration, check now) ── #}
+    <details class="my-6">
+      <summary class="cursor-pointer font-bold">Channel Settings</summary>
+      <form hx-put="/channels/{{ channel.id }}"
+            hx-target="#channel-detail-card"
+            hx-swap="outerHTML"
+            hx-indicator="#spinner-settings-detail"
+            class="mt-4 space-y-4 max-w-md">
+        <div class="form-control">
+          <label class="label" for="channel-name-detail"><span class="label-text">Name</span></label>
+          <input type="text" id="channel-name-detail" name="name" value="{{ channel.name|e }}" class="input input-bordered input-sm w-full" aria-label="Channel name">
+        </div>
+        <div class="form-control">
+          <label class="label" for="channel-interval-detail"><span class="label-text">Check interval (hours)</span></label>
+          <input type="number" id="channel-interval-detail" name="check_interval_hours" value="{{ channel.check_interval_hours }}" min="1" class="input input-bordered input-sm w-full" aria-label="Check interval hours">
+        </div>
+        <div class="form-control">
+          <label class="label" for="channel-max-age-detail"><span class="label-text">Max video age (days)</span></label>
+          <input type="number" id="channel-max-age-detail" name="max_video_age_days" value="{{ channel.max_video_age_days or '' }}" min="1" placeholder="No limit" class="input input-bordered input-sm w-full" aria-label="Max video age days">
+        </div>
+        <div class="form-control">
+          <label class="label" for="channel-min-duration-detail"><span class="label-text">Min duration (seconds)</span></label>
+          <input type="number" id="channel-min-duration-detail" name="min_duration_seconds" value="{{ channel.min_duration_seconds or '' }}" min="1" placeholder="No minimum" class="input input-bordered input-sm w-full" aria-label="Min duration seconds">
+        </div>
+        <input type="hidden" name="enabled" value="{{ 'true' if channel.enabled else 'false' }}">
+        <div class="flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-sm btn-primary">Save settings</button>
+          <span id="spinner-settings-detail" class="htmx-indicator">Saving…</span>
+        </div>
+      </form>
+      <div class="mt-2">
+        <span id="job-inline-check_now_{{ channel.id }}">
+          <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Trigger an immediate scan for new videos"
+                  hx-post="/channels/{{ channel.id }}/check-now"
+                  hx-target="#job-inline-check_now_{{ channel.id }}"
+                  hx-swap="innerHTML">
+            Check Now
+          </button>
+        </span>
+      </div>
+    </details>
 
     {# ── Performer metadata from Stash ── #}
     {% if p %}
@@ -189,8 +231,8 @@
       </div>
       {% endif %}
       {% endif %}
-      <form hx-post="/performers/{{ channel.id }}/sync-studio"
-            hx-target="#performer-detail-card"
+      <form hx-post="/channels/{{ channel.id }}/sync-studio"
+            hx-target="#channel-detail-card"
             hx-swap="outerHTML"
             hx-indicator="#spinner-sync-studio-detail"
             class="inline mt-2">

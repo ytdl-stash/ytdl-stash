@@ -203,10 +203,23 @@ async def run_scrape_and_generate(
     *,
     performer_ids: list[str] | None = None,
     studio_id: str | None = None,
+    set_organized: bool = False,
+    skip_scrape: bool = False,
+    skip_generate: bool = False,
 ) -> None:
-    """Run scrape and generate for a synced scene, update tracking timestamps on success."""
+    """Run scrape and generate for a synced scene, update tracking timestamps on success.
+
+    When *set_organized* is True the scene is marked as organized **after**
+    scraping but **before** triggering generate.  This ordering is important
+    because setting organized can trigger a Stash file-move rule; the
+    generate job (which runs asynchronously in Stash's sequential job
+    queue) must see the file at its final location.
+
+    *skip_scrape* / *skip_generate* let callers (e.g. the backfill job)
+    run only the step that is actually needed.
+    """
     # 1. Scrape the video URL via Stash's configured scrapers
-    if settings.stash_scrape_after_sync:
+    if settings.stash_scrape_after_sync and not skip_scrape:
         try:
             logger.info("Video %s: scraping URL %s via Stash", video.id, video.url)
             scraped = await stash.scrape_scene_url(video.url)
@@ -221,8 +234,32 @@ async def run_scrape_and_generate(
         except Exception as e:
             logger.warning("Video %s: post-sync scrape failed (non-fatal): %s", video.id, e)
 
-    # 2. Trigger Stash generate (covers, previews, sprites, phashes)
-    if settings.stash_generate_after_sync:
+    # 2. Mark scene as organized (before generate so any file-move rule
+    #    completes before the generate job reads the file).
+    if set_organized:
+        try:
+            await stash.update_scene(scene_id=scene_id, organized=True)
+            logger.info(
+                "Video %s: marked scene %s as organized in Stash",
+                video.id, scene_id,
+            )
+            # Allow Stash to complete any file-move rule triggered by the
+            # organized flag before queuing the generate job.
+            settle = settings.stash_organized_settle_seconds
+            if settle > 0:
+                logger.info(
+                    "Video %s: waiting %ss for Stash file-move to settle",
+                    video.id, settle,
+                )
+                await asyncio.sleep(settle)
+        except Exception as e:
+            logger.warning(
+                "Video %s: failed to mark scene %s as organized (non-fatal): %s",
+                video.id, scene_id, e,
+            )
+
+    # 3. Trigger Stash generate (covers, previews, sprites, phashes)
+    if settings.stash_generate_after_sync and not skip_generate:
         try:
             logger.info("Video %s: triggering Stash generate for scene %s", video.id, scene_id)
             await stash.trigger_generate(
@@ -236,11 +273,12 @@ async def run_scrape_and_generate(
         except Exception as e:
             logger.warning("Video %s: post-sync generate failed (non-fatal): %s", video.id, e)
 
-    # 3. Re-sync scene from Stash to confirm scraper results were applied
-    try:
-        await _resync_scene_from_stash(video, stash)
-    except Exception as e:
-        logger.warning("Video %s: post-sync scene re-sync failed (non-fatal): %s", video.id, e)
+    # 4. Re-sync scene from Stash to confirm scraper results were applied
+    if not skip_scrape:
+        try:
+            await _resync_scene_from_stash(video, stash)
+        except Exception as e:
+            logger.warning("Video %s: post-sync scene re-sync failed (non-fatal): %s", video.id, e)
 
 
 async def process_single_download(
@@ -531,24 +569,9 @@ async def process_single_download(
         await run_scrape_and_generate(
             video, scene["id"], stash, settings, db,
             performer_ids=performer_ids, studio_id=studio_id,
+            set_organized=True,
         )
         await db.commit()
-
-        # Mark scene as organized (after scrape and generate have been run)
-        try:
-            await stash.update_scene(scene_id=scene["id"], organized=True)
-            logger.info(
-                "Video %s: marked scene %s as organized in Stash",
-                video.id,
-                scene["id"],
-            )
-        except Exception as e:
-            logger.warning(
-                "Video %s: failed to mark scene %s as organized (non-fatal): %s",
-                video.id,
-                scene["id"],
-                e,
-            )
 
     except DownloadCancelled as e:
         download_progress.clear(video.id)

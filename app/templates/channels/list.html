@@ -6,7 +6,7 @@
   <span class="flex items-center gap-2">
     <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Edit settings for all channels at once"
             hx-get="/channels/bulk-edit"
-            hx-target="#channel-table-wrap"
+            hx-target="#channels-content"
             hx-swap="innerHTML">
       Bulk Edit
     </button>
@@ -33,8 +33,8 @@
   </button>
 </div>
 {% include "channels/_add_modal.html" %}
-<div id="channel-table-wrap">
-  {% include "channels/_table.html" %}
+<div id="channels-content">
+  {% include "channels/_list_content.html" %}
 </div>
 <script>
   document.body.addEventListener('closeAddChannelModal', function () {

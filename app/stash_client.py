@@ -928,10 +928,14 @@ class StashClient:
         previews: bool = False,
         sprites: bool = False,
         phashes: bool = True,
-    ) -> None:
-        """Trigger Stash metadata generation for specific scenes."""
+    ) -> str | None:
+        """Trigger Stash metadata generation for specific scenes.
+
+        Returns the Stash job ID if the mutation succeeds.
+        """
         logger.info(
-            "Stash: triggering generate for %d scene(s) (covers=%s, previews=%s, sprites=%s, phashes=%s)",
+            "Stash: triggering generate for %d scene(s) "
+            "(covers=%s, previews=%s, sprites=%s, phashes=%s)",
             len(scene_ids), covers, previews, sprites, phashes,
         )
         variables = {
@@ -943,4 +947,7 @@ class StashClient:
                 "phashes": phashes,
             }
         }
-        await self._query(_METADATA_GENERATE_MUTATION, variables)
+        result = await self._query(_METADATA_GENERATE_MUTATION, variables)
+        job_id = (result or {}).get("metadataGenerate")
+        logger.info("Stash: generate job started — job_id=%s", job_id)
+        return job_id

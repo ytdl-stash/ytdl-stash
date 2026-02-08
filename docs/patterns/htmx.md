@@ -168,24 +168,24 @@ Add a new channel via a form:
 
 ## Pattern: Bulk Edit with Global Save
 
-Channels page bulk edit: swap the entire table with an editable form, then save all at once:
+Channels page bulk edit: swap the list content area with an editable form, then save all at once:
 
 ```html
 <!-- Header: enter bulk edit mode -->
 <button hx-get="/channels/bulk-edit"
-        hx-target="#channel-table-wrap"
+        hx-target="#channels-content"
         hx-swap="innerHTML">
   Bulk Edit
 </button>
 
 <!-- In _bulk_edit.html: single form wrapping all rows -->
 <form hx-put="/channels/bulk"
-      hx-target="#channel-table-wrap"
+      hx-target="#channels-content"
       hx-swap="innerHTML">
   <button type="submit">Save All</button>
   <button type="button"
-          hx-get="/channels/table"
-          hx-target="#channel-table-wrap"
+          hx-get="/channels"
+          hx-target="#channels-content"
           hx-swap="innerHTML">
     Cancel
   </button>
@@ -232,7 +232,7 @@ The Add Channel flow uses a multi-step modal: Step 1 (URL + scrape), Step 2 (rev
 
 **Step transitions**: Each step’s form POSTs to a route that returns the next step’s partial; same target and `innerHTML` swap. Data is carried forward via hidden inputs. Back navigation uses `hx-get` to a route that re-renders the previous step with query (or form) params.
 
-**Close on success**: The final step POSTs to `/channels` with `hx-target="#channel-list"` and `hx-swap="beforeend"`. The server returns the new row and `HX-Trigger: closeAddChannelModal`. A script on the page listens for that event and calls `document.getElementById('add-channel-modal').close()`.
+**Close on success**: The final step POSTs to `/channels` with `hx-target="#channel-grid"` and `hx-swap="beforeend"`. The server returns the new channel card partial and `HX-Trigger: closeAddChannelModal`. A script on the page listens for that event and calls `document.getElementById('add-channel-modal').close()`.
 
 **Loading states**: Each step’s submit button has an `hx-indicator` pointing to a spinner element inside the modal.
 
@@ -245,15 +245,16 @@ templates/
   base.html                    # Full page layout (nav, head, scripts)
   dashboard.html               # Extends base.html
   channels/
-    list.html                  # Extends base.html
+    list.html                  # Extends base.html (Add Channel, Bulk Edit, Check All Now, card grid)
+    _list_content.html         # Partial: filter/sort nav + channel card grid
+    _card.html                 # Partial: single channel card
+    _detail_card.html          # Partial: channel detail (Stash sync + Channel Settings + videos)
+    detail.html                # Channel detail page
     _add_modal.html            # Partial: dialog shell + initial step 1 body
-    _add_step1.html             # Partial: URL input (step 1)
-    _add_step2.html             # Partial: metadata review + settings (step 2)
-    _add_step3.html             # Partial: Stash linking + save (step 3)
-    _table.html                # Partial: read-only channel table
-    _bulk_edit.html            # Partial: bulk edit form (all rows editable)
-    _row.html                  # Partial: single channel table row
-    _row_edit.html             # Partial: editable channel row
+    _add_step1.html            # Partial: URL input (step 1)
+    _add_step2.html            # Partial: metadata review + settings (step 2)
+    _add_step3.html            # Partial: Stash linking + save (step 3)
+    _bulk_edit.html            # Partial: bulk edit form (all channels editable)
   videos/
     list.html                  # Extends base.html
     detail.html                # Extends base.html

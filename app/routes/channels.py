@@ -1,11 +1,13 @@
-"""Channel routes: list, add, update, delete, check-now."""
+"""Channel routes: list (card grid), detail, add, update, delete, sync, check-now."""
 
 import asyncio
 import logging
+from datetime import date, datetime, timezone
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from starlette.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,12 +15,13 @@ from sqlalchemy.orm import selectinload
 from app import database as db_module
 from app.config import Settings, get_settings
 from app.database import get_db
+from app.download_progress import download_progress
 from app.downloader import async_extract_channel_metadata
 from app.main import templates
 from app.models import Channel
 from app.performer_sync import sync_channel_performer
-from app.studio_sync import sync_channel_studio
 from app.pipeline import process_channel_scan
+from app.studio_sync import sync_channel_studio
 from app.stash_client import StashClient
 
 logger = logging.getLogger(__name__)
@@ -49,27 +52,8 @@ def _derive_site(url: str) -> str:
     return netloc.split(":")[0] if netloc else "unknown"
 
 
-@router.get("")
-async def list_channels(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    """List all channels. HTMX can request partial; currently returns full list page."""
-    result = await db.execute(
-        select(Channel)
-        .options(selectinload(Channel.videos))
-        .order_by(Channel.name)
-    )
-    channels = list(result.scalars().all())
-
-    return templates.TemplateResponse(
-        "channels/list.html",
-        {"request": request, "channels": channels},
-    )
-
-
-async def _load_channels_for_table(db: AsyncSession) -> list[Channel]:
-    """Load all channels with relationships needed by table partials."""
+async def _load_channels_with_videos(db: AsyncSession) -> list[Channel]:
+    """Load all channels with videos (for list, bulk edit)."""
     result = await db.execute(
         select(Channel)
         .options(selectinload(Channel.videos))
@@ -78,18 +62,73 @@ async def _load_channels_for_table(db: AsyncSession) -> list[Channel]:
     return list(result.scalars().all())
 
 
-@router.get("/table")
-async def channel_table(
+async def _load_channel_with_videos(db: AsyncSession, channel_id: int) -> Channel | None:
+    """Load a single channel with videos (for card/detail)."""
+    result = await db.execute(
+        select(Channel)
+        .where(Channel.id == channel_id)
+        .options(selectinload(Channel.videos))
+    )
+    return result.scalar_one_or_none()
+
+
+# ----- List (card grid with filter/sort) -----
+
+@router.get("")
+async def list_channels(
     request: Request,
+    filter: str = "all",
+    sort: str = "name",
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    """HTMX partial: render the read-only channel table."""
-    channels = await _load_channels_for_table(db)
+    """List all channels as cards. filter: all|watched|not_watched, sort: name|video_count|last_checked."""
+    stmt = (
+        select(Channel)
+        .options(selectinload(Channel.videos))
+        .order_by(Channel.name)
+    )
+    if filter == "watched":
+        stmt = stmt.where(Channel.enabled.is_(True))
+    elif filter == "not_watched":
+        stmt = stmt.where(Channel.enabled.is_(False))
+
+    result = await db.execute(stmt)
+    channels = list(result.scalars().all())
+
+    if sort == "video_count":
+        channels.sort(key=lambda c: len(c.videos), reverse=True)
+    elif sort == "last_checked":
+        _min_dt = datetime.min.replace(tzinfo=timezone.utc)
+        channels.sort(
+            key=lambda c: c.last_checked_at or _min_dt,
+            reverse=True,
+        )
+
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            "channels/_list_content.html",
+            {
+                "request": request,
+                "channels": channels,
+                "filter": filter,
+                "sort": sort,
+                "settings": settings,
+            },
+        )
     return templates.TemplateResponse(
-        "channels/_table.html",
-        {"request": request, "channels": channels},
+        "channels/list.html",
+        {
+            "request": request,
+            "channels": channels,
+            "filter": filter,
+            "sort": sort,
+            "settings": settings,
+        },
     )
 
+
+# ----- Bulk edit -----
 
 @router.get("/bulk-edit")
 async def bulk_edit_channels(
@@ -97,7 +136,7 @@ async def bulk_edit_channels(
     db: AsyncSession = Depends(get_db),
 ):
     """HTMX partial: render the bulk edit form."""
-    channels = await _load_channels_for_table(db)
+    channels = await _load_channels_with_videos(db)
     return templates.TemplateResponse(
         "channels/_bulk_edit.html",
         {"request": request, "channels": channels},
@@ -108,11 +147,11 @@ async def bulk_edit_channels(
 async def bulk_update_channels(
     request: Request,
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    """Update multiple channels from bulk edit form. Returns _table.html partial."""
+    """Update multiple channels from bulk edit form. Returns _list_content.html partial."""
     form = await request.form()
 
-    # Parse keys like "name__5", "enabled__5" -> {5: {"name": "...", "enabled": "true"}}
     updates: dict[int, dict[str, str]] = {}
     for key, value in form.items():
         if "__" not in key:
@@ -149,57 +188,23 @@ async def bulk_update_channels(
         if "min_duration_seconds" in data:
             channel.min_duration_seconds = _parse_optional_int(data["min_duration_seconds"])
 
-    channels = await _load_channels_for_table(db)
+    channels = await _load_channels_with_videos(db)
 
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
-            "channels/_table.html",
-            {"request": request, "channels": channels},
+            "channels/_list_content.html",
+            {
+                "request": request,
+                "channels": channels,
+                "filter": "all",
+                "sort": "name",
+                "settings": settings,
+            },
         )
     return RedirectResponse(url="/channels", status_code=303)
 
 
-async def _load_channel_for_row(db: AsyncSession, channel_id: int) -> Channel | None:
-    """Load a channel with relationships needed by row templates."""
-    result = await db.execute(
-        select(Channel)
-        .where(Channel.id == channel_id)
-        .options(selectinload(Channel.videos))
-    )
-    return result.scalar_one_or_none()
-
-
-@router.get("/{channel_id}/row")
-async def channel_row(
-    channel_id: int,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    """HTMX partial: render a single channel row."""
-    channel = await _load_channel_for_row(db, channel_id)
-    if not channel:
-        raise HTTPException(status_code=404, detail="Channel not found")
-    return templates.TemplateResponse(
-        "channels/_row.html",
-        {"request": request, "channel": channel},
-    )
-
-
-@router.get("/{channel_id}/edit")
-async def edit_channel_row(
-    channel_id: int,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    """HTMX partial: render an editable channel row (rename)."""
-    channel = await _load_channel_for_row(db, channel_id)
-    if not channel:
-        raise HTTPException(status_code=404, detail="Channel not found")
-    return templates.TemplateResponse(
-        "channels/_row_edit.html",
-        {"request": request, "channel": channel},
-    )
-
+# ----- Add channel wizard -----
 
 @router.get("/add-modal")
 async def add_channel_modal_body(
@@ -355,7 +360,7 @@ async def add_channel(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """Add a new channel. Uses pre-scraped name/thumbnail from modal when provided; else extracts via yt-dlp. Returns HTMX partial _row.html or redirect."""
+    """Add a new channel. Returns HTMX partial _card.html (append to grid) or redirect."""
     user_name = name.strip()
     site = _derive_site(url)
     interval = (
@@ -366,12 +371,10 @@ async def add_channel(
     parsed_max_age = _parse_optional_int(max_video_age_days)
     parsed_min_duration = _parse_optional_int(min_duration_seconds)
 
-    # Use pre-scraped thumbnail from modal when provided; otherwise we may scrape below
     thumb_from_modal = (thumbnail_url or "").strip() or None
     display_name = user_name
     thumbnail_url_final: str | None = thumb_from_modal
 
-    # Scrape only when we don't have both name and thumbnail (e.g. non-modal add or missing data)
     if not display_name or not thumbnail_url_final:
         try:
             meta = await async_extract_channel_metadata(url, settings)
@@ -404,16 +407,209 @@ async def add_channel(
         logger.warning("Stash sync failed for channel %s", channel.id, exc_info=True)
 
     if request.headers.get("HX-Request"):
-        channel = await _load_channel_for_row(db, channel.id)
+        channel = await _load_channel_with_videos(db, channel.id)
         if not channel:
             raise HTTPException(status_code=404, detail="Channel not found")
         return templates.TemplateResponse(
-            "channels/_row.html",
-            {"request": request, "channel": channel},
+            "channels/_card.html",
+            {"request": request, "channel": channel, "settings": settings},
             headers={"HX-Trigger": "closeAddChannelModal"},
         )
     return RedirectResponse(url="/channels", status_code=303)
 
+
+# ----- Detail -----
+
+@router.get("/{channel_id}")
+async def channel_detail(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Channel detail: metadata, Stash link status, video table."""
+    channel = await _load_channel_with_videos(db, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    videos = sorted(
+        channel.videos,
+        key=lambda v: v.upload_date or date.min,
+        reverse=True,
+    )
+    return templates.TemplateResponse(
+        "channels/detail.html",
+        {
+            "request": request,
+            "channel": channel,
+            "videos": videos,
+            "stash_url": settings.stash_url.rstrip("/"),
+            "settings": settings,
+            "download_progress": download_progress.snapshot(),
+        },
+    )
+
+
+async def _channel_sync_response(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession,
+    settings: Settings,
+) -> Response:
+    """Reload channel and return card (HTMX) or redirect to detail."""
+    channel = await _load_channel_with_videos(db, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    if request.headers.get("HX-Request"):
+        hx_target = request.headers.get("HX-Target") or ""
+        if "channel-detail-card" in hx_target:
+            videos = sorted(
+                channel.videos,
+                key=lambda v: v.upload_date or date.min,
+                reverse=True,
+            )
+            return templates.TemplateResponse(
+                "channels/_detail_card.html",
+                {
+                    "request": request,
+                    "channel": channel,
+                    "videos": videos,
+                    "stash_url": settings.stash_url.rstrip("/"),
+                    "settings": settings,
+                    "download_progress": download_progress.snapshot(),
+                },
+            )
+        return templates.TemplateResponse(
+            "channels/_card.html",
+            {"request": request, "channel": channel, "settings": settings},
+        )
+    return RedirectResponse(url=f"/channels/{channel_id}", status_code=303)
+
+
+@router.post("/{channel_id}/sync-performer")
+async def channel_sync_performer(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Manually trigger performer sync only. Returns updated card or redirect."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    try:
+        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+            await sync_channel_performer(channel, db, stash, settings)
+    except Exception:
+        logger.warning("Performer sync failed for channel %s", channel_id, exc_info=True)
+    return await _channel_sync_response(channel_id, request, db, settings)
+
+
+@router.post("/{channel_id}/sync-studio")
+async def channel_sync_studio(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Manually trigger studio sync only. Returns updated card or redirect."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    try:
+        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+            await sync_channel_studio(channel, db, stash, settings)
+    except Exception:
+        logger.warning("Studio sync failed for channel %s", channel_id, exc_info=True)
+    return await _channel_sync_response(channel_id, request, db, settings)
+
+
+@router.post("/{channel_id}/sync")
+async def channel_sync_both(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Manually trigger performer and studio sync. Returns updated card or redirect."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    try:
+        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+            await sync_channel_performer(channel, db, stash, settings)
+            await sync_channel_studio(channel, db, stash, settings)
+    except Exception:
+        logger.warning("Performer/studio sync failed for channel %s", channel_id, exc_info=True)
+    return await _channel_sync_response(channel_id, request, db, settings)
+
+
+@router.post("/{channel_id}/relink")
+async def channel_relink(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Clear Stash links and re-lookup performer/studio by channel URL in Stash."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    channel.stash_performer_id = None
+    channel.stash_performer_data = None
+    channel.stash_studio_id = None
+    channel.stash_studio_data = None
+    try:
+        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+            await sync_channel_performer(channel, db, stash, settings)
+            await sync_channel_studio(channel, db, stash, settings)
+    except Exception:
+        logger.warning("Re-link failed for channel %s", channel_id, exc_info=True)
+    return await _channel_sync_response(channel_id, request, db, settings)
+
+
+@router.post("/{channel_id}/toggle")
+async def channel_toggle(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Toggle channel enabled (watch/unwatch). Returns updated card or redirect."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    channel.enabled = not channel.enabled
+
+    if request.headers.get("HX-Request"):
+        hx_target = request.headers.get("HX-Target") or ""
+        channel = await _load_channel_with_videos(db, channel_id)
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
+        if "channel-detail-card" in hx_target:
+            videos = sorted(
+                channel.videos,
+                key=lambda v: v.upload_date or date.min,
+                reverse=True,
+            )
+            return templates.TemplateResponse(
+                "channels/_detail_card.html",
+                {
+                    "request": request,
+                    "channel": channel,
+                    "videos": videos,
+                    "stash_url": settings.stash_url.rstrip("/"),
+                    "settings": settings,
+                    "download_progress": download_progress.snapshot(),
+                },
+            )
+        return templates.TemplateResponse(
+            "channels/_card.html",
+            {"request": request, "channel": channel, "settings": settings},
+        )
+    return RedirectResponse(url="/channels", status_code=303)
+
+
+# ----- Update channel -----
 
 @router.put("/{channel_id}")
 async def update_channel(
@@ -425,8 +621,9 @@ async def update_channel(
     max_video_age_days: str = Form(""),
     min_duration_seconds: str = Form(""),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    """Update channel. Returns HTMX partial _row.html or redirect."""
+    """Update channel. Returns HTMX partial _detail_card.html or _card.html or redirect."""
     channel = await db.get(Channel, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -438,15 +635,35 @@ async def update_channel(
     channel.min_duration_seconds = _parse_optional_int(min_duration_seconds)
 
     if request.headers.get("HX-Request"):
-        channel = await _load_channel_for_row(db, channel_id)
+        channel = await _load_channel_with_videos(db, channel_id)
         if not channel:
             raise HTTPException(status_code=404, detail="Channel not found")
+        hx_target = request.headers.get("HX-Target") or ""
+        if "channel-detail-card" in hx_target:
+            videos = sorted(
+                channel.videos,
+                key=lambda v: v.upload_date or date.min,
+                reverse=True,
+            )
+            return templates.TemplateResponse(
+                "channels/_detail_card.html",
+                {
+                    "request": request,
+                    "channel": channel,
+                    "videos": videos,
+                    "stash_url": settings.stash_url.rstrip("/"),
+                    "settings": settings,
+                    "download_progress": download_progress.snapshot(),
+                },
+            )
         return templates.TemplateResponse(
-            "channels/_row.html",
-            {"request": request, "channel": channel},
+            "channels/_card.html",
+            {"request": request, "channel": channel, "settings": settings},
         )
     return RedirectResponse(url="/channels", status_code=303)
 
+
+# ----- Delete -----
 
 @router.delete("/{channel_id}")
 async def delete_channel(
@@ -465,6 +682,8 @@ async def delete_channel(
         return HTMLResponse(status_code=200)
     return RedirectResponse(url="/channels", status_code=303)
 
+
+# ----- Check now -----
 
 @router.post("/{channel_id}/check-now")
 async def check_now(

@@ -1,5 +1,5 @@
-<div id="performer-card-{{ channel.id }}" class="card card-bordered bg-base-200 hover:shadow-lg transition-shadow">
-  <a href="/performers/{{ channel.id }}" class="block p-4 no-underline text-inherit">
+<div id="channel-card-{{ channel.id }}" class="card card-bordered bg-base-200 hover:shadow-lg transition-shadow">
+  <a href="/channels/{{ channel.id }}" class="block p-4 no-underline text-inherit">
     <figure class="w-full aspect-square overflow-hidden rounded-lg mb-2">
       {% if channel.performer_image_url %}
       <img src="{{ channel.performer_image_url }}{% if settings.stash_api_key and settings.stash_url.rstrip('/') in channel.performer_image_url %}{% if '?' in channel.performer_image_url %}&{% else %}?{% endif %}apikey={{ settings.stash_api_key }}{% endif %}" alt="" class="w-full aspect-square object-cover block" loading="lazy">
@@ -15,30 +15,30 @@
     <span class="{% if channel.stash_studio_id %}stash-studio-linked{% else %}stash-studio-unlinked{% endif %} tooltip tooltip-bottom" data-tip="Studio: {% if channel.stash_studio_id %}Linked{% else %}Not linked{% endif %}" aria-label="Studio: {% if channel.stash_studio_id %}Linked{% else %}Not linked{% endif %}"></span>
   </a>
   <div class="card-actions px-4 pb-4 flex flex-wrap gap-2">
-    <form hx-post="/performers/{{ channel.id }}/toggle"
-          hx-target="#performer-card-{{ channel.id }}"
+    <form hx-post="/channels/{{ channel.id }}/toggle"
+          hx-target="#channel-card-{{ channel.id }}"
           hx-swap="outerHTML"
           class="inline">
       <button type="submit" class="btn btn-sm {{ 'btn-primary' if not channel.enabled else 'btn-ghost' }} tooltip tooltip-top" data-tip="Toggle auto-scanning for this channel">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
     </form>
-    <form hx-post="/performers/{{ channel.id }}/sync-performer"
-          hx-target="#performer-card-{{ channel.id }}"
+    <form hx-post="/channels/{{ channel.id }}/sync-performer"
+          hx-target="#channel-card-{{ channel.id }}"
           hx-swap="outerHTML"
           hx-indicator="#spinner-sync-performer-{{ channel.id }}"
           class="inline">
       <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-top" data-tip="Sync performer only">Sync Performer</button>
       <span id="spinner-sync-performer-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
     </form>
-    <form hx-post="/performers/{{ channel.id }}/sync-studio"
-          hx-target="#performer-card-{{ channel.id }}"
+    <form hx-post="/channels/{{ channel.id }}/sync-studio"
+          hx-target="#channel-card-{{ channel.id }}"
           hx-swap="outerHTML"
           hx-indicator="#spinner-sync-studio-{{ channel.id }}"
           class="inline">
       <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-top" data-tip="Sync studio only">Sync Studio</button>
       <span id="spinner-sync-studio-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
     </form>
-    <form hx-post="/performers/{{ channel.id }}/sync"
-          hx-target="#performer-card-{{ channel.id }}"
+    <form hx-post="/channels/{{ channel.id }}/sync"
+          hx-target="#channel-card-{{ channel.id }}"
           hx-swap="outerHTML"
           hx-indicator="#spinner-sync-both-{{ channel.id }}"
           class="inline">
@@ -46,8 +46,8 @@
       <span id="spinner-sync-both-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
     </form>
     {% if channel.stash_performer_id or channel.stash_studio_id %}
-    <form hx-post="/performers/{{ channel.id }}/relink"
-          hx-target="#performer-card-{{ channel.id }}"
+    <form hx-post="/channels/{{ channel.id }}/relink"
+          hx-target="#channel-card-{{ channel.id }}"
           hx-swap="outerHTML"
           hx-confirm="Clear Stash links and re-lookup performer/studio by channel URL?"
           hx-indicator="#spinner-relink-{{ channel.id }}"
@@ -56,11 +56,11 @@
       <span id="spinner-relink-{{ channel.id }}" class="htmx-indicator">Re-linking…</span>
     </form>
     {% endif %}
-    <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Remove this performer and all videos"
-            hx-delete="/performers/{{ channel.id }}"
-            hx-target="#performer-card-{{ channel.id }}"
+    <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Remove this channel and all videos"
+            hx-delete="/channels/{{ channel.id }}"
+            hx-target="#channel-card-{{ channel.id }}"
             hx-swap="outerHTML swap:1s"
-            hx-confirm="Delete performer '{{ channel.name|e }}' and all its videos?">
+            hx-confirm="Delete channel '{{ channel.name|e }}' and all its videos?">
       Delete
     </button>
   </div>

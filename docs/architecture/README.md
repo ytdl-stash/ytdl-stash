@@ -37,7 +37,7 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 | **YTDLM Import** | `app/ytdlm_import.py` | Import channels and videos from YoutubeDL-Material `local_db.json` |
 | **Logging** | `app/logging_config.py` | Centralized logging: console + rotating file + in-memory ring buffer for web UI |
 | **Auth** | `app/auth.py`, `app/routes/auth.py` | Optional app password: PBKDF2 hash in `{data_dir}/auth.json`, session cookie; CLI `python -m app.auth set \| remove` |
-| **Routes** | `app/routes/*.py` | FastAPI routers: dashboard, channels CRUD, videos, performers, jobs, logs, settings, auth (login/logout) |
+| **Routes** | `app/routes/*.py` | FastAPI routers: dashboard, channels (list/detail/add/update/delete/sync), videos, jobs, logs, settings, auth (login/logout) |
 | **Templates** | `app/templates/*.html` | Jinja2 + HTMX server-rendered UI |
 | **Static** | `app/static/` | Custom CSS (HTMX indicators, a few app-specific rules) |
 
@@ -148,10 +148,9 @@ ytdl-stash/
       __init__.py
       auth.py                   # GET/POST /login, GET /logout (when password set)
       dashboard.py              # GET /
-      channels.py               # Channels CRUD
+      channels.py               # Channels: list (card grid), detail, add wizard, update, delete, sync, check-now (Phase 11)
       videos.py                 # Videos list (paginated)/detail/retry/active_downloads panel
       health.py                 # GET /health (Phase 10)
-      performers.py             # Performer Browser + detail + delete (Phase 11)
       settings.py               # Settings + Stash connectivity test
     templates/
       base.html
@@ -159,25 +158,25 @@ ytdl-stash/
       dashboard.html
       error.html                # User-friendly error page (Phase 10)
       channels/
-        list.html
+        list.html               # Channels page: Add Channel, Bulk Edit, Check All Now, card grid
+        _list_content.html      # HTMX partial: filter/sort nav + channel card grid
+        _card.html              # HTMX partial: single channel card
+        _card_list.html         # HTMX partial: loop of _card.html
+        detail.html             # Channel detail page
+        _detail_card.html       # HTMX partial: channel detail card (Stash sync + Channel Settings + videos)
         _add_modal.html         # Add channel dialog shell + step 1
         _add_step1.html         # Step 1: URL input
         _add_step2.html         # Step 2: metadata review + settings
         _add_step3.html         # Step 3: Stash linking + save
-        _row.html               # HTMX partial: single channel row
+        _bulk_edit.html         # HTMX partial: bulk edit form (name, interval, max age, min duration, enabled)
       videos/
         list.html
         detail.html
         _video_list.html       # HTMX partial: table + pagination
         _table_body.html       # HTMX partial: video table rows
-        _table_body_performer.html  # Partial: video rows for performer detail (no channel/thumb columns)
+        _table_body_performer.html  # Partial: video rows for channel detail (no channel/thumb columns)
         _status_badge.html     # HTMX partial: status badge
         _active_downloads.html # HTMX partial: active downloads panel (self-polls every 3s)
-      performers/
-        list.html               # Performer Browser grid/list
-        detail.html             # Performer detail with videos
-        _card.html              # HTMX partial: single performer card
-        _detail_card.html       # HTMX partial: performer detail card (for in-place HTMX updates)
       settings.html
     static/
       style.css
@@ -243,6 +242,7 @@ The Settings page (`/settings`) displays the effective configuration **read at s
 | `YTDL_STASH_GENERATE_PREVIEWS` | `True` | Generate video previews (only when generate is enabled) |
 | `YTDL_STASH_GENERATE_SPRITES` | `True` | Generate sprite sheets (only when generate is enabled) |
 | `YTDL_STASH_GENERATE_PHASHES` | `True` | Generate perceptual hashes (only when generate is enabled) |
+| `YTDL_STASH_ORGANIZED_SETTLE_SECONDS` | `5` | Seconds to wait after setting organized=True before triggering generate (allows Stash file-move to complete; 0–60) |
 | `YTDL_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 ## Optional app password

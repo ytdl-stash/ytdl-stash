@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     stash_generate_previews: bool = True
     stash_generate_sprites: bool = True
     stash_generate_phashes: bool = True
+    # Seconds to wait after setting organized=True before triggering
+    # generate, giving Stash time to complete any file-move rule.
+    stash_organized_settle_seconds: int = Field(default=5, ge=0, le=60)
 
     model_config = {"env_prefix": "YTDL_"}
 

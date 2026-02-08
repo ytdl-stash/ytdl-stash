@@ -47,10 +47,9 @@
     <button type="submit" class="btn btn-ghost btn-sm">Back</button>
   </form>
   <form hx-post="/channels"
-        hx-target="#channel-list"
+        hx-target="#channel-grid"
         hx-swap="beforeend"
-        class="inline"
-        hx-on::after-request="if(event.detail.successful) document.getElementById('add-channel-modal').close();">
+        class="inline">
     <input type="hidden" name="url" value="{{ url|e }}">
     <input type="hidden" name="name" value="{{ name|e }}">
     <input type="hidden" name="thumbnail_url" value="{{ thumbnail|default('', true)|e }}">

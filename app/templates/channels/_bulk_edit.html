@@ -1,13 +1,13 @@
 <form hx-put="/channels/bulk"
-      hx-target="#channel-table-wrap"
+      hx-target="#channels-content"
       hx-swap="innerHTML"
       class="space-y-4">
   <div class="flex gap-2">
     <button type="submit" class="btn btn-sm btn-primary">Save All</button>
     <button type="button"
             class="btn btn-sm btn-ghost"
-            hx-get="/channels/table"
-            hx-target="#channel-table-wrap"
+            hx-get="/channels"
+            hx-target="#channels-content"
             hx-swap="innerHTML">
       Cancel
     </button>
@@ -79,26 +79,7 @@
               <span class="text-sm">Enabled</span>
             </label>
           </td>
-          <td data-label="Actions">
-            <button type="button"
-                    class="btn btn-sm btn-primary"
-                    hx-post="/channels/{{ channel.id }}/check-now"
-                    hx-target="#check-result-{{ channel.id }}"
-                    hx-swap="innerHTML"
-                    hx-indicator="#spinner-{{ channel.id }}">
-              Check Now
-            </button>
-            <span id="spinner-{{ channel.id }}" class="htmx-indicator">Scanning…</span>
-            <span id="check-result-{{ channel.id }}"></span>
-            <button type="button"
-                    class="btn btn-sm btn-error"
-                    hx-delete="/channels/{{ channel.id }}"
-                    hx-target="#channel-row-{{ channel.id }}"
-                    hx-swap="outerHTML swap:1s"
-                    hx-confirm="Delete channel '{{ channel.name|e }}' and all its videos?">
-              Delete
-            </button>
-          </td>
+          <td data-label="Actions">—</td>
         </tr>
         {% endfor %}
       </tbody>

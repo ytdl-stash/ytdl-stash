@@ -421,6 +421,21 @@ video.status = "synced"
 
 ---
 
+### 10b. Post-Sync: Mark Scene Organized (First Download Only)
+
+**Trigger**: Scene is being synced for the first time (inside `run_scrape_and_generate` with `set_organized=True`).
+
+**What happens**:
+1. Call `stash_client.update_scene(scene_id, organized=True)` to mark the scene as organized.
+2. If Stash has a file-move rule triggered by the organized flag, the file is relocated to its final path **before** the generate step queues.
+3. Wait `stash_organized_settle_seconds` (default 5) to give Stash time to complete any file-move rule before queuing the generate job. The file-move may run asynchronously on Stash's side; without this delay, the generate job can start before the move finishes and silently produce nothing.
+
+**Why this ordering matters**: Stash's generate job runs asynchronously in a sequential job queue. If organized is set *after* generate is queued, the file-move can relocate the video while the generate job is waiting to run (or actively running), causing generation to fail silently. By setting organized first and waiting for the settle delay, the file is already at its final location when generate is queued.
+
+**Error handling**: Best-effort. Failures are logged as warnings; generate still fires even if organized fails (the file stays at its original location, which is still valid).
+
+---
+
 ### 11. Post-Sync: Trigger Generate (Optional)
 
 **Trigger**: Scene synced in step 9, and `YTDL_STASH_GENERATE_AFTER_SYNC=true`.
@@ -428,10 +443,11 @@ video.status = "synced"
 **What happens**:
 1. Call `stash_client.trigger_generate(scene_ids=[scene.id])` with the configured generation options:
    - `covers` (default: true) — generate cover/thumbnail images.
-   - `previews` (default: false) — generate video preview clips (slow).
-   - `sprites` (default: false) — generate sprite sheets for scrubbing.
+   - `previews` (default: true) — generate video preview clips.
+   - `sprites` (default: true) — generate sprite sheets for scrubbing.
    - `phashes` (default: true) — generate perceptual hashes for duplicate detection.
-2. Stash runs the generation asynchronously in the background.
+2. Stash queues the generation as an asynchronous background job (returns a job ID immediately).
+3. Since Stash processes jobs sequentially, the generate job runs after any pending scan or file-move job completes.
 
 **Error handling**: Best-effort. Failures are logged as warnings but do not change the video's `synced` status.
 
@@ -444,8 +460,7 @@ video.status = "synced"
 **What happens (automatic — after scraper runs)**:
 1. Call `stash_client.find_scene_by_id(video.stash_scene_id)` to fetch the latest scene data from Stash.
 2. Log the scene's current state (title, performer count, tag count) to confirm scraper results were applied.
-3. If the scene is not already marked organized in Stash, set `organized=true` via `sceneUpdate` (best-effort; failures are logged as warnings).
-4. Thumbnails are served dynamically from Stash at `{stash_url}/scene/{id}/screenshot`, so no local field update is needed.
+3. Thumbnails are served dynamically from Stash at `{stash_url}/scene/{id}/screenshot`, so no local field update is needed.
 
 **What happens (manual — via "Re-sync from Stash" button)**:
 1. `POST /videos/{id}/resync` verifies the scene exists in Stash.
@@ -510,7 +525,8 @@ If a job is running, a **Stop** button is available:
 | **Check All Channels** | `POST /jobs/check_all_channels/trigger` | Scans all enabled channels that are due for new videos (same as the scheduled `channel_checker`). |
 | **Process Downloads** | `POST /jobs/process_downloads/trigger` | Downloads and imports pending videos in the queue (up to configured concurrency, same as the scheduled `download_processor`). |
 | **Retry All Failed** | `POST /jobs/retry_all_failed/trigger` | Resets every `status=failed` video back to `status=pending` so the download processor retries them. |
-| **Backfill Scrape & Generate** | `POST /jobs/backfill_scrape_generate/trigger` | Runs scrape and generate for synced videos missing `scrape_attempted_at` or `generate_triggered_at` (bulk backfill or retry for failed post-sync steps). |
+| **Backfill Scrape & Generate** | `POST /jobs/backfill_scrape_generate/trigger` | Runs scrape and generate for synced videos missing `scrape_attempted_at` or `generate_triggered_at` (bulk backfill or retry for failed post-sync steps). Only runs the step(s) that are actually missing per video. |
+| **Regenerate All** | `POST /jobs/regenerate_all/trigger` | Resets `generate_triggered_at` on all synced videos and re-triggers Stash generate for each (skips scrape). Useful after a bug that caused generate to silently fail. |
 
 ### Contextual Triggers
 
