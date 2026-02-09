@@ -1,47 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ video.title }} — ytdl-stash{% endblock %}
 {% block content %}
-<div class="flex items-center justify-between mb-2">
-  {% with url="/videos", label="Videos" %}
-  {% include "components/_back_link.html" with context %}
-  {% endwith %}
-  <div class="flex gap-2 flex-wrap">
-    <div id="retry-skipped-container">
-      <button type="button"
-              class="btn btn-sm btn-warning gap-1.5 tooltip tooltip-bottom"
-              data-tip="Re-queue all skipped videos for processing with current filter settings"
-              hx-post="/videos/retry_all_skipped"
-              hx-target="#retry-skipped-container"
-              hx-swap="innerHTML"
-              hx-disabled-elt="this"
-              hx-indicator="this"
-              hx-confirm="Retry all skipped videos? They'll be re-evaluated against current channel filters.">
-        <span class="htmx-indicator loading loading-spinner loading-xs"></span>
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        Retry All Skipped
-      </button>
-    </div>
-    <div id="resync-all-container">
-      <button type="button"
-              class="btn btn-sm btn-info gap-1.5 tooltip tooltip-bottom"
-              data-tip="Re-scrape metadata and regenerate all synced videos from Stash"
-              hx-post="/videos/resync_all"
-              hx-target="#resync-all-container"
-              hx-swap="innerHTML"
-              hx-disabled-elt="this"
-              hx-indicator="this"
-              hx-confirm="Re-sync all synced videos from Stash? This may take a while.">
-        <span class="htmx-indicator loading loading-spinner loading-xs"></span>
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        Re-sync All from Stash
-      </button>
-    </div>
-  </div>
-</div>
+{% with url="/videos", label="Videos" %}
+{% include "components/_back_link.html" with context %}
+{% endwith %}
 <div class="card bg-base-200">
   <div class="card-body">
     <div class="flex flex-col md:flex-row gap-4">

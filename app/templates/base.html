@@ -18,14 +18,15 @@
       </a>
 
       <!-- Desktop nav -->
+      {% set path = request.url.path %}
       <nav class="hidden lg:flex items-center ml-2">
         <ul class="menu menu-horizontal gap-0.5 p-0 [&_a]:text-sm">
-          <li><a href="/">Dashboard</a></li>
-          <li><a href="/channels">Channels</a></li>
-          <li><a href="/videos">Videos</a></li>
-          <li><a href="/jobs">Jobs</a></li>
-          <li><a href="/logs">Logs</a></li>
-          <li><a href="/settings">Settings</a></li>
+          <li><a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a></li>
+          <li><a href="/channels" class="{{ 'active' if path.startswith('/channels') }}">Channels</a></li>
+          <li><a href="/videos" class="{{ 'active' if path.startswith('/videos') }}">Videos</a></li>
+          <li><a href="/jobs" class="{{ 'active' if path.startswith('/jobs') }}">Jobs</a></li>
+          <li><a href="/logs" class="{{ 'active' if path.startswith('/logs') }}">Logs</a></li>
+          <li><a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">Settings</a></li>
           {% if is_password_set() %}
           <li><a href="/logout">Log out</a></li>
           {% endif %}
@@ -43,12 +44,12 @@
           </svg>
         </button>
         <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-50 mt-2 w-48 p-2 shadow-lg">
-          <li><a href="/">Dashboard</a></li>
-          <li><a href="/channels">Channels</a></li>
-          <li><a href="/videos">Videos</a></li>
-          <li><a href="/jobs">Jobs</a></li>
-          <li><a href="/logs">Logs</a></li>
-          <li><a href="/settings">Settings</a></li>
+          <li><a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a></li>
+          <li><a href="/channels" class="{{ 'active' if path.startswith('/channels') }}">Channels</a></li>
+          <li><a href="/videos" class="{{ 'active' if path.startswith('/videos') }}">Videos</a></li>
+          <li><a href="/jobs" class="{{ 'active' if path.startswith('/jobs') }}">Jobs</a></li>
+          <li><a href="/logs" class="{{ 'active' if path.startswith('/logs') }}">Logs</a></li>
+          <li><a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">Settings</a></li>
           {% if is_password_set() %}
           <li><a href="/logout">Log out</a></li>
           {% endif %}

@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -18,7 +18,7 @@ from app.database import get_db
 from app.download_progress import download_progress
 from app.downloader import async_extract_channel_metadata
 from app.main import templates
-from app.models import Channel
+from app.models import Channel, Video
 from app.performer_sync import sync_channel_performer
 from app.pipeline import process_channel_scan
 from app.studio_sync import sync_channel_studio
@@ -698,6 +698,189 @@ async def channel_relink(
     except Exception:
         logger.warning("Re-link failed for channel %s", channel_id, exc_info=True)
     return await _channel_sync_response(channel_id, request, db, settings)
+
+
+@router.post("/{channel_id}/relink-performer")
+async def channel_relink_performer(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Clear performer Stash link and re-lookup by channel URL."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    channel.stash_performer_id = None
+    channel.stash_performer_data = None
+    channel.performer_image_url = None
+    try:
+        async with StashClient.from_settings(settings) as stash:
+            await sync_channel_performer(channel, db, stash, settings)
+    except Exception:
+        logger.warning("Re-link performer failed for channel %s", channel_id, exc_info=True)
+    return await _channel_sync_response(channel_id, request, db, settings)
+
+
+@router.post("/{channel_id}/relink-studio")
+async def channel_relink_studio(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Clear studio Stash link and re-lookup by channel URL."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    channel.stash_studio_id = None
+    channel.stash_studio_data = None
+    try:
+        async with StashClient.from_settings(settings) as stash:
+            await sync_channel_studio(channel, db, stash, settings)
+    except Exception:
+        logger.warning("Re-link studio failed for channel %s", channel_id, exc_info=True)
+    return await _channel_sync_response(channel_id, request, db, settings)
+
+
+@router.post("/{channel_id}/resync-videos")
+async def channel_resync_videos(
+    channel_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-sync all synced videos for this channel (scrape + generate) as a background task."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    result = await db.execute(
+        select(Video.id).where(
+            Video.stash_scene_id.isnot(None),
+            Video.channel_id == channel_id,
+        )
+    )
+    video_ids = [row[0] for row in result.all()]
+
+    if not video_ids:
+        if request.headers.get("HX-Request"):
+            return HTMLResponse(
+                '<span class="text-warning text-sm">No synced videos to re-sync</span>',
+                status_code=200,
+            )
+        return RedirectResponse(url=f"/channels/{channel_id}", status_code=303)
+
+    async def _run_resync() -> None:
+        succeeded = 0
+        failed = 0
+        for vid in video_ids:
+            try:
+                async with db_module.async_session() as session:
+                    video = await session.get(Video, vid)
+                    if not video or not video.stash_scene_id:
+                        continue
+                    async with StashClient.from_settings(settings) as stash:
+                        scene = await stash.find_scene_by_id(video.stash_scene_id)
+                        if not scene:
+                            logger.warning(
+                                "Channel resync: scene %s not found for video %s, skipping",
+                                video.stash_scene_id, vid,
+                            )
+                            failed += 1
+                            continue
+                        try:
+                            scraped = await stash.scrape_scene_url(video.url)
+                            if scraped:
+                                await stash.apply_scraped_scene(
+                                    scene_id=video.stash_scene_id,
+                                    scraped=scraped,
+                                )
+                            video.scrape_attempted_at = datetime.now(UTC)
+                        except Exception as e:
+                            logger.warning("Channel resync: scrape failed for video %s: %s", vid, e)
+                        if settings.stash_generate_after_sync:
+                            try:
+                                job_id = await stash.trigger_generate(
+                                    scene_ids=[video.stash_scene_id],
+                                    covers=settings.stash_generate_covers,
+                                    previews=settings.stash_generate_previews,
+                                    sprites=settings.stash_generate_sprites,
+                                    phashes=settings.stash_generate_phashes,
+                                )
+                                if job_id:
+                                    await stash.wait_for_job(job_id)
+                                video.generate_triggered_at = datetime.now(UTC)
+                            except Exception as e:
+                                logger.warning("Channel resync: generate failed for video %s: %s", vid, e)
+                    await session.commit()
+                    succeeded += 1
+                    logger.info("Channel resync: video %s complete", vid)
+            except Exception:
+                logger.exception("Channel resync: unexpected error for video %s", vid)
+                failed += 1
+        logger.info(
+            "Channel %s resync finished: %d succeeded, %d failed out of %d total",
+            channel_id, succeeded, failed, len(video_ids),
+        )
+
+    task = asyncio.create_task(_run_resync())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+    logger.info("Channel %s resync started for %d videos", channel_id, len(video_ids))
+
+    if request.headers.get("HX-Request"):
+        return HTMLResponse(
+            f'<span class="text-success text-sm">Re-syncing {len(video_ids)} video(s) in background…</span>',
+            status_code=200,
+        )
+    return RedirectResponse(url=f"/channels/{channel_id}", status_code=303)
+
+
+@router.post("/{channel_id}/retry-skipped")
+async def channel_retry_skipped(
+    channel_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset skipped videos for this channel back to pending/downloaded."""
+    channel = await db.get(Channel, channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    result = await db.execute(
+        select(Video).where(
+            Video.status == "skipped",
+            Video.channel_id == channel_id,
+        )
+    )
+    videos = list(result.scalars().all())
+
+    if not videos:
+        if request.headers.get("HX-Request"):
+            return HTMLResponse(
+                '<span class="text-warning text-sm">No skipped videos to retry</span>',
+                status_code=200,
+            )
+        return RedirectResponse(url=f"/channels/{channel_id}", status_code=303)
+
+    for video in videos:
+        if video.oshash or video.original_filename:
+            video.status = "downloaded"
+        else:
+            video.status = "pending"
+        video.error_message = None
+    count = len(videos)
+
+    logger.info("Channel %s retry-skipped: re-queued %d video(s)", channel_id, count)
+
+    if request.headers.get("HX-Request"):
+        return HTMLResponse(
+            f'<span class="text-success text-sm">Re-queued {count} skipped video(s) for processing</span>',
+            status_code=200,
+        )
+    return RedirectResponse(url=f"/channels/{channel_id}", status_code=303)
 
 
 @router.post("/{channel_id}/toggle")

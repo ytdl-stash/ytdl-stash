@@ -20,7 +20,8 @@ Added two bulk action buttons to the video detail page top bar:
   - Added `POST /videos/resync_all` — background task for bulk re-sync of all synced videos.
   - Added `POST /videos/retry_all_skipped` — bulk reset of all skipped videos to pending/downloaded.
   - Both routes are placed before `/{video_id}` to avoid path conflicts.
-- **`app/templates/videos/detail.html`** — Added both buttons in a flex container in the top bar (between the back link and the video card). Each has its own HTMX target container, confirmation dialog, loading spinner, and swaps in a success/warning message after completion.
+- **`app/templates/channels/list.html`** — Added both buttons to the channels page header bar, alongside "Bulk Edit" and "Check All Now". Each has its own HTMX target container, confirmation dialog, loading spinner, and swaps in a success/warning message after completion.
+- **`app/templates/videos/detail.html`** — Restored to original (buttons removed; these are global actions that belong on the channels page).
 
 ## Trade-offs
 

@@ -21,41 +21,6 @@
           class="inline">
       <button type="submit" class="btn btn-sm {{ 'btn-primary' if not channel.enabled else 'btn-ghost' }} tooltip tooltip-top" data-tip="Toggle auto-scanning for this channel">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
     </form>
-    <form hx-post="/channels/{{ channel.id }}/sync-performer"
-          hx-target="#channel-card-{{ channel.id }}"
-          hx-swap="outerHTML"
-          hx-indicator="#spinner-sync-performer-{{ channel.id }}"
-          class="inline">
-      <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-top" data-tip="Sync performer only">Sync Performer</button>
-      <span id="spinner-sync-performer-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
-    </form>
-    <form hx-post="/channels/{{ channel.id }}/sync-studio"
-          hx-target="#channel-card-{{ channel.id }}"
-          hx-swap="outerHTML"
-          hx-indicator="#spinner-sync-studio-{{ channel.id }}"
-          class="inline">
-      <button type="submit" class="btn btn-sm btn-secondary tooltip tooltip-top" data-tip="Sync studio only">Sync Studio</button>
-      <span id="spinner-sync-studio-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
-    </form>
-    <form hx-post="/channels/{{ channel.id }}/sync"
-          hx-target="#channel-card-{{ channel.id }}"
-          hx-swap="outerHTML"
-          hx-indicator="#spinner-sync-both-{{ channel.id }}"
-          class="inline">
-      <button type="submit" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Sync both performer and studio">Sync Both</button>
-      <span id="spinner-sync-both-{{ channel.id }}" class="htmx-indicator">Syncing…</span>
-    </form>
-    {% if channel.stash_performer_id or channel.stash_studio_id %}
-    <form hx-post="/channels/{{ channel.id }}/relink"
-          hx-target="#channel-card-{{ channel.id }}"
-          hx-swap="outerHTML"
-          hx-confirm="Clear Stash links and re-lookup performer/studio by channel URL?"
-          hx-indicator="#spinner-relink-{{ channel.id }}"
-          class="inline">
-      <button type="submit" class="btn btn-sm btn-ghost tooltip tooltip-top" data-tip="Clear links and re-lookup performer/studio by channel URL in Stash">Re-link</button>
-      <span id="spinner-relink-{{ channel.id }}" class="htmx-indicator">Re-linking…</span>
-    </form>
-    {% endif %}
     <span id="check-now-{{ channel.id }}">
       <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-top" data-tip="Trigger an immediate scan for new videos"
               hx-post="/channels/{{ channel.id }}/check-now"
@@ -64,6 +29,49 @@
         Check Now
       </button>
     </span>
+    <div class="dropdown dropdown-top dropdown-end">
+      <button type="button" tabindex="0" class="btn btn-sm btn-secondary tooltip tooltip-top" data-tip="Sync & link actions">
+        Sync
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+      </button>
+      <ul tabindex="0" class="dropdown-content menu bg-base-300 rounded-box z-50 mt-1 w-48 p-2 shadow-lg">
+        <li>
+          <form hx-post="/channels/{{ channel.id }}/sync"
+                hx-target="#channel-card-{{ channel.id }}"
+                hx-swap="outerHTML"
+                class="p-0 m-0">
+            <button type="submit" class="w-full text-left">Sync Both</button>
+          </form>
+        </li>
+        <li>
+          <form hx-post="/channels/{{ channel.id }}/sync-performer"
+                hx-target="#channel-card-{{ channel.id }}"
+                hx-swap="outerHTML"
+                class="p-0 m-0">
+            <button type="submit" class="w-full text-left">Sync Performer</button>
+          </form>
+        </li>
+        <li>
+          <form hx-post="/channels/{{ channel.id }}/sync-studio"
+                hx-target="#channel-card-{{ channel.id }}"
+                hx-swap="outerHTML"
+                class="p-0 m-0">
+            <button type="submit" class="w-full text-left">Sync Studio</button>
+          </form>
+        </li>
+        {% if channel.stash_performer_id or channel.stash_studio_id %}
+        <li>
+          <form hx-post="/channels/{{ channel.id }}/relink"
+                hx-target="#channel-card-{{ channel.id }}"
+                hx-swap="outerHTML"
+                hx-confirm="Clear Stash links and re-lookup performer/studio by channel URL?"
+                class="p-0 m-0">
+            <button type="submit" class="w-full text-left">Re-link</button>
+          </form>
+        </li>
+        {% endif %}
+      </ul>
+    </div>
     <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Remove this channel and all videos"
             hx-delete="/channels/{{ channel.id }}"
             hx-target="#channel-card-{{ channel.id }}"

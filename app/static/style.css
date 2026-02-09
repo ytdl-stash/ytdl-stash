@@ -16,7 +16,6 @@
   border-radius: var(--rounded-box, 0.25rem);
   font-size: 0.75rem;
   line-height: 1.25;
-  white-space: nowrap;
   max-width: 16rem;
   white-space: normal;
   text-align: center;
