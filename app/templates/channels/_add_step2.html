@@ -3,6 +3,11 @@
       hx-swap="innerHTML"
       hx-indicator="#add-step2-spinner"
       class="space-y-4">
+  {% if video_count is defined and video_count == 0 %}
+  <div class="alert alert-warning text-sm">
+    <span>No videos found at this URL. If this is a profile page, try appending <code>/videos</code> to the URL.</span>
+  </div>
+  {% endif %}
   <input type="hidden" name="url" value="{{ url|e }}">
   <div class="flex gap-4 flex-wrap">
     {% if thumbnail %}

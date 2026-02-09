@@ -15,8 +15,9 @@ from sqlalchemy.orm import selectinload
 from app import database as db_module
 from app.config import Settings, get_settings
 from app.database import get_db
+from app.download_control import download_control
 from app.download_progress import download_progress
-from app.downloader import async_extract_channel_metadata
+from app.downloader import async_extract_channel_metadata, normalize_channel_url
 from app.main import templates
 from app.models import Channel, Video
 from app.performer_sync import sync_channel_performer
@@ -81,10 +82,11 @@ async def list_channels(
     request: Request,
     filter: str = "all",
     sort: str = "name",
+    search: str = "",
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """List all channels as cards. filter: all|watched|not_watched, sort: name|video_count|last_checked."""
+    """List all channels as cards. filter: all|watched|not_watched, sort: name|video_count|last_checked, search: name substring."""
     stmt = (
         select(Channel)
         .options(selectinload(Channel.videos))
@@ -94,6 +96,12 @@ async def list_channels(
         stmt = stmt.where(Channel.enabled.is_(True))
     elif filter == "not_watched":
         stmt = stmt.where(Channel.enabled.is_(False))
+
+    search = search.strip()
+    if search:
+        # Escape SQL LIKE wildcards so %, _ are matched literally
+        escaped = search.replace("%", r"\%").replace("_", r"\_")
+        stmt = stmt.where(Channel.name.ilike(f"%{escaped}%", escape="\\"))
 
     result = await db.execute(stmt)
     channels = list(result.scalars().all())
@@ -107,26 +115,21 @@ async def list_channels(
             reverse=True,
         )
 
+    ctx = {
+        "request": request,
+        "channels": channels,
+        "filter": filter,
+        "sort": sort,
+        "search": search,
+        "settings": settings,
+    }
+
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
-            "channels/_list_content.html",
-            {
-                "request": request,
-                "channels": channels,
-                "filter": filter,
-                "sort": sort,
-                "settings": settings,
-            },
+            "channels/_list_content.html", ctx,
         )
     return templates.TemplateResponse(
-        "channels/list.html",
-        {
-            "request": request,
-            "channels": channels,
-            "filter": filter,
-            "sort": sort,
-            "settings": settings,
-        },
+        "channels/list.html", ctx,
     )
 
 
@@ -200,6 +203,7 @@ async def bulk_update_channels(
                 "channels": channels,
                 "filter": "all",
                 "sort": "name",
+                "search": "",
                 "settings": settings,
             },
         )
@@ -257,7 +261,7 @@ async def channel_preview(
     settings: Settings = Depends(get_settings),
 ):
     """Scrape channel metadata via yt-dlp and return Step 2 partial (review metadata). On error returns Step 1 with error message."""
-    url = url.strip()
+    url = normalize_channel_url(url.strip())
     if not url:
         return templates.TemplateResponse(
             "channels/_add_step1.html",
@@ -271,6 +275,7 @@ async def channel_preview(
         description = meta.get("description")
         if description is not None and not isinstance(description, str):
             description = str(description) if description else None
+        video_count = meta.get("video_count", 0)
     except Exception as e:
         logger.debug("Channel preview scrape failed for %s: %s", url, e, exc_info=True)
         return templates.TemplateResponse(
@@ -293,6 +298,7 @@ async def channel_preview(
             "check_interval_hours": settings.default_check_interval_hours,
             "max_video_age_days": None,
             "min_duration_seconds": None,
+            "video_count": video_count,
         },
     )
 
@@ -310,7 +316,7 @@ async def channel_preview_link(
     settings: Settings = Depends(get_settings),
 ):
     """Search Stash for performer/studio matches and return Step 3 partial (Stash linking results)."""
-    url = url.strip()
+    url = normalize_channel_url(url.strip())
     name = name.strip() or _derive_site(url)
     performer_match: dict | None = None
     studio_match: dict | None = None
@@ -365,6 +371,7 @@ async def add_channel(
     settings: Settings = Depends(get_settings),
 ):
     """Add a new channel. Returns HTMX partial _card.html (append to grid) or redirect."""
+    url = normalize_channel_url(url.strip())
     user_name = name.strip()
     site = _derive_site(url)
     interval = (
@@ -991,10 +998,27 @@ async def delete_channel(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete channel and its videos. Returns empty 200 for HTMX or redirect."""
+    """Delete channel and its videos. Cancels any active downloads first."""
     channel = await db.get(Channel, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
+
+    # Cancel any in-flight downloads for this channel's videos before deleting
+    active_ids = download_control.get_active_ids()
+    if active_ids:
+        result = await db.execute(
+            select(Video.id).where(
+                Video.channel_id == channel_id,
+                Video.id.in_(active_ids),
+            )
+        )
+        for video_id in result.scalars().all():
+            download_control.request_cancel(video_id)
+            logger.info(
+                "Cancelling active download for video %s (channel %s deleted)",
+                video_id,
+                channel_id,
+            )
 
     await db.delete(channel)
 

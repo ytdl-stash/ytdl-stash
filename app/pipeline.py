@@ -351,6 +351,13 @@ async def process_single_download(
         download_progress.clear(video.id)
         await db.refresh(video, ["channel"])
         channel = video.channel
+
+        if channel is None:
+            logger.warning(
+                "Video %s: channel was deleted, skipping download", video.id
+            )
+            return
+
         was_import_retry = video.status == "downloaded"
 
         # ------------------------------------------------------------------

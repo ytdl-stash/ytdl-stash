@@ -28,7 +28,7 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 | **Config** | `app/config.py` | Pydantic BaseSettings, reads `YTDL_*` env vars |
 | **App Entry** | `app/main.py` | FastAPI factory, lifespan, static/template mounts |
 | **Database** | `app/database.py`, `app/models.py` | SQLAlchemy async engine, Channel + Video models |
-| **Downloader** | `app/downloader.py` | yt-dlp wrapper: scan channels (with nested-entry flattening), download videos, compute oshash |
+| **Downloader** | `app/downloader.py` | yt-dlp wrapper: scan channels (with nested-entry flattening), download videos, compute oshash; channel URL normalization (e.g. PornHub profile → `/videos`); `extract_channel_metadata` returns `video_count` for add-channel wizard |
 | **Stash Client** | `app/stash_client.py` | Async httpx GraphQL client for Stash API (find/create scenes, performers, studios, tags; scraping; generate). Use `StashClient.from_settings(settings)` to create instances — this propagates cookies and HTTP headers for image downloads. |
 | **Pipeline** | `app/pipeline.py` | Orchestration: download -> oshash -> scan -> match -> tag -> scrape -> re-sync |
 | **Scheduler** | `app/scheduler.py` | APScheduler periodic channel checks + download processing; job registry with status tracking and manual trigger support |
@@ -88,6 +88,7 @@ ytdl-stash/
   Dockerfile
   docker-compose.yml
   requirements.txt
+  scrapers/                    # Optional Stash performer scrapers (xHamster, xVideos); see scrapers/README.md
   docs/
     architecture/
       README.md                 # This file

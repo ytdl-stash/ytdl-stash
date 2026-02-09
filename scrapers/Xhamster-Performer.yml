@@ -1,0 +1,38 @@
+# Performer-only scraper for xHamster creator/pornstar profile pages.
+# Install alongside the community Xhamster.yml (scene scraper) so Stash can
+# scrape performer metadata from channel URLs. Used by ytdl-stash when adding
+# a channel or syncing performer data.
+name: "xHamster Performer"
+performerByURL:
+  - action: scrapeXPath
+    url:
+      - xhamster.com/creators/
+      - xhamster.com/pornstars/
+    scraper: performerScraper
+
+xPathScrapers:
+  performerScraper:
+    performer:
+      Name: //h1[contains(@class, "content") or not(@class)] | //header//h1 | //h1
+      Image: //meta[@property="og:image"]/@content | //div[contains(@class, "thumb") or contains(@class, "avatar")]//img/@src | //img[contains(@class, "profile") or contains(@class, "avatar")]/@src
+      URLs:
+        fixed: "{inputURL}"
+      Gender:
+        selector: //div[contains(., "I am:")] | //span[contains(., "I am:")]/following-sibling::text() | //*[contains(text(), "I am:")]
+        postProcess:
+          - replace:
+              - regex: (?i).*I am:\s*
+                with: ""
+          - map:
+              Female: "female"
+              Male: "male"
+      Country:
+        selector: //div[contains(., "From:")] | //span[contains(., "From:")]/following-sibling::text() | //*[contains(text(), "From:")]
+        postProcess:
+          - replace:
+              - regex: (?i).*From:\s*
+                with: ""
+      Aliases:
+        selector: //div[contains(@class, "aliases") or contains(@class, "also-known")] | //p[contains(., ",")]//text()[contains(., ",")]
+      Details:
+        selector: //div[contains(@class, "description") or contains(@class, "bio")] | //meta[@property="og:description"]/@content

@@ -94,6 +94,29 @@ def _looks_like_site_name(value: str, info: dict) -> bool:
     return False
 
 
+def normalize_channel_url(url: str) -> str:
+    """Normalize channel URLs for sites where the profile page doesn't enumerate
+    videos but a subpage does (e.g. PornHub /model/X → /model/X/videos).
+
+    With extract_flat=True, yt-dlp may not follow internal redirects to the
+    videos subpage; normalizing the URL before calling yt-dlp fixes that.
+    """
+    u = (url or "").strip()
+    if not u:
+        return u
+    # PornHub: /model/X or /pornstar/X or /channels/X or /users/X → append /videos
+    m = re.match(
+        r"(https?://(?:[^/]+\.)?pornhub\.(?:com|net|org)"
+        r"/(?:model|pornstar|channels|users)/[^/?#]+)"
+        r"(?:/(?!videos).*)?$",
+        u,
+        re.I,
+    )
+    if m:
+        return m.group(1) + "/videos"
+    return u
+
+
 def _extract_performers(info: dict) -> list[str]:
     """Extract performer names from yt-dlp info_dict. Deduplicates (case-insensitive), preserves order.
 
@@ -286,20 +309,27 @@ def extract_channel_metadata(url: str, settings: Settings) -> dict:
     with ``playlistend=0`` when the name or thumbnail is missing (flat mode
     often omits channel/uploader fields on many extractors).
 
-    Returns dict with name, thumbnail, description keys.
+    Returns dict with name, thumbnail, description, and video_count keys.
     """
+    url = normalize_channel_url(url)
     opts = _build_scan_opts(settings)
 
     try:
         logger.debug("Extracting channel metadata (flat): %s", url)
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            # Consume entries while ydl context is alive (they may be lazy).
+            raw_entries = info.get("entries") or [] if info else []
+            if isinstance(raw_entries, dict):
+                raw_entries = [raw_entries]
+            flat_entries = _flatten_entries(raw_entries)
+            video_count = len(flat_entries)
     except DownloadError as e:
         logger.warning("Channel metadata extraction failed for %s: %s", url, e)
         raise RuntimeError(f"Channel metadata failed for {url!r}: {e}") from e
 
     if not info:
-        return {"name": "", "thumbnail": None, "description": None}
+        return {"name": "", "thumbnail": None, "description": None, "video_count": 0}
 
     name = _extract_channel_name(info)
     thumbnail = _extract_thumbnail(info)
@@ -336,13 +366,19 @@ def extract_channel_metadata(url: str, settings: Settings) -> dict:
         description = str(description) if description else None
 
     logger.info(
-        "Channel metadata result for %s: name=%r, thumbnail=%s, description=%s",
+        "Channel metadata result for %s: name=%r, thumbnail=%s, description=%s, video_count=%s",
         url,
         name or "(empty)",
         "yes" if thumbnail else "no",
         "yes" if description else "no",
+        video_count,
     )
-    return {"name": name or "", "thumbnail": thumbnail, "description": description}
+    return {
+        "name": name or "",
+        "thumbnail": thumbnail,
+        "description": description,
+        "video_count": video_count,
+    }
 
 
 def _flatten_entries(entries) -> list[dict]:
@@ -389,6 +425,7 @@ def scan_channel(url: str, settings: Settings) -> dict:
       - ``channel_meta``: dict — channel-level info (name, thumbnail) extracted
         from the same yt-dlp call so no extra request is needed.
     """
+    url = normalize_channel_url(url)
     opts = _build_scan_opts(settings)
 
     try:

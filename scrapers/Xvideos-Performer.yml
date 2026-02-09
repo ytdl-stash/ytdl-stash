@@ -1,0 +1,27 @@
+# Performer-only scraper for xVideos channel/profile pages.
+# Install alongside the community Xvideos.yml (scene scraper) so Stash can
+# scrape performer metadata from channel URLs. Used by ytdl-stash when adding
+# a channel or syncing performer data.
+name: "Xvideos Performer"
+performerByURL:
+  - action: scrapeXPath
+    url:
+      - xvideos.com/pornstar-channels/
+      - xvideos.com/model-channels/
+      - xvideos.com/channels/
+      - xvideos.com/amateur-channels/
+      - xvideos2.com/pornstar-channels/
+      - xvideos2.com/model-channels/
+      - xvideos2.com/channels/
+      - xvideos2.com/amateur-channels/
+    scraper: performerScraper
+
+xPathScrapers:
+  performerScraper:
+    performer:
+      Name: //h1 | //div[contains(@class, "profile")]//h1 | //meta[@property="og:title"]/@content
+      Image: //meta[@property="og:image"]/@content | //div[contains(@class, "avatar") or contains(@class, "thumb")]//img/@src
+      URLs:
+        fixed: "{inputURL}"
+      Details:
+        selector: //meta[@property="og:description"]/@content | //div[contains(@class, "description") or contains(@class, "bio")]
