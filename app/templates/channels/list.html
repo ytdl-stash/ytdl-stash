@@ -44,19 +44,17 @@
         Check All Now
       </button>
     </span>
+    <button type="button"
+            class="btn btn-sm btn-success tooltip tooltip-bottom"
+            data-tip="Add a channel: scrape metadata, link to Stash, then save"
+            hx-get="/channels/add-modal"
+            hx-target="#add-channel-modal-body"
+            hx-swap="innerHTML"
+            hx-trigger="click"
+            hx-on::after-request="document.getElementById('add-channel-modal').showModal()">
+      + Add Channel
+    </button>
   </span>
-</div>
-<div class="mb-6">
-  <button type="button"
-          class="btn btn-primary tooltip tooltip-bottom"
-          data-tip="Add a channel: scrape metadata, link to Stash, then save"
-          hx-get="/channels/add-modal"
-          hx-target="#add-channel-modal-body"
-          hx-swap="innerHTML"
-          hx-trigger="click"
-          hx-on::after-request="document.getElementById('add-channel-modal').showModal()">
-    Add Channel
-  </button>
 </div>
 {% include "channels/_add_modal.html" %}
 <div id="channels-content">

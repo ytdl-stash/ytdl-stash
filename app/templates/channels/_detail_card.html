@@ -299,7 +299,7 @@
         <h3 class="text-lg font-semibold mt-0 mb-0">Videos ({{ videos|length }})</h3>
         <div class="flex flex-wrap gap-2 ml-auto">
           <span id="retry-skipped-container-detail">
-            <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Reset this channel's skipped videos back to pending"
+            <button type="button" class="btn btn-sm btn-warning tooltip tooltip-bottom" data-tip="Reset this channel's skipped videos back to pending"
                     hx-post="/channels/{{ channel.id }}/retry-skipped"
                     hx-target="#retry-skipped-container-detail"
                     hx-swap="innerHTML">
@@ -307,7 +307,7 @@
             </button>
           </span>
           <span id="resync-all-container-detail">
-            <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Re-sync all synced videos for this channel (scrape + generate)"
+            <button type="button" class="btn btn-sm btn-info tooltip tooltip-bottom" data-tip="Re-sync all synced videos for this channel (scrape + generate)"
                     hx-post="/channels/{{ channel.id }}/resync-videos"
                     hx-target="#resync-all-container-detail"
                     hx-swap="innerHTML"
