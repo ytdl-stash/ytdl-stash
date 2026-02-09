@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 from app.downloader import async_extract_channel_metadata
 from app.performer_sync import is_placeholder_name
-from app.stash_client import _url_to_data_uri
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,7 +91,7 @@ async def _push_to_stash(
 
     stash_image = stash_studio.get("image_path")
     if channel.performer_image_url and not stash_image:
-        data_uri = await _url_to_data_uri(channel.performer_image_url)
+        data_uri = await stash.download_image_data_uri(channel.performer_image_url)
         if data_uri:
             updates["image"] = data_uri
 
@@ -125,9 +124,23 @@ async def sync_channel_studio(
     On failure, logs a warning and does not raise.
     """
     try:
+        logger.info(
+            "sync_channel_studio START: channel=%s name=%r url=%s "
+            "stash_studio_id=%s image_url=%s",
+            channel.id, channel.name, channel.url,
+            channel.stash_studio_id,
+            "yes" if channel.performer_image_url else "no",
+        )
+
         # --- Step 1: Enrich from yt-dlp and get description ---
         channel_description = await _enrich_channel_and_get_description(
             channel, settings
+        )
+        logger.info(
+            "sync_channel_studio after enrich: channel=%s name=%r image_url=%s description=%s",
+            channel.id, channel.name,
+            "yes" if channel.performer_image_url else "no",
+            "yes" if channel_description else "no",
         )
 
         # --- Step 2: Find or create Stash studio ---
@@ -148,6 +161,10 @@ async def sync_channel_studio(
                 details=channel_description,
             )
             channel.stash_studio_id = str(studio_id) if studio_id is not None else None
+            logger.info(
+                "sync_channel_studio: channel=%s → stash_studio_id=%s",
+                channel.id, channel.stash_studio_id,
+            )
 
         # --- Step 3: Pull full data from Stash → local ---
         stash_studio = await _pull_studio_from_stash(channel, stash)
@@ -158,6 +175,11 @@ async def sync_channel_studio(
                 channel, stash, stash_studio, channel_description
             )
             await _pull_studio_from_stash(channel, stash)
+
+        logger.info(
+            "sync_channel_studio DONE: channel=%s stash_studio_id=%s",
+            channel.id, channel.stash_studio_id,
+        )
 
     except Exception as e:
         logger.warning(

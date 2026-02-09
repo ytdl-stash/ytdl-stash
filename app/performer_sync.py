@@ -8,7 +8,6 @@ import logging
 from typing import TYPE_CHECKING
 
 from app.downloader import _DOMAIN_RE, async_extract_channel_metadata
-from app.stash_client import _url_to_data_uri
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -123,7 +122,7 @@ async def _push_to_stash(
     # Stash returns image_path = None when no image is set.
     stash_image = stash_performer.get("image_path")
     if channel.performer_image_url and not stash_image:
-        data_uri = await _url_to_data_uri(channel.performer_image_url)
+        data_uri = await stash.download_image_data_uri(channel.performer_image_url)
         if data_uri:
             updates["image"] = data_uri
 
@@ -157,8 +156,21 @@ async def sync_channel_performer(
     On failure, logs a warning and does not raise.
     """
     try:
+        logger.info(
+            "sync_channel_performer START: channel=%s name=%r url=%s "
+            "stash_performer_id=%s image_url=%s",
+            channel.id, channel.name, channel.url,
+            channel.stash_performer_id,
+            "yes" if channel.performer_image_url else "no",
+        )
+
         # --- Step 1: Enrich from yt-dlp source ---
         await _enrich_from_source(channel, settings)
+        logger.info(
+            "sync_channel_performer after enrich: channel=%s name=%r image_url=%s",
+            channel.id, channel.name,
+            "yes" if channel.performer_image_url else "no",
+        )
 
         # --- Step 2: Find or create Stash performer ---
         if not channel.stash_performer_id:
@@ -177,6 +189,10 @@ async def sync_channel_performer(
                 image_url=channel.performer_image_url,
             )
             channel.stash_performer_id = performer_id
+            logger.info(
+                "sync_channel_performer: channel=%s → stash_performer_id=%s",
+                channel.id, performer_id,
+            )
 
         # --- Step 3: Pull full data from Stash → local ---
         stash_base_url = settings.stash_url
@@ -188,6 +204,11 @@ async def sync_channel_performer(
 
             # Re-pull after push so local copy reflects the updates
             await _pull_from_stash(channel, stash, stash_base_url)
+
+        logger.info(
+            "sync_channel_performer DONE: channel=%s stash_performer_id=%s",
+            channel.id, channel.stash_performer_id,
+        )
 
     except Exception as e:
         logger.warning(

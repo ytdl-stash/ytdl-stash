@@ -2,10 +2,16 @@
 
 import asyncio
 import base64
+import http.cookiejar
+import json
 import logging
 import time
+from typing import TYPE_CHECKING
 
 import httpx
+
+if TYPE_CHECKING:
+    from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -339,23 +345,82 @@ _IMAGE_CONTENT_TYPES = {
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
-async def _url_to_data_uri(url: str) -> str | None:
+def _load_cookies_from_file(cookies_file: str) -> httpx.Cookies:
+    """Load a Netscape/Mozilla cookies.txt file into an httpx-compatible cookie jar.
+
+    Expects the standard Netscape cookies.txt format (first line must be
+    ``# Netscape HTTP Cookie File`` or ``# HTTP Cookie File``).  If the file
+    is missing, unreadable, or in the wrong format the function logs a warning
+    and returns an empty jar so callers degrade to unauthenticated requests.
+    """
+    jar = http.cookiejar.MozillaCookieJar()
+    try:
+        jar.load(cookies_file, ignore_discard=True, ignore_expires=True)
+    except Exception:
+        logger.warning("Failed to load cookies from %s", cookies_file, exc_info=True)
+        return httpx.Cookies()
+    cookies = httpx.Cookies()
+    for cookie in jar:
+        cookies.set(cookie.name, cookie.value or "", domain=cookie.domain, path=cookie.path)
+    count = len(list(jar))
+    if count == 0:
+        logger.warning(
+            "Cookies file %s was loaded but contained 0 cookies — "
+            "image downloads will be unauthenticated. Ensure the file uses "
+            "Netscape/Mozilla cookies.txt format.",
+            cookies_file,
+        )
+    else:
+        logger.debug("Loaded %d cookies from %s", count, cookies_file)
+    return cookies
+
+
+async def _url_to_data_uri(
+    url: str,
+    *,
+    cookies_file: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> str | None:
     """Download an image URL and return a base64 data URI (``data:<mime>;base64,...``).
 
     Returns *None* on any failure so callers can fall back to sending nothing.
     If the URL is already a data URI it is returned as-is.
+
+    Parameters
+    ----------
+    cookies_file:
+        Optional path to a Netscape/Mozilla cookies.txt file.  Many sites
+        require authentication to serve thumbnail images; passing the same
+        cookies file used by yt-dlp allows us to download them.
+    headers:
+        Optional extra HTTP headers (e.g. User-Agent, Referer) to include
+        in the image request.
     """
     if url.startswith("data:"):
         return url
+
+    cookies = _load_cookies_from_file(cookies_file) if cookies_file else None
+    logger.info("Downloading image for data URI: %s (cookies=%s)", url, "yes" if cookies_file else "no")
+
     try:
         async with httpx.AsyncClient(
-            timeout=15.0, follow_redirects=True, max_redirects=5
+            timeout=15.0,
+            follow_redirects=True,
+            max_redirects=5,
+            cookies=cookies,
+            headers=headers or {},
         ) as client:
             resp = await client.get(url)
             resp.raise_for_status()
     except Exception:
         logger.warning("Failed to download image from %s", url, exc_info=True)
         return None
+
+    logger.info(
+        "Image download response: status=%d size=%d content_type=%s url=%s",
+        resp.status_code, len(resp.content),
+        resp.headers.get("content-type", "(none)"), url,
+    )
 
     if len(resp.content) == 0:
         logger.warning("Empty image response from %s", url)
@@ -385,12 +450,50 @@ class StashClient:
     Or instantiate directly (a per-request client is created each time, less efficient).
     """
 
-    def __init__(self, url: str, api_key: str = "") -> None:
+    def __init__(
+        self,
+        url: str,
+        api_key: str = "",
+        *,
+        cookies_file: str | None = None,
+        image_request_headers: dict[str, str] | None = None,
+    ) -> None:
         self.graphql_url = f"{url.rstrip('/')}/graphql"
         self.headers: dict[str, str] = {"Content-Type": "application/json"}
         if api_key:
             self.headers["ApiKey"] = api_key
         self._client: httpx.AsyncClient | None = None
+        # Image download settings — passed through to _url_to_data_uri()
+        # so thumbnail downloads use the same cookies/headers as yt-dlp.
+        self.cookies_file = cookies_file
+        self.image_request_headers = image_request_headers
+
+    @classmethod
+    def from_settings(cls, settings: "Settings") -> "StashClient":
+        """Create a StashClient with image-download settings populated from app Settings.
+
+        This ensures thumbnail downloads use the same cookies and HTTP headers
+        that yt-dlp uses, so authenticated/CDN-protected images work.
+        """
+        image_headers: dict[str, str] = {}
+        if settings.ytdlp_user_agent:
+            image_headers["User-Agent"] = settings.ytdlp_user_agent
+        if settings.ytdlp_referer:
+            image_headers["Referer"] = settings.ytdlp_referer
+        # Merge any extra headers from the JSON config
+        try:
+            extra = json.loads(settings.ytdlp_http_headers_json) if settings.ytdlp_http_headers_json else {}
+        except Exception:
+            extra = {}
+        if isinstance(extra, dict):
+            image_headers.update(extra)
+
+        return cls(
+            url=settings.stash_url,
+            api_key=settings.stash_api_key,
+            cookies_file=settings.cookies_file,
+            image_request_headers=image_headers or None,
+        )
 
     async def __aenter__(self) -> "StashClient":
         self._client = httpx.AsyncClient(
@@ -402,6 +505,14 @@ class StashClient:
         if self._client:
             await self._client.aclose()
             self._client = None
+
+    async def download_image_data_uri(self, url: str) -> str | None:
+        """Download an image and return a base64 data URI, using this client's cookies/headers."""
+        return await _url_to_data_uri(
+            url,
+            cookies_file=self.cookies_file,
+            headers=self.image_request_headers,
+        )
 
     async def _query(self, query: str, variables: dict | None = None) -> dict:
         """Send a GraphQL request. Raises on HTTP or GraphQL errors. Returns data dict."""
@@ -655,9 +766,13 @@ class StashClient:
         name = _normalize_performer_name(name)
         input_dict: dict = {"name": name, "urls": urls}
         if image_url:
-            data_uri = await _url_to_data_uri(image_url)
+            data_uri = await self.download_image_data_uri(image_url)
             if data_uri:
                 input_dict["image"] = data_uri
+        logger.info(
+            "Creating Stash performer %r with fields: %s",
+            name, list(input_dict.keys()),
+        )
         data = await self._query(_PERFORMER_CREATE_WITH_META_MUTATION, {"input": input_dict})
         return data["performerCreate"]["id"]
 
@@ -671,7 +786,7 @@ class StashClient:
             updates["urls"] = stash_urls + [url]
         stash_image = performer.get("image_path")
         if image_url and not stash_image:
-            data_uri = await _url_to_data_uri(image_url)
+            data_uri = await self.download_image_data_uri(image_url)
             if data_uri:
                 updates["image"] = data_uri
         if updates:
@@ -817,11 +932,15 @@ class StashClient:
         name = name.strip()
         input_dict: dict = {"name": name, "urls": urls}
         if image_url:
-            data_uri = await _url_to_data_uri(image_url)
+            data_uri = await self.download_image_data_uri(image_url)
             if data_uri:
                 input_dict["image"] = data_uri
         if details:
             input_dict["details"] = details
+        logger.info(
+            "Creating Stash studio %r with fields: %s",
+            name, list(input_dict.keys()),
+        )
         data = await self._query(_STUDIO_CREATE_MUTATION, {"input": input_dict})
         return data["studioCreate"]["id"]
 
@@ -853,7 +972,7 @@ class StashClient:
             updates["urls"] = stash_urls + [url]
         stash_image = studio.get("image_path")
         if image_url and not stash_image:
-            data_uri = await _url_to_data_uri(image_url)
+            data_uri = await self.download_image_data_uri(image_url)
             if data_uri:
                 updates["image"] = data_uri
         stash_details = (studio.get("details") or "").strip()

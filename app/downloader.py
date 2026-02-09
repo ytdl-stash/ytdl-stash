@@ -160,7 +160,19 @@ def _extract_channel_name(info: dict) -> str:
         if raw:
             candidate = str(raw).strip()
             if candidate and not _looks_like_site_name(candidate, info):
+                logger.info("Channel name accepted: %r (from field '%s')", candidate, field)
                 return candidate
+            elif candidate:
+                logger.info(
+                    "Channel name candidate rejected (looks like site name): "
+                    "field='%s' value=%r extractor=%r",
+                    field, candidate,
+                    info.get("extractor_key") or info.get("extractor") or "",
+                )
+    logger.info(
+        "No usable channel name found. Available info keys: %s",
+        [k for k in ("channel", "uploader", "uploader_id", "title", "playlist_title") if info.get(k)],
+    )
     return ""
 
 
@@ -271,7 +283,8 @@ def extract_channel_metadata(url: str, settings: Settings) -> dict:
 
     Uses flat extraction first (fast) so we get playlist/channel-level info
     without downloading metadata for every video.  Falls back to non-flat
-    with ``playlistend=0`` only if the thumbnail is missing.
+    with ``playlistend=0`` when the name or thumbnail is missing (flat mode
+    often omits channel/uploader fields on many extractors).
 
     Returns dict with name, thumbnail, description keys.
     """
@@ -291,8 +304,15 @@ def extract_channel_metadata(url: str, settings: Settings) -> dict:
     name = _extract_channel_name(info)
     thumbnail = _extract_thumbnail(info)
 
-    # If no thumbnail from flat mode, try non-flat with no video entries
-    if not thumbnail:
+    # If name or thumbnail missing from flat mode, try non-flat with no video
+    # entries.  Flat extraction is fast but many extractors only populate
+    # channel/uploader fields in non-flat mode.
+    if not thumbnail or not name:
+        logger.info(
+            "Flat extraction incomplete for %s (name=%r, thumbnail=%s) — "
+            "retrying with non-flat extraction",
+            url, name or "(empty)", "yes" if thumbnail else "no",
+        )
         try:
             nf_opts = dict(opts)
             nf_opts.update(
@@ -301,11 +321,11 @@ def extract_channel_metadata(url: str, settings: Settings) -> dict:
                     "playlistend": 0,  # Do not process any video entries
                 }
             )
-            logger.debug("Re-extracting channel metadata (non-flat): %s", url)
             with yt_dlp.YoutubeDL(nf_opts) as ydl:
                 nf_info = ydl.extract_info(url, download=False)
             if nf_info:
-                thumbnail = _extract_thumbnail(nf_info)
+                if not thumbnail:
+                    thumbnail = _extract_thumbnail(nf_info)
                 if not name:
                     name = _extract_channel_name(nf_info)
         except Exception:
@@ -314,6 +334,14 @@ def extract_channel_metadata(url: str, settings: Settings) -> dict:
     description = info.get("description")
     if description is not None and not isinstance(description, str):
         description = str(description) if description else None
+
+    logger.info(
+        "Channel metadata result for %s: name=%r, thumbnail=%s, description=%s",
+        url,
+        name or "(empty)",
+        "yes" if thumbnail else "no",
+        "yes" if description else "no",
+    )
     return {"name": name or "", "thumbnail": thumbnail, "description": description}
 
 

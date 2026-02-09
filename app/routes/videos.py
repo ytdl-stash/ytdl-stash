@@ -1,5 +1,6 @@
 """Video routes: list with filters, detail, retry, delete, resync."""
 
+import asyncio
 import logging
 import math
 import os
@@ -11,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app import database as db_module
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.download_control import download_control
@@ -23,6 +25,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/videos", tags=["videos"])
 
 ACTIVE_DOWNLOAD_STATUSES = ("downloading", "cancelling", "downloaded", "importing")
+
+# Hold strong references to background tasks so they aren't garbage-collected.
+_background_tasks: set[asyncio.Task] = set()
 
 
 @router.get("")
@@ -131,6 +136,149 @@ async def active_downloads(
             "settings": settings,
         },
     )
+
+
+@router.post("/resync_all")
+async def resync_all_videos(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-sync all synced videos from Stash (scrape + generate) as a background task.
+
+    Finds every video with a stash_scene_id and queues a background task that
+    processes each one sequentially — scraping metadata and optionally regenerating.
+    """
+    # Gather IDs of all synced videos
+    result = await db.execute(
+        select(Video.id).where(Video.stash_scene_id.isnot(None))
+    )
+    video_ids = [row[0] for row in result.all()]
+
+    if not video_ids:
+        if request.headers.get("HX-Request"):
+            return HTMLResponse(
+                '<span class="text-warning text-sm">No synced videos to re-sync</span>',
+                status_code=200,
+            )
+        return RedirectResponse(url=request.headers.get("HX-Current-URL", "/videos"), status_code=303)
+
+    async def _run_resync_all() -> None:
+        """Background: re-sync each video sequentially."""
+        succeeded = 0
+        failed = 0
+        for vid in video_ids:
+            try:
+                async with db_module.async_session() as session:
+                    video = await session.get(Video, vid)
+                    if not video or not video.stash_scene_id:
+                        continue
+
+                    async with StashClient.from_settings(settings) as stash:
+                        scene = await stash.find_scene_by_id(video.stash_scene_id)
+                        if not scene:
+                            logger.warning(
+                                "Resync-all: scene %s not found for video %s, skipping",
+                                video.stash_scene_id, vid,
+                            )
+                            failed += 1
+                            continue
+
+                        # Scrape
+                        try:
+                            scraped = await stash.scrape_scene_url(video.url)
+                            if scraped:
+                                await stash.apply_scraped_scene(
+                                    scene_id=video.stash_scene_id,
+                                    scraped=scraped,
+                                )
+                            video.scrape_attempted_at = datetime.now(UTC)
+                        except Exception as e:
+                            logger.warning("Resync-all: scrape failed for video %s: %s", vid, e)
+
+                        # Generate
+                        if settings.stash_generate_after_sync:
+                            try:
+                                job_id = await stash.trigger_generate(
+                                    scene_ids=[video.stash_scene_id],
+                                    covers=settings.stash_generate_covers,
+                                    previews=settings.stash_generate_previews,
+                                    sprites=settings.stash_generate_sprites,
+                                    phashes=settings.stash_generate_phashes,
+                                )
+                                if job_id:
+                                    await stash.wait_for_job(job_id)
+                                video.generate_triggered_at = datetime.now(UTC)
+                            except Exception as e:
+                                logger.warning("Resync-all: generate failed for video %s: %s", vid, e)
+
+                    await session.commit()
+                    succeeded += 1
+                    logger.info("Resync-all: video %s complete", vid)
+            except Exception:
+                logger.exception("Resync-all: unexpected error for video %s", vid)
+                failed += 1
+
+        logger.info(
+            "Resync-all finished: %d succeeded, %d failed out of %d total",
+            succeeded, failed, len(video_ids),
+        )
+
+    task = asyncio.create_task(_run_resync_all())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+    logger.info("Resync-all started for %d videos", len(video_ids))
+
+    if request.headers.get("HX-Request"):
+        return HTMLResponse(
+            f'<span class="text-success text-sm">Re-syncing {len(video_ids)} video(s) in background…</span>',
+            status_code=200,
+        )
+    return RedirectResponse(url=request.headers.get("Referer", "/videos"), status_code=303)
+
+
+@router.post("/retry_all_skipped")
+async def retry_all_skipped(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset all skipped videos back to pending/downloaded so they get re-evaluated.
+
+    Useful after changing channel filter settings (min_duration_seconds,
+    max_video_age_days) — previously-skipped videos that now fall within bounds
+    will be picked up by the download processor and re-evaluated against the
+    channel's current settings.
+    """
+    result = await db.execute(
+        select(Video).where(Video.status == "skipped")
+    )
+    videos = list(result.scalars().all())
+
+    if not videos:
+        if request.headers.get("HX-Request"):
+            return HTMLResponse(
+                '<span class="text-warning text-sm">No skipped videos to retry</span>',
+                status_code=200,
+            )
+        return RedirectResponse(url=request.headers.get("Referer", "/videos"), status_code=303)
+
+    for video in videos:
+        if video.oshash or video.original_filename:
+            video.status = "downloaded"  # file exists, skip download
+        else:
+            video.status = "pending"  # full pipeline including download
+        video.error_message = None
+    count = len(videos)
+
+    logger.info("Retry-all-skipped: re-queued %d video(s)", count)
+
+    if request.headers.get("HX-Request"):
+        return HTMLResponse(
+            f'<span class="text-success text-sm">Re-queued {count} skipped video(s) for processing</span>',
+            status_code=200,
+        )
+    return RedirectResponse(url=request.headers.get("Referer", "/videos"), status_code=303)
 
 
 @router.get("/{video_id}")
@@ -412,7 +560,7 @@ async def resync_video(
             detail="Video has no Stash scene ID — sync must complete first",
         )
 
-    async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+    async with StashClient.from_settings(settings) as stash:
         # Verify scene still exists in Stash
         scene = await stash.find_scene_by_id(video.stash_scene_id)
         if not scene:

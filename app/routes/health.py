@@ -13,7 +13,7 @@ router = APIRouter(tags=["health"])
 async def health(settings: Settings = Depends(get_settings)):
     """Return status, db, and stash connectivity. Kept fast for health checks."""
     db_ok = db_module.async_session is not None
-    async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+    async with StashClient.from_settings(settings) as stash:
         stash_ok = await stash.health_check()
     status = "ok" if db_ok else "degraded"
     return {"status": status, "db": db_ok, "stash": stash_ok}

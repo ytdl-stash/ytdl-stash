@@ -191,7 +191,7 @@ async def _do_process_downloads() -> None:
     if max_concurrent <= 1:
         async with db_module.async_session() as db:
             try:
-                async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+                async with StashClient.from_settings(settings) as stash:
                     await process_pending_downloads(db, settings, stash)
                 await db.commit()
             except Exception as e:
@@ -239,7 +239,7 @@ async def _do_process_downloads() -> None:
             return
         async with db_module.async_session() as db2:
             try:
-                async with StashClient(settings.stash_url, settings.stash_api_key) as stash2:
+                async with StashClient.from_settings(settings) as stash2:
                     from app.pipeline import process_single_download
 
                     video = await db2.get(Video, video_id)
@@ -364,9 +364,7 @@ async def _do_backfill_scrape_generate() -> None:
         already_generated = v.generate_triggered_at is not None
         async with db_module.async_session() as db2:
             try:
-                async with StashClient(
-                    settings.stash_url, settings.stash_api_key
-                ) as stash:
+                async with StashClient.from_settings(settings) as stash:
                     video = await db2.get(Video, video_id)
                     if video is None:
                         continue
@@ -472,9 +470,7 @@ async def _do_regenerate_all() -> None:
                 return
             async with db_module.async_session() as db2:
                 try:
-                    async with StashClient(
-                        settings.stash_url, settings.stash_api_key
-                    ) as stash:
+                    async with StashClient.from_settings(settings) as stash:
                         video = await db2.get(Video, v.id)
                         if video is None or video.status != "synced" or not video.stash_scene_id:
                             continue

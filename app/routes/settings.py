@@ -129,7 +129,7 @@ async def test_stash(
 ):
     """Test Stash connectivity. Returns success or error HTML fragment."""
     try:
-        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+        async with StashClient.from_settings(settings) as stash:
             ok = await stash.health_check()
         if ok:
             return HTMLResponse(

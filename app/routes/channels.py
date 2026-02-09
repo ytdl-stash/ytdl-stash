@@ -317,7 +317,7 @@ async def channel_preview_link(
     stash_error: str | None = None
 
     try:
-        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+        async with StashClient.from_settings(settings) as stash:
             performer_match = await stash.find_performer_by_url(url)
             if not performer_match:
                 performer_match = await stash.find_performer(name)
@@ -406,16 +406,39 @@ async def add_channel(
     want_performer = bool(create_performer)
     want_studio = bool(create_studio)
 
+    logger.info(
+        "add_channel id=%s: create_performer=%r (want=%s), create_studio=%r (want=%s), "
+        "name=%r, thumbnail_url=%s, performer_image_url=%s",
+        channel.id, create_performer, want_performer,
+        create_studio, want_studio,
+        display_name,
+        "yes" if thumb_from_modal else "no",
+        "yes" if thumbnail_url_final else "no",
+    )
+
     try:
-        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+        async with StashClient.from_settings(settings) as stash:
             if want_performer:
                 await sync_channel_performer(channel, db, stash, settings)
+                logger.info(
+                    "add_channel id=%s: after performer sync — stash_performer_id=%s",
+                    channel.id, channel.stash_performer_id,
+                )
                 # If performer was just created/linked, scrape it via Stash
                 # scrapers and re-sync so we pull enriched metadata immediately.
                 if channel.stash_performer_id:
                     await _scrape_and_resync_performer(channel, stash, db, settings)
+                else:
+                    logger.info(
+                        "add_channel id=%s: skipping performer scrape — no stash_performer_id",
+                        channel.id,
+                    )
             if want_studio:
                 await sync_channel_studio(channel, db, stash, settings)
+                logger.info(
+                    "add_channel id=%s: after studio sync — stash_studio_id=%s",
+                    channel.id, channel.stash_studio_id,
+                )
     except Exception:
         logger.warning("Stash sync failed for channel %s", channel.id, exc_info=True)
 
@@ -444,11 +467,24 @@ async def _scrape_and_resync_performer(
     if not channel.stash_performer_id:
         return
     try:
+        logger.info(
+            "Scraping performer for channel %s (performer_id=%s, url=%s)",
+            channel.id, channel.stash_performer_id, channel.url,
+        )
         scraped = await stash.scrape_performer_url(channel.url)
         if scraped:
+            logger.info(
+                "Scrape returned data for channel %s — applying to performer %s",
+                channel.id, channel.stash_performer_id,
+            )
             await stash.apply_scraped_performer(channel.stash_performer_id, scraped)
             # Re-sync so local cache reflects the scraped data
             await sync_channel_performer(channel, db, stash, settings)
+        else:
+            logger.info(
+                "Scrape returned no data for channel %s (url=%s)",
+                channel.id, channel.url,
+            )
     except Exception:
         logger.warning(
             "Performer scrape+resync failed for channel %s (performer %s)",
@@ -594,7 +630,7 @@ async def channel_sync_performer(
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
     try:
-        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+        async with StashClient.from_settings(settings) as stash:
             await sync_channel_performer(channel, db, stash, settings)
     except Exception:
         logger.warning("Performer sync failed for channel %s", channel_id, exc_info=True)
@@ -613,7 +649,7 @@ async def channel_sync_studio(
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
     try:
-        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+        async with StashClient.from_settings(settings) as stash:
             await sync_channel_studio(channel, db, stash, settings)
     except Exception:
         logger.warning("Studio sync failed for channel %s", channel_id, exc_info=True)
@@ -632,7 +668,7 @@ async def channel_sync_both(
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
     try:
-        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+        async with StashClient.from_settings(settings) as stash:
             await sync_channel_performer(channel, db, stash, settings)
             await sync_channel_studio(channel, db, stash, settings)
     except Exception:
@@ -656,7 +692,7 @@ async def channel_relink(
     channel.stash_studio_id = None
     channel.stash_studio_data = None
     try:
-        async with StashClient(settings.stash_url, settings.stash_api_key) as stash:
+        async with StashClient.from_settings(settings) as stash:
             await sync_channel_performer(channel, db, stash, settings)
             await sync_channel_studio(channel, db, stash, settings)
     except Exception:
