@@ -111,7 +111,12 @@
       <p class="mb-2">
         {% if channel.stash_performer_id %}
         <span class="stash-linked"></span>
-        <a href="{{ stash_url }}/performers/{{ channel.stash_performer_id }}" target="_blank" rel="noopener" class="link link-hover">Open in Stash</a>
+        <a href="{{ stash_url }}/performers/{{ channel.stash_performer_id }}" target="_blank" rel="noopener" class="btn btn-sm btn-primary gap-1.5 inline-flex items-center tooltip tooltip-bottom" data-tip="Open this performer in your Stash instance">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+          View in Stash
+        </a>
         {% if p.scene_count is defined and p.scene_count is not none %}
         &nbsp;· {{ p.scene_count }} scene{{ p.scene_count != 1 and 's' or '' }} in Stash
         {% endif %}
@@ -222,7 +227,12 @@
       <p class="mb-2">
         {% if channel.stash_studio_id %}
         <span class="stash-linked"></span>
-        <a href="{{ stash_url }}/studios/{{ channel.stash_studio_id }}" target="_blank" rel="noopener" class="link link-hover">Open in Stash</a>
+        <a href="{{ stash_url }}/studios/{{ channel.stash_studio_id }}" target="_blank" rel="noopener" class="btn btn-sm btn-primary gap-1.5 inline-flex items-center tooltip tooltip-bottom" data-tip="Open this studio in your Stash instance">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+          View in Stash
+        </a>
         {% if s.scene_count is defined and s.scene_count is not none %}
         &nbsp;· {{ s.scene_count }} scene{{ s.scene_count != 1 and 's' or '' }} in Stash
         {% endif %}

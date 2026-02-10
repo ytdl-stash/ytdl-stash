@@ -16,6 +16,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Stash enum validation — scrapers may return values outside the valid set
+# (e.g. "OTHER" for gender). We drop invalid values with a warning.
+# ---------------------------------------------------------------------------
+_VALID_GENDERS = {"MALE", "FEMALE", "TRANSGENDER_MALE", "TRANSGENDER_FEMALE", "INTERSEX", "NON_BINARY"}
+_VALID_CIRCUMCISED = {"CUT", "UNCUT"}
+_ENUM_VALIDATORS: dict[str, set[str]] = {
+    "gender": _VALID_GENDERS,
+    "circumcised": _VALID_CIRCUMCISED,
+}
+
+# ---------------------------------------------------------------------------
 # GraphQL query/mutation strings (module-level for readability and reuse)
 # ---------------------------------------------------------------------------
 
@@ -347,6 +358,24 @@ _IMAGE_CONTENT_TYPES = {
 }
 # Max image download size (10 MB) — avoid fetching unexpectedly huge files.
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+
+def _has_custom_image(image_path: str | None) -> bool:
+    """Return True if the Stash ``image_path`` represents a real user-set image.
+
+    Stash may return ``image_path`` as:
+    - ``None`` — no image at all.
+    - A URL containing ``default=true`` — the auto-generated placeholder.
+    - A normal URL — a real custom image.
+
+    We only consider the last case as "has a custom image" so gap-fill logic
+    correctly uploads a thumbnail when the entity only has the default placeholder.
+    """
+    if not image_path:
+        return False
+    if "default=true" in image_path:
+        return False
+    return True
 
 
 def _load_cookies_from_file(cookies_file: str) -> httpx.Cookies:
@@ -777,7 +806,7 @@ class StashClient:
             return await self.create_performer(name)
 
     async def find_performer_by_url(self, url: str) -> dict | None:
-        """Find a performer by URL (INCLUDES match on performer urls). Returns {id, name, urls} or None."""
+        """Find a performer by URL (INCLUDES match on performer urls). Returns {id, name, urls, image_path} or None."""
         variables = {
             "filter": {"per_page": 1},
             "performer_filter": {
@@ -791,8 +820,7 @@ class StashClient:
         performers = data["findPerformers"]["performers"]
         if not performers:
             return None
-        p = performers[0]
-        return {"id": p["id"], "name": p.get("name") or "", "urls": p.get("urls") or []}
+        return self._performer_dict(performers[0])
 
     async def create_performer_with_metadata(
         self,
@@ -822,8 +850,7 @@ class StashClient:
         stash_urls = performer.get("urls") or []
         if url and url not in stash_urls:
             updates["urls"] = stash_urls + [url]
-        stash_image = performer.get("image_path")
-        if image_url and not stash_image:
+        if image_url and not _has_custom_image(performer.get("image_path")):
             data_uri = await self.download_image_data_uri(image_url)
             if data_uri:
                 updates["image"] = data_uri
@@ -852,6 +879,7 @@ class StashClient:
         async with lock:
             by_url = await self.find_performer_by_url(url)
             if by_url:
+                await self._gap_fill_performer_url_image(by_url, url, image_url)
                 return by_url["id"]
             by_name = await self.find_performer(name)
             if by_name:
@@ -881,16 +909,26 @@ class StashClient:
         circumcised, penis_length, alias_list, details, death_date, image
         (url string), rating100.
 
-        Enum fields (gender, circumcised) are automatically uppercased.
+        Enum fields (gender, circumcised) are validated and uppercased;
+        invalid values are silently dropped with a warning.
         """
         input_dict: dict = {"id": performer_id}
         for key, value in fields.items():
             if value is not None:
                 input_dict[key] = value
-        # Stash enums (GenderEnum, CircumisedEnum) require uppercase values
-        for _enum_field in ("gender", "circumcised"):
-            if isinstance(input_dict.get(_enum_field), str):
-                input_dict[_enum_field] = input_dict[_enum_field].upper()
+        # Validate Stash enum fields — uppercase and drop invalid values
+        for enum_field, valid_values in _ENUM_VALIDATORS.items():
+            raw = input_dict.get(enum_field)
+            if isinstance(raw, str):
+                normalised = raw.upper()
+                if normalised in valid_values:
+                    input_dict[enum_field] = normalised
+                else:
+                    logger.warning(
+                        "Dropping invalid %s value %r for performer %s",
+                        enum_field, raw, performer_id,
+                    )
+                    del input_dict[enum_field]
         if len(input_dict) <= 1:
             return  # Nothing to update
         await self._query(_PERFORMER_UPDATE_MUTATION, {"input": input_dict})
@@ -1015,8 +1053,7 @@ class StashClient:
         stash_urls = studio.get("urls") or []
         if url and url not in stash_urls:
             updates["urls"] = stash_urls + [url]
-        stash_image = studio.get("image_path")
-        if image_url and not stash_image:
+        if image_url and not _has_custom_image(studio.get("image_path")):
             data_uri = await self.download_image_data_uri(image_url)
             if data_uri:
                 updates["image"] = data_uri
@@ -1048,6 +1085,9 @@ class StashClient:
         async with lock:
             by_url = await self.find_studio_by_url(url)
             if by_url:
+                await self._gap_fill_studio_url_image_details(
+                    by_url, url, image_url, details
+                )
                 return by_url["id"]
             studio_id = await self.find_studio(name)
             if studio_id:
@@ -1193,8 +1233,8 @@ class StashClient:
           - scraped ``height`` (String)       → update ``height_cm`` (Int)
           - scraped ``weight`` (String)       → update ``weight`` (Int)
           - scraped ``penis_length`` (String)  → update ``penis_length`` (Float)
-          - scraped ``gender`` (String)       → update ``gender`` (GenderEnum, uppercased)
-          - scraped ``circumcised`` (String)  → update ``circumcised`` (CircumisedEnum, uppercased)
+          - scraped ``gender`` (String)       → update ``gender`` (GenderEnum, validated+uppercased)
+          - scraped ``circumcised`` (String)  → update ``circumcised`` (CircumisedEnum, validated+uppercased)
         """
         current = await self.get_performer(performer_id)
         if not current:
@@ -1223,9 +1263,16 @@ class StashClient:
         for scraped_key, stash_key in _gap_fill_fields:
             scraped_val = scraped.get(scraped_key)
             if scraped_val and not current.get(stash_key):
-                # Stash enums (GenderEnum, CircumisedEnum) require uppercase
-                if stash_key in ("gender", "circumcised"):
-                    scraped_val = scraped_val.upper()
+                # Validate Stash enum fields — uppercase and skip invalid
+                if stash_key in _ENUM_VALIDATORS:
+                    normalised = scraped_val.upper()
+                    if normalised not in _ENUM_VALIDATORS[stash_key]:
+                        logger.warning(
+                            "Dropping invalid scraped %s value %r for performer %s",
+                            stash_key, scraped_val, performer_id,
+                        )
+                        continue
+                    scraped_val = normalised
                 updates[stash_key] = scraped_val
 
         # height: ScrapedPerformer returns "height" as a String (e.g. "175"),
@@ -1262,9 +1309,9 @@ class StashClient:
         if new_urls:
             updates["urls"] = current_urls + new_urls
 
-        # Image: use first scraped image if performer has no image
+        # Image: use first scraped image if performer has no custom image
         scraped_images = scraped.get("images") or []
-        if scraped_images and not current.get("image_path"):
+        if scraped_images and not _has_custom_image(current.get("image_path")):
             # Scraped images are base64 data URIs or URLs
             updates["image"] = scraped_images[0]
 

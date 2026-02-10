@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from app.downloader import async_extract_channel_metadata
 from app.performer_sync import is_placeholder_name
+from app.stash_client import _has_custom_image
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -89,8 +90,7 @@ async def _push_to_stash(
     if channel.url and channel.url not in stash_urls:
         updates["urls"] = stash_urls + [channel.url]
 
-    stash_image = stash_studio.get("image_path")
-    if channel.performer_image_url and not stash_image:
+    if channel.performer_image_url and not _has_custom_image(stash_studio.get("image_path")):
         data_uri = await stash.download_image_data_uri(channel.performer_image_url)
         if data_uri:
             updates["image"] = data_uri

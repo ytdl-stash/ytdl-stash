@@ -8,6 +8,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from app.downloader import _DOMAIN_RE, async_extract_channel_metadata
+from app.stash_client import _has_custom_image
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,8 +85,9 @@ async def _pull_from_stash(
     # Keep performer_image_url in sync — prefer Stash image if available.
     # image_path from Stash is a relative path like /performer/1/image?...
     # so we need to prepend the Stash base URL to make it usable.
+    # Only use it if it's a real custom image, not the default placeholder.
     image_path = performer.get("image_path")
-    if image_path:
+    if _has_custom_image(image_path):
         if image_path.startswith("http"):
             channel.performer_image_url = image_path
         else:
@@ -118,10 +120,9 @@ async def _push_to_stash(
     if channel.url and channel.url not in stash_urls:
         updates["urls"] = stash_urls + [channel.url]
 
-    # Image: send our thumbnail if Stash performer has no image.
-    # Stash returns image_path = None when no image is set.
-    stash_image = stash_performer.get("image_path")
-    if channel.performer_image_url and not stash_image:
+    # Image: send our thumbnail if Stash performer has no custom image.
+    # Stash may return image_path as None or a URL with "default=true" for placeholders.
+    if channel.performer_image_url and not _has_custom_image(stash_performer.get("image_path")):
         data_uri = await stash.download_image_data_uri(channel.performer_image_url)
         if data_uri:
             updates["image"] = data_uri

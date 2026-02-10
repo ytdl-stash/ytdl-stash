@@ -8,7 +8,7 @@ import re
 import struct
 from datetime import date
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import yt_dlp
 from yt_dlp.utils import DownloadError
@@ -172,11 +172,56 @@ def compute_oshash(filepath: str) -> str:
     return f"{hash_value:016x}"
 
 
+def _extract_name_from_url(info: dict) -> str:
+    """Extract a channel/creator name from the URL path as a last resort.
+
+    Many sites use URL patterns like ``/<type>/<name>/videos`` where ``<type>``
+    is a category like ``model``, ``pornstar``, ``channels``, ``creators``, etc.
+    When yt-dlp doesn't populate any metadata fields, the URL slug is the best
+    available name.
+
+    Returns the slug with hyphens/underscores replaced by spaces and
+    title-cased, or empty string if no pattern matches.
+    """
+    # Known path prefixes that precede a channel/creator slug.
+    _CHANNEL_PATH_PREFIXES = {
+        "model", "pornstar", "pornstars", "channels", "channel", "users",
+        "creators", "profiles", "amateur-channels", "model-channels",
+        "pornstar-channels",
+    }
+
+    for url_field in ("webpage_url", "original_url", "url"):
+        raw_url = info.get(url_field)
+        if not raw_url:
+            continue
+        path = urlparse(str(raw_url)).path.strip("/")
+        segments = path.split("/")
+        if len(segments) >= 2 and segments[0].lower() in _CHANNEL_PATH_PREFIXES:
+            slug = unquote(segments[1])
+            # Clean up the slug: replace separators with spaces, title-case
+            candidate = slug.replace("-", " ").replace("_", " ").strip()
+            if candidate:
+                # Title-case only if the slug is all-lowercase; otherwise
+                # preserve the original casing (e.g. "HottiesTwo").
+                if candidate == candidate.lower():
+                    candidate = candidate.title()
+                logger.info(
+                    "Channel name extracted from URL path: %r (url=%s)",
+                    candidate, raw_url,
+                )
+                return candidate
+        break  # Only try the first available URL field
+
+    return ""
+
+
 def _extract_channel_name(info: dict) -> str:
     """Extract the channel/uploader name from a yt-dlp info dict.
 
     Tries several fields that different extractors populate, in priority order.
     Skips values that look like a site or domain name (e.g. "Pornhub.com").
+    Falls back to parsing the channel name from the URL path when all fields
+    are empty or rejected.
     """
     for field in ("channel", "uploader", "uploader_id", "title", "playlist_title"):
         raw = info.get(field)
@@ -192,6 +237,12 @@ def _extract_channel_name(info: dict) -> str:
                     field, candidate,
                     info.get("extractor_key") or info.get("extractor") or "",
                 )
+
+    # Last resort: try to extract the name from the URL path slug.
+    url_name = _extract_name_from_url(info)
+    if url_name:
+        return url_name
+
     logger.info(
         "No usable channel name found. Available info keys: %s",
         [k for k in ("channel", "uploader", "uploader_id", "title", "playlist_title") if info.get(k)],
@@ -200,10 +251,38 @@ def _extract_channel_name(info: dict) -> str:
 
 
 def _extract_thumbnail(info: dict) -> str | None:
-    """Extract the best thumbnail URL from a yt-dlp info dict."""
+    """Extract the best channel avatar/profile thumbnail from a yt-dlp info dict.
+
+    yt-dlp's ``thumbnails`` list for channels often contains a mix of video
+    thumbnails and channel avatars.  We prefer entries whose ``id`` contains
+    ``"avatar"`` (YouTube, some other extractors) since those are the actual
+    channel profile pictures.  If no avatar-tagged entry exists we fall back
+    to the top-level ``thumbnail`` field, then the last entry in the list.
+    """
+    thumbnails = info.get("thumbnails")
+    if isinstance(thumbnails, list) and thumbnails:
+        # Prefer avatar-tagged entries (e.g. YouTube "avatar_uncropped-…")
+        avatar_entries = [
+            t for t in thumbnails
+            if isinstance(t, dict) and isinstance(t.get("id", ""), str)
+            and "avatar" in t["id"].lower()
+        ]
+        if avatar_entries:
+            # Pick the largest avatar (last in list — yt-dlp sorts ascending)
+            best = avatar_entries[-1]
+            url = best.get("url")
+            if url:
+                logger.debug("Using avatar thumbnail: id=%s url=%s", best.get("id"), url)
+                return url
+
+    # Fall back to top-level thumbnail field
     thumb = info.get("thumbnail")
-    if not thumb and isinstance(info.get("thumbnails"), list) and info["thumbnails"]:
-        entry = info["thumbnails"][-1]
+    if thumb:
+        return thumb
+
+    # Last resort: last entry in thumbnails list
+    if isinstance(thumbnails, list) and thumbnails:
+        entry = thumbnails[-1]
         thumb = entry.get("url") if isinstance(entry, dict) else None
     return thumb
 
@@ -306,8 +385,11 @@ def extract_channel_metadata(url: str, settings: Settings) -> dict:
 
     Uses flat extraction first (fast) so we get playlist/channel-level info
     without downloading metadata for every video.  Falls back to non-flat
-    with ``playlistend=0`` when the name or thumbnail is missing (flat mode
-    often omits channel/uploader fields on many extractors).
+    with ``playlistend=1`` when the name or thumbnail is missing (flat mode
+    often omits channel/uploader fields on many extractors).  Processing one
+    video entry allows the extractor to populate channel/uploader from
+    video-level metadata.  As a final fallback, the channel name is parsed
+    from the URL path slug (e.g. ``/model/hottiestwo/videos`` → ``hottiestwo``).
 
     Returns dict with name, thumbnail, description, and video_count keys.
     """
@@ -334,13 +416,15 @@ def extract_channel_metadata(url: str, settings: Settings) -> dict:
     name = _extract_channel_name(info)
     thumbnail = _extract_thumbnail(info)
 
-    # If name or thumbnail missing from flat mode, try non-flat with no video
-    # entries.  Flat extraction is fast but many extractors only populate
-    # channel/uploader fields in non-flat mode.
+    # If name or thumbnail missing from flat mode, try non-flat with one video
+    # entry.  Flat extraction is fast but many extractors only populate
+    # channel/uploader fields in non-flat mode.  Using playlistend=1 (instead
+    # of 0) ensures at least one video entry is processed — some extractors
+    # only populate channel/uploader from video-level metadata.
     if not thumbnail or not name:
         logger.info(
             "Flat extraction incomplete for %s (name=%r, thumbnail=%s) — "
-            "retrying with non-flat extraction",
+            "retrying with non-flat extraction (1 entry)",
             url, name or "(empty)", "yes" if thumbnail else "no",
         )
         try:
@@ -348,16 +432,35 @@ def extract_channel_metadata(url: str, settings: Settings) -> dict:
             nf_opts.update(
                 {
                     "extract_flat": False,
-                    "playlistend": 0,  # Do not process any video entries
+                    "playlistend": 1,  # Process one video entry for metadata
                 }
             )
             with yt_dlp.YoutubeDL(nf_opts) as ydl:
                 nf_info = ydl.extract_info(url, download=False)
+                # Consume entries while ydl context is alive (may be lazy).
+                nf_entries: list[dict] = []
+                if nf_info:
+                    raw_nf = nf_info.get("entries") or []
+                    if isinstance(raw_nf, dict):
+                        raw_nf = [raw_nf]
+                    nf_entries = [e for e in raw_nf if isinstance(e, dict)]
             if nf_info:
                 if not thumbnail:
                     thumbnail = _extract_thumbnail(nf_info)
                 if not name:
                     name = _extract_channel_name(nf_info)
+                # If playlist-level fields are still empty, try the first
+                # video entry — video-level metadata often has the real
+                # channel/uploader name even when the playlist wrapper doesn't.
+                if not name:
+                    for entry in nf_entries:
+                        name = _extract_channel_name(entry)
+                        if name:
+                            logger.info(
+                                "Channel name found from first video entry: %r",
+                                name,
+                            )
+                            break
         except Exception:
             logger.debug("Non-flat metadata fallback failed for %s", url, exc_info=True)
 
