@@ -157,6 +157,8 @@ query FindPerformer($id: ID!) {
         career_length
         tattoos
         piercings
+        circumcised
+        penis_length
         alias_list
         details
         death_date
@@ -283,6 +285,8 @@ query ScrapePerformerURL($url: String!) {
         career_length
         tattoos
         piercings
+        circumcised
+        penis_length
         details
         death_date
         images
@@ -874,12 +878,19 @@ class StashClient:
         Supported fields match PerformerUpdateInput: name, disambiguation, urls,
         gender, birthdate, ethnicity, country, eye_color, hair_color, height_cm,
         weight, measurements, fake_tits, career_length, tattoos, piercings,
-        alias_list, details, death_date, image (url string), rating100.
+        circumcised, penis_length, alias_list, details, death_date, image
+        (url string), rating100.
+
+        Enum fields (gender, circumcised) are automatically uppercased.
         """
         input_dict: dict = {"id": performer_id}
         for key, value in fields.items():
             if value is not None:
                 input_dict[key] = value
+        # Stash enums (GenderEnum, CircumisedEnum) require uppercase values
+        for _enum_field in ("gender", "circumcised"):
+            if isinstance(input_dict.get(_enum_field), str):
+                input_dict[_enum_field] = input_dict[_enum_field].upper()
         if len(input_dict) <= 1:
             return  # Nothing to update
         await self._query(_PERFORMER_UPDATE_MUTATION, {"input": input_dict})
@@ -1179,9 +1190,11 @@ class StashClient:
 
         Note: ScrapedPerformer field names differ from Performer / PerformerUpdateInput
         in a few cases:
-          - scraped ``height`` (String)  → update ``height_cm`` (Int)
-          - scraped ``weight`` (String)  → update ``weight`` (Int)
-          - scraped ``gender`` (String)  → update ``gender`` (GenderEnum string)
+          - scraped ``height`` (String)       → update ``height_cm`` (Int)
+          - scraped ``weight`` (String)       → update ``weight`` (Int)
+          - scraped ``penis_length`` (String)  → update ``penis_length`` (Float)
+          - scraped ``gender`` (String)       → update ``gender`` (GenderEnum, uppercased)
+          - scraped ``circumcised`` (String)  → update ``circumcised`` (CircumisedEnum, uppercased)
         """
         current = await self.get_performer(performer_id)
         if not current:
@@ -1202,6 +1215,7 @@ class StashClient:
             ("career_length", "career_length"),
             ("tattoos", "tattoos"),
             ("piercings", "piercings"),
+            ("circumcised", "circumcised"),
             ("details", "details"),
             ("disambiguation", "disambiguation"),
             ("death_date", "death_date"),
@@ -1209,6 +1223,9 @@ class StashClient:
         for scraped_key, stash_key in _gap_fill_fields:
             scraped_val = scraped.get(scraped_key)
             if scraped_val and not current.get(stash_key):
+                # Stash enums (GenderEnum, CircumisedEnum) require uppercase
+                if stash_key in ("gender", "circumcised"):
+                    scraped_val = scraped_val.upper()
                 updates[stash_key] = scraped_val
 
         # height: ScrapedPerformer returns "height" as a String (e.g. "175"),
@@ -1226,6 +1243,15 @@ class StashClient:
         if scraped_weight and not current.get("weight"):
             try:
                 updates["weight"] = int(scraped_weight)
+            except (ValueError, TypeError):
+                pass
+
+        # penis_length: ScrapedPerformer returns "penis_length" as a String,
+        # but PerformerUpdateInput expects "penis_length" as a Float.
+        scraped_penis_length = scraped.get("penis_length")
+        if scraped_penis_length and not current.get("penis_length"):
+            try:
+                updates["penis_length"] = float(scraped_penis_length)
             except (ValueError, TypeError):
                 pass
 
