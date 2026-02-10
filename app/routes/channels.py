@@ -370,7 +370,10 @@ async def add_channel(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """Add a new channel. Returns HTMX partial _card.html (append to grid) or redirect."""
+    """Add a new channel. Stash performer/studio sync runs in background.
+
+    Returns HTMX partial _card.html (append to grid) or redirect.
+    """
     url = normalize_channel_url(url.strip())
     user_name = name.strip()
     site = _derive_site(url)
@@ -423,31 +426,62 @@ async def add_channel(
         "yes" if thumbnail_url_final else "no",
     )
 
-    try:
-        async with StashClient.from_settings(settings) as stash:
-            if want_performer:
-                await sync_channel_performer(channel, db, stash, settings)
-                logger.info(
-                    "add_channel id=%s: after performer sync — stash_performer_id=%s",
-                    channel.id, channel.stash_performer_id,
+    # Commit the channel to DB now so the background task can see it
+    # in its own session.  The get_db dependency will commit again at
+    # cleanup (harmless no-op if nothing else changed).
+    await db.commit()
+
+    # Kick off Stash sync (performer/studio) in background so the modal
+    # closes immediately and the user isn't left waiting.
+    channel_id = channel.id
+    if want_performer or want_studio:
+        async def _bg_stash_sync() -> None:
+            if db_module.async_session is None:
+                logger.error(
+                    "Background Stash sync aborted for channel %s: database session not initialized",
+                    channel_id,
                 )
-                # If performer was just created/linked, scrape it via Stash
-                # scrapers and re-sync so we pull enriched metadata immediately.
-                if channel.stash_performer_id:
-                    await _scrape_and_resync_performer(channel, stash, db, settings)
-                else:
-                    logger.info(
-                        "add_channel id=%s: skipping performer scrape — no stash_performer_id",
-                        channel.id,
+                return
+            async with db_module.async_session() as session:
+                ch = await session.get(Channel, channel_id)
+                if not ch:
+                    logger.warning(
+                        "Background Stash sync aborted: channel %s not found",
+                        channel_id,
                     )
-            if want_studio:
-                await sync_channel_studio(channel, db, stash, settings)
-                logger.info(
-                    "add_channel id=%s: after studio sync — stash_studio_id=%s",
-                    channel.id, channel.stash_studio_id,
-                )
-    except Exception:
-        logger.warning("Stash sync failed for channel %s", channel.id, exc_info=True)
+                    return
+                try:
+                    async with StashClient.from_settings(settings) as stash:
+                        if want_performer:
+                            await sync_channel_performer(ch, session, stash, settings)
+                            logger.info(
+                                "add_channel bg id=%s: after performer sync — stash_performer_id=%s",
+                                ch.id, ch.stash_performer_id,
+                            )
+                            if ch.stash_performer_id:
+                                await _scrape_and_resync_performer(ch, stash, session, settings)
+                            else:
+                                logger.info(
+                                    "add_channel bg id=%s: skipping performer scrape — no stash_performer_id",
+                                    ch.id,
+                                )
+                        if want_studio:
+                            await sync_channel_studio(ch, session, stash, settings)
+                            logger.info(
+                                "add_channel bg id=%s: after studio sync — stash_studio_id=%s",
+                                ch.id, ch.stash_studio_id,
+                            )
+                    await session.commit()
+                except Exception:
+                    logger.warning(
+                        "Background Stash sync failed for channel %s",
+                        channel_id,
+                        exc_info=True,
+                    )
+
+        task = asyncio.create_task(_bg_stash_sync())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     if request.headers.get("HX-Request"):
         channel = await _load_channel_with_videos(db, channel.id)

@@ -56,6 +56,8 @@
         hx-post="/channels"
         hx-target="#channel-grid"
         hx-swap="beforeend"
+        hx-indicator="#save-channel-spinner"
+        hx-disabled-elt="find button"
         class="inline">
     <input type="hidden" name="url" value="{{ url|e }}">
     <input type="hidden" name="name" value="{{ name|e }}">
@@ -71,7 +73,10 @@
     {% if studio_match %}
     <input type="hidden" name="create_studio" value="1">
     {% endif %}
-    <button type="submit" class="btn btn-primary">Save Channel</button>
+    <button type="submit" class="btn btn-primary gap-1.5">
+      <span id="save-channel-spinner" class="htmx-indicator loading loading-spinner loading-xs"></span>
+      Save Channel
+    </button>
   </form>
 </div>
 
