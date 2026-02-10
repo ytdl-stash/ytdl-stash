@@ -639,22 +639,48 @@ class StashClient:
         return data.get("findJob")
 
     async def wait_for_job(
-        self, job_id: str, poll_interval: float = 1.5, timeout: float = 300
+        self,
+        job_id: str,
+        poll_interval: float = 1.5,
+        run_timeout: float = 300,
+        queue_timeout: float = 1800,
     ) -> dict:
         """Poll until job reaches a terminal state. Returns final job dict on FINISHED.
 
-        Raises RuntimeError if job FAILED, CANCELLED, or STOPPING.
-        Timeout (default 5 min) avoids infinite loops if Stash loses the job (e.g. restart).
+        Uses two separate timeouts so that time spent waiting in Stash's job
+        queue does not eat into the budget for the job's actual execution:
+
+        * *queue_timeout* (default 30 min) — max wall-clock time to wait while
+          the job is queued (status is not yet RUNNING or terminal).
+        * *run_timeout* (default 5 min) — max wall-clock time once the job
+          transitions to RUNNING.
+
+        Raises RuntimeError if the job FAILED, was CANCELLED/STOPPING, or if
+        either timeout is exceeded.
         """
-        deadline = time.monotonic() + timeout
+        queue_deadline = time.monotonic() + queue_timeout
+        run_deadline: float | None = None
         terminal = {"FINISHED", "FAILED", "CANCELLED", "STOPPING"}
+
         while True:
-            if time.monotonic() >= deadline:
-                raise RuntimeError(f"Stash job {job_id} timed out after {timeout}s")
+            now = time.monotonic()
+
+            # Check the appropriate deadline
+            if run_deadline is not None and now >= run_deadline:
+                raise RuntimeError(
+                    f"Stash job {job_id} timed out after {run_timeout}s of running"
+                )
+            if run_deadline is None and now >= queue_deadline:
+                raise RuntimeError(
+                    f"Stash job {job_id} timed out after {queue_timeout}s waiting in queue"
+                )
+
             job = await self.find_job(job_id)
             if not job:
                 raise RuntimeError(f"Job {job_id} not found in Stash")
+
             status = job.get("status")
+
             if status in terminal:
                 if status == "FAILED":
                     err = job.get("error") or "Unknown error"
@@ -662,6 +688,14 @@ class StashClient:
                 if status in ("CANCELLED", "STOPPING"):
                     raise RuntimeError(f"Stash job {job_id} was {status.lower()}")
                 return job  # FINISHED
+
+            # Start the run timer the first time we see RUNNING
+            if status == "RUNNING" and run_deadline is None:
+                run_deadline = time.monotonic() + run_timeout
+                logger.debug(
+                    "Stash job %s now RUNNING; run deadline in %ss", job_id, run_timeout
+                )
+
             await asyncio.sleep(poll_interval)
 
     async def find_scene_by_id(self, scene_id: str) -> dict | None:

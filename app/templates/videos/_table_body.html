@@ -6,7 +6,7 @@
     {% endwith %}
   </td>
   <td data-label="Title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
-  <td data-label="Channel">{{ video.channel.name if video.channel else '—' }}</td>
+  <td data-label="Channel">{% if video.channel %}<a href="/channels/{{ video.channel.id }}" class="link link-hover">{{ video.channel.name }}</a>{% else %}—{% endif %}</td>
   <td data-label="Status">{% include "videos/_status_badge.html" %}</td>
   <td data-label="Upload Date">{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>
   <td data-label="Duration">{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</td>

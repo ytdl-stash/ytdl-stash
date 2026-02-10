@@ -285,7 +285,7 @@ video.oshash = "a1b2c3d4e5f67890"
 **What happens**:
 1. Set `video.status = "importing"`.
 2. Call `stash_client.trigger_scan(paths=[video.filepath])` — returns Stash job ID.
-3. Call `stash_client.wait_for_job(scan_job_id)` — polls `findJob` until FINISHED/FAILED.
+3. Call `stash_client.wait_for_job(scan_job_id)` — polls `findJob` until FINISHED/FAILED. Uses queue-aware timeouts: up to 30 min while the job is queued, then 5 min once it starts running.
 4. Look up scene by `find_scene_by_oshash`, fallback to `find_scene_by_title`.
 
 **Important**: The file path passed to Stash must be the path **as Stash sees it**, not as ytdl-stash sees it. Since both containers mount the same host directory, the paths should align:
@@ -411,7 +411,7 @@ video.status = "synced"
 
 **What happens**:
 1. Call `stash_client.trigger_generate(scene_ids=[scene.id])` — returns job ID.
-2. Call `stash_client.wait_for_job(generate_job_id)` — polls until generate completes.
+2. Call `stash_client.wait_for_job(generate_job_id)` — polls until generate completes (queue-aware: 30 min queue + 5 min run).
 3. File is still at its original location during generate; no race with file-move.
 
 **Error handling**: Best-effort. Failures are logged as warnings but do not change the video's `synced` status.

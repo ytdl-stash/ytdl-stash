@@ -48,6 +48,9 @@ async def list_videos(
         except ValueError:
             pass
     status_clean = (status.strip() or None) if status else None
+    # Default to "synced" when no status filter is provided (full-page load only)
+    if status_clean is None and not request.headers.get("HX-Request"):
+        status_clean = "synced"
 
     base_stmt = select(Video).order_by(Video.created_at.desc())
     if channel_id_int is not None:

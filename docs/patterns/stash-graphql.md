@@ -160,12 +160,19 @@ async def find_job(self, job_id: str) -> dict | None:
     data = await self._query(_FIND_JOB_QUERY, {"input": {"id": job_id}})
     return data.get("findJob")
 
-async def wait_for_job(self, job_id: str, poll_interval: float = 1.5, timeout: float = 300) -> dict:
-    # Poll until status in {FINISHED, FAILED, CANCELLED, STOPPING}. Raises on failure/cancel.
+async def wait_for_job(
+    self, job_id: str, poll_interval: float = 1.5,
+    run_timeout: float = 300, queue_timeout: float = 1800,
+) -> dict:
+    # Two-phase timeout:
+    #   queue_timeout (30 min) — while job is queued / waiting to start.
+    #   run_timeout   (5 min)  — once job transitions to RUNNING.
+    # Raises on FAILED, CANCELLED, STOPPING, or timeout.
     ...
 ```
 
 **Rule**: Use `wait_for_job` after `trigger_scan` and `trigger_generate` instead of timeout-based polling.
+Queue time in Stash does not count against the run timeout — only active execution time does.
 
 ---
 
