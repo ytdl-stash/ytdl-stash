@@ -104,12 +104,33 @@ async def _process_channel_scan_locked(
     )
     existing_ids = set(result.scalars().all())
 
+    # ------------------------------------------------------------------
+    # Imported-video dedup: YTDLM imports may have stored the video title
+    # (or another non-standard value) as site_video_id, so yt-dlp's real
+    # ID won't match.  Build secondary lookup maps by URL and title for
+    # videos belonging to *this* channel so we can recognise them and
+    # back-fill the correct site_video_id instead of re-downloading.
+    # ------------------------------------------------------------------
+    ch_videos_result = await db.execute(
+        select(Video).where(Video.channel_id == channel.id)
+    )
+    ch_videos: list[Video] = list(ch_videos_result.scalars().all())
+
+    url_to_video: dict[str, Video] = {}
+    title_to_video: dict[str, Video] = {}
+    for v in ch_videos:
+        if v.url:
+            url_to_video[v.url] = v
+        if v.title:
+            title_to_video[v.title] = v
+
     # Pre-compute filter thresholds from channel settings
     min_upload_date: date | None = None
     if channel.max_video_age_days is not None:
         min_upload_date = (datetime.now(UTC) - timedelta(days=channel.max_video_age_days)).date()
 
     new_count = 0
+    backfilled = 0
     skipped_age = 0
     skipped_duration = 0
     for entry in entries:
@@ -117,7 +138,33 @@ async def _process_channel_scan_locked(
             str(entry["id"]) if entry.get("id") is not None else None
         )
         url = entry.get("url") or entry.get("webpage_url")
-        if not site_video_id or not url or site_video_id in existing_ids:
+        if not site_video_id or not url:
+            continue
+
+        # Primary dedup: exact site_video_id match (normal case)
+        if site_video_id in existing_ids:
+            continue
+
+        # Secondary dedup: match by URL or title against existing channel
+        # videos whose site_video_id doesn't match (e.g. YTDLM imports
+        # stored the video title as site_video_id instead of the real ID).
+        # Try URL first, then fall back to title within the same channel.
+        entry_title = entry.get("title") or ""
+        matched_video: Video | None = url_to_video.get(str(url))
+        if matched_video is None and entry_title:
+            matched_video = title_to_video.get(entry_title)
+        if matched_video is not None and matched_video.site_video_id != site_video_id:
+            old_sid = matched_video.site_video_id
+            matched_video.site_video_id = site_video_id
+            # Also back-fill URL in case the imported record had a different one
+            if matched_video.url != str(url):
+                matched_video.url = str(url)
+            existing_ids.add(site_video_id)
+            backfilled += 1
+            logger.info(
+                "Video %s: back-filled site_video_id '%s' -> '%s' (matched by URL/title)",
+                matched_video.id, old_sid, site_video_id,
+            )
             continue
 
         upload_date = (
@@ -156,13 +203,14 @@ async def _process_channel_scan_locked(
 
     channel.last_checked_at = datetime.now(UTC)
     await db.commit()
-    if skipped_age or skipped_duration:
-        logger.info(
-            "Channel %s: found %d new videos (skipped %d too old, %d too short)",
-            channel.id, new_count, skipped_age, skipped_duration,
-        )
-    else:
-        logger.info("Channel %s: found %d new videos", channel.id, new_count)
+    parts = [f"found {new_count} new videos"]
+    if backfilled:
+        parts.append(f"back-filled {backfilled} imported")
+    if skipped_age:
+        parts.append(f"skipped {skipped_age} too old")
+    if skipped_duration:
+        parts.append(f"skipped {skipped_duration} too short")
+    logger.info("Channel %s: %s", channel.id, ", ".join(parts))
     return new_count
 
 

@@ -1,4 +1,4 @@
-"""Job routes: list jobs, get status, trigger manual runs."""
+"""Job routes: list jobs, get status, trigger manual runs, pause/resume controls."""
 
 import logging
 
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.main import templates
-from app.download_control import download_control
+from app.download_control import download_control, persist_pause_state
 from app.models import Video
 from app.scheduler import job_registry, stop_job, trigger_job
 
@@ -23,7 +23,44 @@ async def jobs_page(request: Request):
     jobs = list(job_registry.values())
     return templates.TemplateResponse(
         "jobs/list.html",
-        {"request": request, "jobs": jobs},
+        {
+            "request": request,
+            "jobs": jobs,
+            "downloads_paused": download_control.is_downloads_paused(),
+            "channels_paused": download_control.is_channels_paused(),
+        },
+    )
+
+
+@router.get("/pause-banner")
+async def pause_banner(request: Request):
+    """HTMX partial: global pause banner. Refreshed when pause state changes."""
+    return templates.TemplateResponse(
+        "components/_pause_banner.html",
+        {"request": request},
+    )
+
+
+@router.get("/pause-toggle/{pause_key}")
+async def pause_toggle(pause_key: str, request: Request):
+    """HTMX partial: pause/resume toggle button for a specific key."""
+    if pause_key not in ("downloads", "channels"):
+        raise HTTPException(status_code=404, detail="Unknown pause key")
+
+    labels = {"downloads": "Downloads", "channels": "Channel Scans"}
+    is_paused = (
+        download_control.is_downloads_paused()
+        if pause_key == "downloads"
+        else download_control.is_channels_paused()
+    )
+    return templates.TemplateResponse(
+        "components/_pause_toggle.html",
+        {
+            "request": request,
+            "pause_key": pause_key,
+            "is_paused": is_paused,
+            "label": labels[pause_key],
+        },
     )
 
 
@@ -155,3 +192,111 @@ async def stop(
         f"Job {job_id} stop requested",
         status_code=200,
     )
+
+
+# ---------------------------------------------------------------------------
+# Pause / resume controls
+# ---------------------------------------------------------------------------
+
+
+@router.post("/downloads/pause")
+async def pause_downloads(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Pause all downloads: cancel active downloads and prevent new ones from starting."""
+    download_control.set_downloads_paused(True)
+    await persist_pause_state("downloads_paused", True)
+
+    # Hard pause: cancel all active downloads
+    active_ids = download_control.get_active_ids()
+    if active_ids:
+        for vid in active_ids:
+            download_control.request_cancel(vid)
+            video = await db.get(Video, vid)
+            if video and video.status in {"downloading", "downloaded", "importing"}:
+                video.status = "cancelling"
+        # get_db dependency auto-commits on success
+        logger.info("Pause downloads: cancelled %d active download(s)", len(active_ids))
+
+    logger.info("Downloads paused")
+
+    if request.headers.get("HX-Request"):
+        resp = templates.TemplateResponse(
+            "components/_pause_toggle.html",
+            {
+                "request": request,
+                "pause_key": "downloads",
+                "is_paused": True,
+                "label": "Downloads",
+            },
+        )
+        resp.headers["HX-Trigger"] = "pauseStateChanged"
+        return resp
+    return HTMLResponse("Downloads paused", status_code=200)
+
+
+@router.post("/downloads/resume")
+async def resume_downloads(request: Request):
+    """Resume downloads: allow the scheduler to pick up pending videos again."""
+    download_control.set_downloads_paused(False)
+    await persist_pause_state("downloads_paused", False)
+    logger.info("Downloads resumed")
+
+    if request.headers.get("HX-Request"):
+        resp = templates.TemplateResponse(
+            "components/_pause_toggle.html",
+            {
+                "request": request,
+                "pause_key": "downloads",
+                "is_paused": False,
+                "label": "Downloads",
+            },
+        )
+        resp.headers["HX-Trigger"] = "pauseStateChanged"
+        return resp
+    return HTMLResponse("Downloads resumed", status_code=200)
+
+
+@router.post("/channels/pause")
+async def pause_channels(request: Request):
+    """Pause channel scanning: prevent the scheduler from checking channels for new videos."""
+    download_control.set_channels_paused(True)
+    await persist_pause_state("channels_paused", True)
+    logger.info("Channel scanning paused")
+
+    if request.headers.get("HX-Request"):
+        resp = templates.TemplateResponse(
+            "components/_pause_toggle.html",
+            {
+                "request": request,
+                "pause_key": "channels",
+                "is_paused": True,
+                "label": "Channel Scans",
+            },
+        )
+        resp.headers["HX-Trigger"] = "pauseStateChanged"
+        return resp
+    return HTMLResponse("Channel scanning paused", status_code=200)
+
+
+@router.post("/channels/resume")
+async def resume_channels(request: Request):
+    """Resume channel scanning: allow the scheduler to check channels again."""
+    download_control.set_channels_paused(False)
+    await persist_pause_state("channels_paused", False)
+    logger.info("Channel scanning resumed")
+
+    if request.headers.get("HX-Request"):
+        resp = templates.TemplateResponse(
+            "components/_pause_toggle.html",
+            {
+                "request": request,
+                "pause_key": "channels",
+                "is_paused": False,
+                "label": "Channel Scans",
+            },
+        )
+        resp.headers["HX-Trigger"] = "pauseStateChanged"
+        return resp
+    return HTMLResponse("Channel scanning resumed", status_code=200)

@@ -119,3 +119,15 @@ class Video(Base):
     generate_triggered_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
 
     channel: Mapped["Channel"] = relationship(back_populates="videos")
+
+
+class AppState(Base):
+    """Simple key-value store for persistent application state (e.g. pause flags).
+
+    Only a handful of rows are expected; the key is the primary key.
+    """
+
+    __tablename__ = "app_state"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(String(500), default="")

@@ -27,7 +27,7 @@ ytdl-stash is a containerized Python application that **monitors video channels*
 | **Version** | `app/__init__.py` | `get_version()` reads `VERSION` file baked into Docker image (falls back to `"dev"`) |
 | **Config** | `app/config.py` | Pydantic BaseSettings, reads `YTDL_*` env vars |
 | **App Entry** | `app/main.py` | FastAPI factory, lifespan, static/template mounts |
-| **Database** | `app/database.py`, `app/models.py` | SQLAlchemy async engine, Channel + Video models |
+| **Database** | `app/database.py`, `app/models.py` | SQLAlchemy async engine, Channel + Video + AppState models |
 | **Downloader** | `app/downloader.py` | yt-dlp wrapper: scan channels (with nested-entry flattening), download videos, compute oshash; channel URL normalization (e.g. PornHub profile → `/videos`); `extract_channel_metadata` returns `video_count` for add-channel wizard |
 | **Stash Client** | `app/stash_client.py` | Async httpx GraphQL client for Stash API (find/create scenes, performers, studios, tags; scraping; generate). Use `StashClient.from_settings(settings)` to create instances — this propagates cookies and HTTP headers for image downloads. |
 | **Pipeline** | `app/pipeline.py` | Orchestration: download -> oshash -> scan -> match -> tag -> scrape -> re-sync |
@@ -138,7 +138,7 @@ ytdl-stash/
     auth.py                     # Optional app password (hash, session, CLI)
     config.py                   # Pydantic BaseSettings
     database.py                 # Async engine, session, init_db (Phase 2)
-    models.py                   # Channel, Video models (Phase 2)
+    models.py                   # Channel, Video, AppState models (Phase 2)
     downloader.py               # yt-dlp wrapper (Phase 3)
     stash_client.py             # Stash GraphQL client (Phase 4)
     pipeline.py                 # Download-to-Stash orchestration (Phase 5)
@@ -292,6 +292,10 @@ To avoid creating duplicate performers in Stash when multiple code paths (channe
 ## Datetime handling (TZDateTime)
 
 All datetime columns use the custom `TZDateTime` type in `app/models.py`. SQLite does not store timezone info; `TZDateTime` ensures values are written in a consistent form and re-attached to UTC when read, so Python-side comparisons (e.g. in the channel checker) never raise "naive vs aware" errors. See ADR-010.
+
+## Schema (AppState)
+
+The `AppState` model (`app_state` table) is a simple key-value store for persistent application state. Used for global pause flags (`downloads_paused`, `channels_paused`). Schema: `key` (VARCHAR(100), primary key), `value` (VARCHAR(500)). Loaded into in-memory `DownloadControl` flags at startup; written on pause/resume actions.
 
 ## Schema (Channel)
 

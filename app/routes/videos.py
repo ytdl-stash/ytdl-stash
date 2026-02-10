@@ -110,6 +110,7 @@ async def list_videos(
             "selected_channel_id": channel_id_int,
             "selected_status": status_clean,
             "active_videos": active_videos,
+            "downloads_paused": download_control.is_downloads_paused(),
         },
     )
 

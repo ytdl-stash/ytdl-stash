@@ -1,0 +1,41 @@
+{# Global pause banner — refreshed via HTMX when pause state changes.
+   The outer div always exists so HTMX can swap it; content is conditional. #}
+<div id="pause-banner"
+     hx-get="/jobs/pause-banner"
+     hx-trigger="pauseStateChanged from:body"
+     hx-swap="outerHTML">
+{% if is_downloads_paused() or is_channels_paused() %}
+  <div class="bg-warning/15 border-b border-warning/30">
+    <div class="container mx-auto px-4 py-2 flex items-center gap-3 flex-wrap text-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-warning shrink-0" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+      </svg>
+      <span class="font-medium text-warning">
+        {% if is_downloads_paused() and is_channels_paused() %}
+          Downloads &amp; channel scans are paused
+        {% elif is_downloads_paused() %}
+          Downloads are paused
+        {% else %}
+          Channel scans are paused
+        {% endif %}
+      </span>
+      <div class="flex items-center gap-2 ml-auto">
+        {% if is_downloads_paused() %}
+        <button type="button" class="btn btn-xs btn-success"
+                hx-post="/jobs/downloads/resume"
+                hx-swap="none">
+          Resume Downloads
+        </button>
+        {% endif %}
+        {% if is_channels_paused() %}
+        <button type="button" class="btn btn-xs btn-success"
+                hx-post="/jobs/channels/resume"
+                hx-swap="none">
+          Resume Scans
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+</div>

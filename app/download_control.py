@@ -3,17 +3,22 @@
 This module supports:
 - tracking currently active video downloads
 - requesting cancellation for a specific video (or the active one)
+- global pause/resume for downloads and channel scans (persisted to DB)
 
 Notes:
 - Cancellation requests must be thread-safe because yt-dlp progress hooks run
   in a worker thread (`asyncio.to_thread`).
-- We intentionally keep this out of the database; it is ephemeral and resets
-  on restart.
+- We intentionally keep active/cancel state out of the database; it is
+  ephemeral and resets on restart.
+- Pause flags are persisted to the ``app_state`` table so they survive restarts.
 """
 
 from __future__ import annotations
 
+import logging
 import threading
+
+logger = logging.getLogger(__name__)
 
 
 class DownloadControl:
@@ -21,6 +26,12 @@ class DownloadControl:
         self._lock = threading.Lock()
         self._active_video_ids: set[int] = set()
         self._cancel_requested: set[int] = set()
+        self._downloads_paused: bool = False
+        self._channels_paused: bool = False
+
+    # ------------------------------------------------------------------
+    # Active / cancel tracking (unchanged)
+    # ------------------------------------------------------------------
 
     def set_active(self, video_id: int) -> None:
         with self._lock:
@@ -75,6 +86,100 @@ class DownloadControl:
         with self._lock:
             return set(self._cancel_requested)
 
+    # ------------------------------------------------------------------
+    # Pause / resume (in-memory; persisted via load/save helpers below)
+    # ------------------------------------------------------------------
+
+    def set_downloads_paused(self, paused: bool) -> None:
+        with self._lock:
+            self._downloads_paused = paused
+
+    def is_downloads_paused(self) -> bool:
+        with self._lock:
+            return self._downloads_paused
+
+    def set_channels_paused(self, paused: bool) -> None:
+        with self._lock:
+            self._channels_paused = paused
+
+    def is_channels_paused(self) -> bool:
+        with self._lock:
+            return self._channels_paused
+
 
 download_control = DownloadControl()
 
+
+# ------------------------------------------------------------------
+# DB persistence helpers (called from routes and startup)
+# ------------------------------------------------------------------
+
+_DOWNLOADS_PAUSED_KEY = "downloads_paused"
+_CHANNELS_PAUSED_KEY = "channels_paused"
+
+
+async def load_pause_state_from_db() -> None:
+    """Read pause flags from the app_state table and set them in-memory.
+
+    Called once at startup (after init_db).
+    """
+    from app import database as db_module
+    from app.models import AppState
+
+    if db_module.async_session is None:
+        return
+
+    from sqlalchemy import select
+
+    async with db_module.async_session() as session:
+        for key, setter in [
+            (_DOWNLOADS_PAUSED_KEY, download_control.set_downloads_paused),
+            (_CHANNELS_PAUSED_KEY, download_control.set_channels_paused),
+        ]:
+            result = await session.execute(
+                select(AppState).where(AppState.key == key)
+            )
+            row = result.scalar_one_or_none()
+            if row is not None:
+                paused = row.value == "1"
+                setter(paused)
+                logger.info("Restored pause state: %s = %s", key, paused)
+
+
+async def persist_pause_state(key: str, value: bool) -> None:
+    """Write a pause flag to the app_state table (upsert)."""
+    if key not in {_DOWNLOADS_PAUSED_KEY, _CHANNELS_PAUSED_KEY}:
+        raise ValueError(f"Unknown pause state key: {key}")
+
+    from app import database as db_module
+    from app.models import AppState
+
+    if db_module.async_session is None:
+        return
+
+    from sqlalchemy import select
+    from sqlalchemy.exc import IntegrityError
+
+    str_value = "1" if value else "0"
+    async with db_module.async_session() as session:
+        result = await session.execute(
+            select(AppState).where(AppState.key == key)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            try:
+                session.add(AppState(key=key, value=str_value))
+                await session.commit()
+            except IntegrityError:
+                # Race: another request inserted first — update instead.
+                await session.rollback()
+                result2 = await session.execute(
+                    select(AppState).where(AppState.key == key)
+                )
+                row2 = result2.scalar_one_or_none()
+                if row2 is not None:
+                    row2.value = str_value
+                await session.commit()
+        else:
+            row.value = str_value
+            await session.commit()

@@ -21,6 +21,12 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 # Add global function to check if password is set
 templates.env.globals["is_password_set"] = lambda: get_password_hash() is not None
 
+# Add global functions for pause state (visible on every page via base.html banner)
+from app.download_control import download_control as _dc
+
+templates.env.globals["is_downloads_paused"] = _dc.is_downloads_paused
+templates.env.globals["is_channels_paused"] = _dc.is_channels_paused
+
 
 def status_badge_class(status: str | None) -> str:
     """Return DaisyUI badge class for a video status (used in templates)."""
@@ -53,6 +59,8 @@ async def lifespan(app: FastAPI):
     Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
     Path(settings.download_dir).mkdir(parents=True, exist_ok=True)
     await init_db(settings)
+    from app.download_control import load_pause_state_from_db
+    await load_pause_state_from_db()
     start_scheduler()
     yield
     # === SHUTDOWN ===

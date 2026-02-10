@@ -130,6 +130,12 @@ def _ensure_aware(dt: datetime) -> datetime:
 
 async def _do_check_all_channels() -> None:
     """Core logic: scan every due enabled channel."""
+    from app.download_control import download_control
+
+    if download_control.is_channels_paused():
+        logger.debug("Channel checker: paused, skipping")
+        return
+
     if db_module.async_session is None:
         logger.warning("Channel checker skipped: database session not initialized")
         return
@@ -180,6 +186,12 @@ async def _do_check_all_channels() -> None:
 
 async def _do_process_downloads() -> None:
     """Core logic: process pending videos (sequential or concurrent)."""
+    from app.download_control import download_control
+
+    if download_control.is_downloads_paused():
+        logger.debug("Download processor: paused, skipping")
+        return
+
     if db_module.async_session is None:
         logger.warning("Download processor skipped: database session not initialized")
         return

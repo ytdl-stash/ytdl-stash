@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Jobs — ytdl-stash{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-bold mb-2">Jobs</h1>
+<div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+  <h1 class="text-2xl font-bold m-0">Jobs</h1>
+  <div class="flex items-center gap-2 flex-wrap">
+    {% with pause_key="downloads", is_paused=downloads_paused, label="Downloads" %}
+      {% include "components/_pause_toggle.html" %}
+    {% endwith %}
+    {% with pause_key="channels", is_paused=channels_paused, label="Channel Scans" %}
+      {% include "components/_pause_toggle.html" %}
+    {% endwith %}
+  </div>
+</div>
 <p class="mb-4">Background jobs run on a schedule. Use <strong>Run Now</strong> to trigger one immediately.</p>
 
 <div class="overflow-x-auto">
