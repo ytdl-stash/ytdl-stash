@@ -24,23 +24,31 @@ logger = logging.getLogger(__name__)
 async def _enrich_channel_and_get_description(
     channel: "Channel",
     settings: "Settings",
-) -> str | None:
-    """Fill in channel name and thumbnail from yt-dlp when missing. Return description for studio details."""
+) -> tuple[str | None, str | None]:
+    """Fill in channel name and thumbnail from yt-dlp when missing.
+
+    Returns (description, source_image_url).  The source_image_url is the
+    original thumbnail URL from yt-dlp — it must NOT be taken from
+    ``channel.performer_image_url`` because performer sync may have already
+    overwritten that field with a Stash performer image path that requires
+    API-key authentication to download.
+    """
     try:
         meta = await async_extract_channel_metadata(channel.url, settings)
         if is_placeholder_name(channel.name) and meta.get("name"):
             channel.name = meta["name"]
-        if not channel.performer_image_url and meta.get("thumbnail"):
-            channel.performer_image_url = meta["thumbnail"]
+        source_image_url = meta.get("thumbnail")
+        if not channel.performer_image_url and source_image_url:
+            channel.performer_image_url = source_image_url
         desc = meta.get("description")
-        return str(desc).strip() if desc else None
+        return (str(desc).strip() if desc else None, source_image_url)
     except Exception as e:
         logger.debug(
             "Could not extract channel metadata for %s: %s",
             channel.url,
             e,
         )
-        return None
+        return (None, None)
 
 
 async def _pull_studio_from_stash(

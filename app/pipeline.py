@@ -364,7 +364,15 @@ async def _apply_metadata_and_sync(
 
     studio_id: str | None = None
     if channel and channel.stash_studio_id:
-        studio_id = channel.stash_studio_id
+        # Verify the studio still exists in Stash (may have been deleted)
+        existing = await stash.get_studio(channel.stash_studio_id)
+        if existing:
+            studio_id = channel.stash_studio_id
+        else:
+            logger.warning(
+                "Video %s: linked studio %s no longer exists in Stash, skipping studio assignment",
+                video.id, channel.stash_studio_id,
+            )
 
     date_str = video.upload_date.isoformat() if video.upload_date else None
     await stash.update_scene(
@@ -456,8 +464,11 @@ async def process_single_download(
     video: Video, db: AsyncSession, settings: Settings, stash: StashClient
 ) -> None:
     """Run the full lifecycle for one video: download -> oshash -> scan -> match -> tag."""
+    # Capture the id before entering the try block so error handlers can use
+    # the plain integer even after a rollback expires the ORM object's attrs.
+    video_id = video.id
     try:
-        download_control.set_active(video.id)
+        download_control.set_active(video_id)
         video.error_message = None
         download_progress.clear(video.id)
         await db.refresh(video, ["channel"])
@@ -730,27 +741,27 @@ async def process_single_download(
         await db.commit()
 
     except DownloadCancelled as e:
-        download_progress.clear(video.id)
-        logger.info("Video %s cancelled: %s", video.id, e)
+        download_progress.clear(video_id)
+        logger.info("Video %s cancelled: %s", video_id, e)
         try:
             await db.rollback()
-            refreshed = await db.get(Video, video.id)
+            refreshed = await db.get(Video, video_id)
             if refreshed is not None:
                 refreshed.status = "cancelled"
                 refreshed.error_message = "Cancelled by user"
                 await db.commit()
         except Exception:
-            logger.exception("Video %s: could not persist cancelled status", video.id)
+            logger.exception("Video %s: could not persist cancelled status", video_id)
 
     except Exception as e:
-        download_progress.clear(video.id)
-        logger.exception("Video %s failed: %s", video.id, e)
+        download_progress.clear(video_id)
+        logger.exception("Video %s failed: %s", video_id, e)
         # The session may be in a dirty/broken state after the original error,
         # so rollback first to clear it, then mark the video as failed.
         try:
             await db.rollback()
             # Re-fetch the video to get a clean ORM object after rollback
-            refreshed = await db.get(Video, video.id)
+            refreshed = await db.get(Video, video_id)
             if refreshed is not None:
                 refreshed.status = "failed"
                 refreshed.error_message = str(e)[:2000]  # cap to avoid huge tracebacks
@@ -758,12 +769,12 @@ async def process_single_download(
         except Exception:
             logger.exception(
                 "Video %s: could not persist failed status (will be recovered on restart)",
-                video.id,
+                video_id,
             )
     finally:
         # Always clear the active marker (even if cancelled/failed)
-        download_control.clear_active(video.id)
-        download_control.clear_cancel(video.id)
+        download_control.clear_active(video_id)
+        download_control.clear_cancel(video_id)
 
 
 async def process_pending_downloads(
