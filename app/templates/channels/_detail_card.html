@@ -308,6 +308,24 @@
       <div class="flex flex-wrap items-center gap-4 mb-4">
         <h3 class="text-lg font-semibold mt-0 mb-0">Videos ({{ videos|length }})</h3>
         <div class="flex items-center gap-2">
+          <select name="sort"
+                  id="channel-video-sort"
+                  aria-label="Sort videos"
+                  class="select select-sm select-bordered"
+                  hx-get="/channels/{{ channel.id }}/videos"
+                  hx-trigger="change"
+                  hx-target="#channel-videos-table-wrapper"
+                  hx-swap="outerHTML"
+                  hx-include="#channel-video-search">
+            <option value="upload_date_desc" {% if sort == 'upload_date_desc' %}selected{% endif %}>Upload Date (newest)</option>
+            <option value="upload_date_asc" {% if sort == 'upload_date_asc' %}selected{% endif %}>Upload Date (oldest)</option>
+            <option value="created_at_desc" {% if sort == 'created_at_desc' %}selected{% endif %}>Date Added (newest)</option>
+            <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>Title (A-Z)</option>
+            <option value="title_desc" {% if sort == 'title_desc' %}selected{% endif %}>Title (Z-A)</option>
+            <option value="duration_desc" {% if sort == 'duration_desc' %}selected{% endif %}>Duration (longest)</option>
+            <option value="duration_asc" {% if sort == 'duration_asc' %}selected{% endif %}>Duration (shortest)</option>
+            <option value="status_asc" {% if sort == 'status_asc' %}selected{% endif %}>Status</option>
+          </select>
           <input type="search"
                  name="search"
                  id="channel-video-search"
@@ -318,12 +336,12 @@
                  hx-trigger="input changed delay:300ms, search"
                  hx-target="#channel-videos-table-wrapper"
                  hx-swap="outerHTML"
-                 hx-include="this"
+                 hx-include="#channel-video-sort"
                  hx-push-url="false"
                  aria-label="Search videos by title">
           {% if search %}
           <button type="button" class="btn btn-sm btn-ghost"
-                  hx-get="/channels/{{ channel.id }}/videos"
+                  hx-get="/channels/{{ channel.id }}/videos?sort={{ sort }}"
                   hx-target="#channel-videos-table-wrapper"
                   hx-swap="outerHTML"
                   aria-label="Clear search">

@@ -57,6 +57,20 @@
         <option value="cancelled" {% if selected_status == 'cancelled' %}selected{% endif %}>Cancelled</option>
       </select>
     </label>
+    <label class="form-control w-full max-w-xs">
+      <span class="label-text tooltip tooltip-bottom" data-tip="Sort videos by column">Sort by</span>
+      <select name="sort" class="select select-bordered w-full">
+        <option value="created_at_desc" {% if sort == 'created_at_desc' %}selected{% endif %}>Date Added (newest)</option>
+        <option value="upload_date_desc" {% if sort == 'upload_date_desc' %}selected{% endif %}>Upload Date (newest)</option>
+        <option value="upload_date_asc" {% if sort == 'upload_date_asc' %}selected{% endif %}>Upload Date (oldest)</option>
+        <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>Title (A-Z)</option>
+        <option value="title_desc" {% if sort == 'title_desc' %}selected{% endif %}>Title (Z-A)</option>
+        <option value="duration_desc" {% if sort == 'duration_desc' %}selected{% endif %}>Duration (longest)</option>
+        <option value="duration_asc" {% if sort == 'duration_asc' %}selected{% endif %}>Duration (shortest)</option>
+        <option value="channel_asc" {% if sort == 'channel_asc' %}selected{% endif %}>Channel (A-Z)</option>
+        <option value="status_asc" {% if sort == 'status_asc' %}selected{% endif %}>Status</option>
+      </select>
+    </label>
     <div class="flex items-center gap-2">
       <input type="search"
              name="search"
@@ -73,7 +87,7 @@
              aria-label="Search videos by title">
       {% if search %}
       <button type="button" class="btn btn-sm btn-ghost"
-              hx-get="/videos?channel_id={{ selected_channel_id or '' }}&status={{ selected_status or '' }}&page=1"
+              hx-get="/videos?channel_id={{ selected_channel_id or '' }}&status={{ selected_status or '' }}&sort={{ sort }}&page=1"
               hx-target="#video-list-content"
               hx-swap="innerHTML"
               aria-label="Clear search">

@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,6 +26,19 @@ router = APIRouter(prefix="/videos", tags=["videos"])
 
 ACTIVE_DOWNLOAD_STATUSES = ("downloading", "cancelling", "downloaded", "importing")
 
+VIDEO_SORT_OPTIONS = {
+    "created_at_desc": lambda: desc(Video.created_at),
+    "upload_date_desc": lambda: desc(Video.upload_date),
+    "upload_date_asc": lambda: asc(Video.upload_date),
+    "title_asc": lambda: asc(Video.title),
+    "title_desc": lambda: desc(Video.title),
+    "duration_desc": lambda: desc(Video.duration_seconds),
+    "duration_asc": lambda: asc(Video.duration_seconds),
+    "channel_asc": lambda: asc(Channel.name),
+    "status_asc": lambda: asc(Video.status),
+}
+VIDEO_SORT_DEFAULT = "created_at_desc"
+
 # Hold strong references to background tasks so they aren't garbage-collected.
 _background_tasks: set[asyncio.Task] = set()
 
@@ -36,6 +49,7 @@ async def list_videos(
     channel_id: str | None = None,
     status: str | None = None,
     search: str = "",
+    sort: str = VIDEO_SORT_DEFAULT,
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -55,7 +69,15 @@ async def list_videos(
 
     search_clean = search.strip()
 
-    base_stmt = select(Video).order_by(Video.created_at.desc())
+    sort_clean = sort.strip() if sort else VIDEO_SORT_DEFAULT
+    if sort_clean not in VIDEO_SORT_OPTIONS:
+        sort_clean = VIDEO_SORT_DEFAULT
+
+    base_stmt = select(Video)
+    if sort_clean == "channel_asc":
+        base_stmt = base_stmt.join(Video.channel).order_by(VIDEO_SORT_OPTIONS[sort_clean]())
+    else:
+        base_stmt = base_stmt.order_by(VIDEO_SORT_OPTIONS[sort_clean]())
     if channel_id_int is not None:
         base_stmt = base_stmt.where(Video.channel_id == channel_id_int)
     if status_clean:
@@ -96,6 +118,7 @@ async def list_videos(
         "total": total,
         "total_pages": total_pages,
         "search": search_clean,
+        "sort": sort_clean,
     }
 
     if request.headers.get("HX-Request"):

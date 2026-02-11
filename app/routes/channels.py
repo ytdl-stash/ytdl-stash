@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.responses import Response
-from sqlalchemy import select
+from sqlalchemy import asc, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -30,6 +30,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/channels", tags=["channels"])
 
 ACTIVE_DOWNLOAD_STATUSES = ("downloading", "cancelling", "downloaded", "importing")
+
+CHANNEL_VIDEO_SORT_OPTIONS = {
+    "created_at_desc": lambda: desc(Video.created_at),
+    "upload_date_desc": lambda: desc(Video.upload_date),
+    "upload_date_asc": lambda: asc(Video.upload_date),
+    "title_asc": lambda: asc(Video.title),
+    "title_desc": lambda: desc(Video.title),
+    "duration_desc": lambda: desc(Video.duration_seconds),
+    "duration_asc": lambda: asc(Video.duration_seconds),
+    "status_asc": lambda: asc(Video.status),
+}
+CHANNEL_VIDEO_SORT_DEFAULT = "upload_date_desc"
 
 
 def _parse_optional_int(value: str | None) -> int | None:
@@ -567,22 +579,33 @@ async def channel_videos(
     channel_id: int,
     request: Request,
     search: str = "",
+    sort: str = CHANNEL_VIDEO_SORT_DEFAULT,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
     """HTMX partial: video table for this channel (for polling refresh)."""
-    channel = await _load_channel_with_videos(db, channel_id)
+    ch_result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = ch_result.scalar_one_or_none()
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    videos = sorted(
-        channel.videos,
-        key=lambda v: v.upload_date or date.min,
-        reverse=True,
+
+    sort_clean = sort.strip() if sort else CHANNEL_VIDEO_SORT_DEFAULT
+    if sort_clean not in CHANNEL_VIDEO_SORT_OPTIONS:
+        sort_clean = CHANNEL_VIDEO_SORT_DEFAULT
+
+    stmt = (
+        select(Video)
+        .where(Video.channel_id == channel_id)
+        .order_by(CHANNEL_VIDEO_SORT_OPTIONS[sort_clean]())
     )
     search_clean = search.strip()
     if search_clean:
-        q = search_clean.lower()
-        videos = [v for v in videos if q in ((v.title or "").lower())]
+        escaped = search_clean.replace("%", r"\%").replace("_", r"\_")
+        stmt = stmt.where(Video.title.ilike(f"%{escaped}%", escape="\\"))
+
+    result = await db.execute(stmt)
+    videos = list(result.scalars().all())
+
     return templates.TemplateResponse(
         "channels/_channel_videos.html",
         {
@@ -590,6 +613,7 @@ async def channel_videos(
             "channel": channel,
             "videos": videos,
             "search": search_clean,
+            "sort": sort_clean,
             "settings": settings,
             "download_progress": download_progress.snapshot(),
         },
@@ -600,6 +624,7 @@ async def channel_videos(
 async def channel_detail(
     channel_id: int,
     request: Request,
+    sort: str = CHANNEL_VIDEO_SORT_DEFAULT,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
@@ -607,11 +632,19 @@ async def channel_detail(
     channel = await _load_channel_with_videos(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    videos = sorted(
-        channel.videos,
-        key=lambda v: v.upload_date or date.min,
-        reverse=True,
+
+    sort_clean = sort.strip() if sort else CHANNEL_VIDEO_SORT_DEFAULT
+    if sort_clean not in CHANNEL_VIDEO_SORT_OPTIONS:
+        sort_clean = CHANNEL_VIDEO_SORT_DEFAULT
+
+    stmt = (
+        select(Video)
+        .where(Video.channel_id == channel_id)
+        .order_by(CHANNEL_VIDEO_SORT_OPTIONS[sort_clean]())
     )
+    result = await db.execute(stmt)
+    videos = list(result.scalars().all())
+
     active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
     return templates.TemplateResponse(
         "channels/detail.html",
@@ -621,6 +654,7 @@ async def channel_detail(
             "videos": videos,
             "active_videos": active_videos,
             "search": "",
+            "sort": sort_clean,
             "stash_url": settings.stash_url.rstrip("/"),
             "settings": settings,
             "download_progress": download_progress.snapshot(),
