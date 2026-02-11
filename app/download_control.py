@@ -3,6 +3,7 @@
 This module supports:
 - tracking currently active video downloads
 - requesting cancellation for a specific video (or the active one)
+- per-video asyncio task tracking for force-cancel when yt-dlp hangs
 - global pause/resume for downloads and channel scans (persisted to DB)
 
 Notes:
@@ -15,6 +16,7 @@ Notes:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 
@@ -26,6 +28,7 @@ class DownloadControl:
         self._lock = threading.Lock()
         self._active_video_ids: set[int] = set()
         self._cancel_requested: set[int] = set()
+        self._download_tasks: dict[int, asyncio.Task] = {}
         self._downloads_paused: bool = False
         self._channels_paused: bool = False
 
@@ -85,6 +88,27 @@ class DownloadControl:
         """Return a copy of the cancel-requested set (for UI hints)."""
         with self._lock:
             return set(self._cancel_requested)
+
+    # ------------------------------------------------------------------
+    # Per-video asyncio task tracking (for force-cancel when yt-dlp hangs)
+    # ------------------------------------------------------------------
+
+    def set_download_task(self, video_id: int, task: asyncio.Task) -> None:
+        with self._lock:
+            self._download_tasks[video_id] = task
+
+    def cancel_download_task(self, video_id: int) -> bool:
+        """Cancel the asyncio download task for a video. Returns True if cancelled."""
+        with self._lock:
+            task = self._download_tasks.get(video_id)
+        if task is not None and not task.done():
+            task.cancel()
+            return True
+        return False
+
+    def clear_download_task(self, video_id: int) -> None:
+        with self._lock:
+            self._download_tasks.pop(video_id, None)
 
     # ------------------------------------------------------------------
     # Pause / resume (in-memory; persisted via load/save helpers below)

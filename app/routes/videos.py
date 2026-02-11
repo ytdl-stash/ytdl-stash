@@ -450,6 +450,9 @@ async def stop_video(
         await db.commit()
     elif video.status in {"downloading", "downloaded", "importing"}:
         download_control.request_cancel(video.id)
+        # Force-cancel the asyncio download task so a hung yt-dlp thread
+        # doesn't block the download processor job forever.
+        download_control.cancel_download_task(video.id)
         if video.status != "cancelling":
             video.status = "cancelling"
             await db.commit()

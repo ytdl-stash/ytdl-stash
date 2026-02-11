@@ -20,6 +20,11 @@ class Settings(BaseSettings):
         description="Max number of videos to download/import in parallel (default: 1).",
     )
     download_delay_seconds: int = 5
+    download_timeout_seconds: int = Field(
+        default=0,
+        ge=0,
+        description="Max seconds for a single download before timing out. 0 = no timeout.",
+    )
     cookies_file: str | None = None
     ytdlp_output_template: str = "%(uploader)s - %(title)s [%(id)s].%(ext)s"
     # ---------------------------------------------------------------------

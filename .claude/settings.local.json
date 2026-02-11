@@ -4,7 +4,14 @@
       "Bash(curl:*)",
       "Bash(python:*)",
       "Bash(ls:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(pip show:*)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\jpitt_6932a9v\\\\code\\\\ytdl-stash\" -Recurse -Filter \"*.db\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName, Length, LastWriteTime)",
+      "Bash(sqlite3:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker compose:*)"
     ]
   }
 }

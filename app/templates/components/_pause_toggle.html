@@ -10,7 +10,7 @@
       hx-swap="outerHTML">
 {% if is_paused %}
   <button type="button"
-          class="btn btn-sm btn-success tooltip tooltip-bottom"
+          class="btn btn-sm btn-success inline-flex items-center gap-1 tooltip tooltip-bottom"
           data-tip="Resume {{ label|lower }}"
           hx-post="/jobs/{{ pause_key }}/resume"
           hx-target="#pause-toggle-{{ pause_key }}"
@@ -22,7 +22,7 @@
   </button>
 {% else %}
   <button type="button"
-          class="btn btn-sm btn-warning tooltip tooltip-bottom"
+          class="btn btn-sm btn-warning inline-flex items-center gap-1 tooltip tooltip-bottom"
           data-tip="Pause {{ label|lower }}{% if pause_key == 'downloads' %} — active downloads will be cancelled{% endif %}"
           hx-post="/jobs/{{ pause_key }}/pause"
           hx-target="#pause-toggle-{{ pause_key }}"

@@ -389,6 +389,69 @@ async def _apply_metadata_and_sync(
     )
 
 
+async def _cancellable_download(
+    video_id: int,
+    url: str,
+    download_dir: str,
+    output_template: str,
+    settings,
+    progress_hook,
+) -> dict:
+    """Run async_download_video in a separate task with periodic cancel checks.
+
+    asyncio.to_thread() cannot be interrupted — if yt-dlp hangs (network
+    stall, etc.) the cooperative progress-hook cancel never fires.  This
+    wrapper polls the cancel flag every 2 seconds so we can abort even when
+    the download thread is stuck.  A configurable timeout
+    (download_timeout_seconds) acts as a safety net.
+    """
+    task = asyncio.create_task(
+        async_download_video(url, download_dir, output_template, settings, progress_hook=progress_hook)
+    )
+    download_control.set_download_task(video_id, task)
+    check_interval = 2.0
+    timeout = getattr(settings, "download_timeout_seconds", 0) or 0
+    elapsed = 0.0
+    try:
+        while not task.done():
+            done, _ = await asyncio.wait({task}, timeout=check_interval)
+            if done:
+                break
+            elapsed += check_interval
+            if download_control.is_cancel_requested(video_id):
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                raise DownloadCancelled("Download cancelled by user")
+            if timeout > 0 and elapsed >= timeout:
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                raise RuntimeError(f"Download timed out after {int(elapsed)}s")
+        try:
+            return task.result()
+        except asyncio.CancelledError:
+            # Inner task was cancelled (e.g. via cancel_download_task from
+            # stop route).  Convert to DownloadCancelled so the caller's
+            # except-handler persists the "cancelled" status correctly.
+            raise DownloadCancelled("Download task was cancelled")
+    except asyncio.CancelledError:
+        # Job-level cancellation (e.g. stop_job) — propagate to download task.
+        # Convert to DownloadCancelled so process_single_download handles it.
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+        raise DownloadCancelled("Download cancelled (job stopped)")
+    finally:
+        download_control.clear_download_task(video_id)
+
+
 async def process_single_download(
     video: Video, db: AsyncSession, settings: Settings, stash: StashClient
 ) -> None:
@@ -538,17 +601,14 @@ async def process_single_download(
                     last_hook_ts = now
                     last_hook_status = str(status) if status is not None else None
 
-            result = await async_download_video(
+            result = await _cancellable_download(
+                video.id,
                 video.url,
                 settings.download_dir,
                 settings.ytdlp_output_template,
                 settings,
-                progress_hook=_hook,
+                _hook,
             )
-
-            # Stop requested during the download (or right as it finished)
-            if download_control.is_cancel_requested(video.id):
-                raise DownloadCancelled("Download cancelled by user")
 
             video.original_filename = result["filename"]
             video.title = result["title"]
