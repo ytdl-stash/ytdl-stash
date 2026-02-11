@@ -51,6 +51,9 @@ class Settings(BaseSettings):
 
     # Convenience: periodically check whether a newer yt-dlp exists on PyPI
     ytdlp_update_check_interval_hours: int = 24
+    # Scheduler intervals (seconds for channel check and download processor)
+    channel_check_interval_seconds: int = Field(default=60, ge=10, le=86400)
+    download_process_interval_seconds: int = Field(default=30, ge=10, le=86400)
     log_level: str = "INFO"
 
     # ---------------------------------------------------------------------

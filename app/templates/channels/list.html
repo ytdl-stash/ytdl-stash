@@ -4,46 +4,60 @@
 <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
   <h1 class="text-2xl font-bold m-0">Channels</h1>
   <span class="flex items-center gap-2 flex-wrap">
-    <span id="retry-skipped-container">
-      <button type="button" class="btn btn-sm btn-warning gap-1.5 tooltip tooltip-bottom"
-              data-tip="Re-queue all skipped videos for processing with current filter settings"
-              hx-post="/videos/retry_all_skipped"
-              hx-target="#retry-skipped-container"
-              hx-swap="innerHTML"
-              hx-disabled-elt="this"
-              hx-indicator="this"
-              hx-confirm="Retry all skipped videos? They'll be re-evaluated against current channel filters.">
-        <span class="htmx-indicator loading loading-spinner loading-xs"></span>
-        Retry All Skipped
+    <div class="dropdown dropdown-end">
+      <button tabindex="0" class="btn btn-sm btn-primary inline-flex items-center gap-1">
+        Bulk Actions
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
-    </span>
-    <span id="resync-all-container">
-      <button type="button" class="btn btn-sm btn-info gap-1.5 tooltip tooltip-bottom"
-              data-tip="Re-scrape metadata and regenerate all synced videos from Stash"
-              hx-post="/videos/resync_all"
-              hx-target="#resync-all-container"
-              hx-swap="innerHTML"
-              hx-disabled-elt="this"
-              hx-indicator="this"
-              hx-confirm="Re-sync all synced videos from Stash? This may take a while.">
-        <span class="htmx-indicator loading loading-spinner loading-xs"></span>
-        Re-sync All
-      </button>
-    </span>
-    <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-bottom" data-tip="Edit settings for all channels at once"
-            hx-get="/channels/bulk-edit"
-            hx-target="#channels-content"
-            hx-swap="innerHTML">
-      Bulk Edit
-    </button>
-    <span id="job-inline-check_all_channels">
-      <button type="button" class="btn btn-sm btn-primary tooltip tooltip-bottom" data-tip="Scan all enabled channels for new videos"
-              hx-post="/jobs/check_all_channels/trigger"
-              hx-target="#job-inline-check_all_channels"
-              hx-swap="innerHTML">
-        Check All Now
-      </button>
-    </span>
+      <ul tabindex="0" class="dropdown-content menu bg-base-300 rounded-box z-50 mt-1 w-56 p-2 shadow-lg">
+        <li>
+          <span id="retry-skipped-container">
+            <button type="button" class="w-full text-left gap-1.5"
+                    hx-post="/videos/retry_all_skipped"
+                    hx-target="#retry-skipped-container"
+                    hx-swap="innerHTML"
+                    hx-disabled-elt="this"
+                    hx-indicator="this"
+                    hx-confirm="Retry all skipped videos? They'll be re-evaluated against current channel filters.">
+              <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+              Retry All Skipped
+            </button>
+          </span>
+        </li>
+        <li>
+          <span id="resync-all-container">
+            <button type="button" class="w-full text-left gap-1.5"
+                    hx-post="/videos/resync_all"
+                    hx-target="#resync-all-container"
+                    hx-swap="innerHTML"
+                    hx-disabled-elt="this"
+                    hx-indicator="this"
+                    hx-confirm="Re-sync all synced videos from Stash? This may take a while.">
+              <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+              Re-sync All
+            </button>
+          </span>
+        </li>
+        <li>
+          <button type="button" class="w-full text-left"
+                  hx-get="/channels/bulk-edit"
+                  hx-target="#channels-content"
+                  hx-swap="innerHTML">
+            Bulk Edit
+          </button>
+        </li>
+        <li>
+          <span id="job-inline-check_all_channels">
+            <button type="button" class="w-full text-left"
+                    hx-post="/jobs/check_all_channels/trigger"
+                    hx-target="#job-inline-check_all_channels"
+                    hx-swap="innerHTML">
+              Check All Now
+            </button>
+          </span>
+        </li>
+      </ul>
+    </div>
     <button type="button"
             class="btn btn-sm btn-success tooltip tooltip-bottom"
             data-tip="Add a channel: scrape metadata, link to Stash, then save"

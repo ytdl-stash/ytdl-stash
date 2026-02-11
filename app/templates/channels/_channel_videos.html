@@ -1,7 +1,8 @@
 <div id="channel-videos-table-wrapper"
      hx-get="/channels/{{ channel.id }}/videos"
      hx-trigger="every 10s"
-     hx-swap="outerHTML">
+     hx-swap="outerHTML"
+     hx-include="#channel-video-search">
   <div class="overflow-x-auto">
     <table class="table table-responsive mt-2">
       <thead>
@@ -19,4 +20,7 @@
       </tbody>
     </table>
   </div>
+{% if search and not videos %}
+<p class="text-center text-base-content/60 mt-4">No videos matching "{{ search }}"</p>
+{% endif %}
 </div>

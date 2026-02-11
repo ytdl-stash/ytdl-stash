@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,21 +11,49 @@ from app.database import get_db
 from app.main import templates
 from app.download_control import download_control, persist_pause_state
 from app.models import Video
-from app.scheduler import job_registry, stop_job, trigger_job
+from app.scheduler import (
+    APSCHEDULER_ID_MAP,
+    get_job_schedule_info,
+    get_job_schedule_edit_value,
+    job_registry,
+    reschedule_job as scheduler_reschedule_job,
+    stop_job,
+    trigger_job,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
+def _job_rows_with_schedule():
+    """Build list of {job, schedule_display, next_run, schedule_edit_value, schedule_edit_unit} for template context."""
+    rows = []
+    for info in job_registry.values():
+        schedule_display, next_run = get_job_schedule_info(info.id)
+        edit = get_job_schedule_edit_value(info.id)
+        row = {
+            "job": info,
+            "schedule_display": schedule_display,
+            "next_run": next_run,
+        }
+        if edit is not None:
+            row["schedule_edit_value"] = edit[0]
+            row["schedule_edit_unit"] = edit[1]
+        else:
+            row["schedule_edit_value"] = None
+            row["schedule_edit_unit"] = None
+        rows.append(row)
+    return rows
+
+
 @router.get("")
 async def jobs_page(request: Request):
     """Full jobs page listing every triggerable job with status and controls."""
-    jobs = list(job_registry.values())
     return templates.TemplateResponse(
         "jobs/list.html",
         {
             "request": request,
-            "jobs": jobs,
+            "job_rows": _job_rows_with_schedule(),
             "downloads_paused": download_control.is_downloads_paused(),
             "channels_paused": download_control.is_channels_paused(),
         },
@@ -67,11 +95,61 @@ async def pause_toggle(pause_key: str, request: Request):
 @router.get("/status")
 async def jobs_status(request: Request):
     """HTMX partial: updated job rows for polling."""
-    jobs = list(job_registry.values())
     return templates.TemplateResponse(
         "jobs/_job_rows.html",
-        {"request": request, "jobs": jobs},
+        {"request": request, "job_rows": _job_rows_with_schedule()},
     )
+
+
+@router.post("/{job_id}/reschedule")
+async def reschedule(
+    job_id: str,
+    request: Request,
+    seconds: int | None = Form(None),
+    hours: int | None = Form(None),
+):
+    """Reschedule a job with a new interval. Returns the updated job row (HTMX)."""
+    info = job_registry.get(job_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="Unknown job")
+    if APSCHEDULER_ID_MAP.get(job_id) is None:
+        raise HTTPException(status_code=400, detail="Job is not scheduled")
+
+    if job_id == "check_ytdlp_updates":
+        if hours is None or hours < 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Hours must be at least 1 for yt-dlp update checker",
+            )
+        ok = scheduler_reschedule_job(job_id, hours=hours)
+    else:
+        if seconds is None or seconds < 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Seconds must be at least 10 for this job",
+            )
+        ok = scheduler_reschedule_job(job_id, seconds=seconds)
+
+    if not ok:
+        raise HTTPException(status_code=400, detail="Reschedule failed")
+
+    logger.info("Job %s rescheduled (seconds=%s, hours=%s)", job_id, seconds, hours)
+
+    if request.headers.get("HX-Request"):
+        schedule_display, next_run = get_job_schedule_info(job_id)
+        edit = get_job_schedule_edit_value(job_id)
+        return templates.TemplateResponse(
+            "jobs/_job_row.html",
+            {
+                "request": request,
+                "job": info,
+                "schedule_display": schedule_display,
+                "next_run": next_run,
+                "schedule_edit_value": edit[0] if edit else None,
+                "schedule_edit_unit": edit[1] if edit else None,
+            },
+        )
+    return HTMLResponse("Job rescheduled", status_code=200)
 
 
 @router.get("/{job_id}/inline-status")
@@ -106,9 +184,18 @@ async def trigger(job_id: str, request: Request):
         # a compact inline snippet that self-polls until the job finishes.
         trigger_target = request.headers.get("HX-Target", "")
         if trigger_target.startswith("job-row-"):
+            schedule_display, next_run = get_job_schedule_info(job_id)
+            edit = get_job_schedule_edit_value(job_id)
             return templates.TemplateResponse(
                 "jobs/_job_row.html",
-                {"request": request, "job": info},
+                {
+                    "request": request,
+                    "job": info,
+                    "schedule_display": schedule_display,
+                    "next_run": next_run,
+                    "schedule_edit_value": edit[0] if edit else None,
+                    "schedule_edit_unit": edit[1] if edit else None,
+                },
             )
         # Contextual inline response (self-polls while running)
         return templates.TemplateResponse(
@@ -180,9 +267,18 @@ async def stop(
     if request.headers.get("HX-Request"):
         stop_target = request.headers.get("HX-Target", "")
         if stop_target.startswith("job-row-"):
+            schedule_display, next_run = get_job_schedule_info(job_id)
+            edit = get_job_schedule_edit_value(job_id)
             return templates.TemplateResponse(
                 "jobs/_job_row.html",
-                {"request": request, "job": info},
+                {
+                    "request": request,
+                    "job": info,
+                    "schedule_display": schedule_display,
+                    "next_run": next_run,
+                    "schedule_edit_value": edit[0] if edit else None,
+                    "schedule_edit_unit": edit[1] if edit else None,
+                },
             )
         return templates.TemplateResponse(
             "jobs/_inline_status.html",

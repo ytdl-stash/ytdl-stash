@@ -35,12 +35,13 @@ async def list_videos(
     request: Request,
     channel_id: str | None = None,
     status: str | None = None,
+    search: str = "",
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """List videos with optional filter by channel_id and status. HTMX returns _video_list.html."""
+    """List videos with optional filter by channel_id, status, and title search. HTMX returns _video_list.html."""
     channel_id_int: int | None = None
     if channel_id and channel_id.strip():
         try:
@@ -52,17 +53,25 @@ async def list_videos(
     if status_clean is None and not request.headers.get("HX-Request"):
         status_clean = "synced"
 
+    search_clean = search.strip()
+
     base_stmt = select(Video).order_by(Video.created_at.desc())
     if channel_id_int is not None:
         base_stmt = base_stmt.where(Video.channel_id == channel_id_int)
     if status_clean:
         base_stmt = base_stmt.where(Video.status == status_clean)
+    if search_clean:
+        escaped = search_clean.replace("%", r"\%").replace("_", r"\_")
+        base_stmt = base_stmt.where(Video.title.ilike(f"%{escaped}%", escape="\\"))
 
     count_stmt = select(func.count()).select_from(Video)
     if channel_id_int is not None:
         count_stmt = count_stmt.where(Video.channel_id == channel_id_int)
     if status_clean:
         count_stmt = count_stmt.where(Video.status == status_clean)
+    if search_clean:
+        escaped = search_clean.replace("%", r"\%").replace("_", r"\_")
+        count_stmt = count_stmt.where(Video.title.ilike(f"%{escaped}%", escape="\\"))
     total = (await db.execute(count_stmt)).scalar_one() or 0
     total_pages = math.ceil(total / per_page) if total else 1
     if page > total_pages:
@@ -86,6 +95,7 @@ async def list_videos(
         "per_page": per_page,
         "total": total,
         "total_pages": total_pages,
+        "search": search_clean,
     }
 
     if request.headers.get("HX-Request"):

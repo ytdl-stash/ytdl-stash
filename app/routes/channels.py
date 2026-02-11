@@ -566,6 +566,7 @@ async def channel_active_downloads(
 async def channel_videos(
     channel_id: int,
     request: Request,
+    search: str = "",
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
@@ -578,12 +579,17 @@ async def channel_videos(
         key=lambda v: v.upload_date or date.min,
         reverse=True,
     )
+    search_clean = search.strip()
+    if search_clean:
+        q = search_clean.lower()
+        videos = [v for v in videos if q in ((v.title or "").lower())]
     return templates.TemplateResponse(
         "channels/_channel_videos.html",
         {
             "request": request,
             "channel": channel,
             "videos": videos,
+            "search": search_clean,
             "settings": settings,
             "download_progress": download_progress.snapshot(),
         },
@@ -614,6 +620,7 @@ async def channel_detail(
             "channel": channel,
             "videos": videos,
             "active_videos": active_videos,
+            "search": "",
             "stash_url": settings.stash_url.rstrip("/"),
             "settings": settings,
             "download_progress": download_progress.snapshot(),
@@ -647,6 +654,7 @@ async def _channel_sync_response(
                     "channel": channel,
                     "videos": videos,
                     "active_videos": active_videos,
+                    "search": "",
                     "stash_url": settings.stash_url.rstrip("/"),
                     "settings": settings,
                     "download_progress": download_progress.snapshot(),
@@ -956,6 +964,7 @@ async def channel_toggle(
                     "channel": channel,
                     "videos": videos,
                     "active_videos": active_videos,
+                    "search": "",
                     "stash_url": settings.stash_url.rstrip("/"),
                     "settings": settings,
                     "download_progress": download_progress.snapshot(),
@@ -1012,6 +1021,7 @@ async def update_channel(
                     "channel": channel,
                     "videos": videos,
                     "active_videos": active_videos,
+                    "search": "",
                     "stash_url": settings.stash_url.rstrip("/"),
                     "settings": settings,
                     "download_progress": download_progress.snapshot(),

@@ -10,28 +10,28 @@
       hx-swap="outerHTML">
 {% if is_paused %}
   <button type="button"
-          class="btn btn-sm btn-success gap-1 tooltip tooltip-bottom"
+          class="btn btn-sm btn-success tooltip tooltip-bottom"
           data-tip="Resume {{ label|lower }}"
           hx-post="/jobs/{{ pause_key }}/resume"
           hx-target="#pause-toggle-{{ pause_key }}"
           hx-swap="outerHTML">
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
       <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
     </svg>
-    Resume {{ label }}
+    <span>Resume {{ label }}</span>
   </button>
 {% else %}
   <button type="button"
-          class="btn btn-sm btn-warning gap-1 tooltip tooltip-bottom"
+          class="btn btn-sm btn-warning tooltip tooltip-bottom"
           data-tip="Pause {{ label|lower }}{% if pause_key == 'downloads' %} — active downloads will be cancelled{% endif %}"
           hx-post="/jobs/{{ pause_key }}/pause"
           hx-target="#pause-toggle-{{ pause_key }}"
           hx-swap="outerHTML"
           {% if pause_key == 'downloads' %}hx-confirm="Pause all downloads? Active downloads will be cancelled."{% endif %}>
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
       <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
     </svg>
-    Pause {{ label }}
+    <span>Pause {{ label }}</span>
   </button>
 {% endif %}
 </span>

@@ -1,4 +1,4 @@
-<div id="channel-card-{{ channel.id }}" class="card card-bordered bg-base-200 hover:shadow-lg transition-shadow">
+<div id="channel-card-{{ channel.id }}" class="card card-bordered bg-base-200 hover:shadow-lg transition-shadow{{ ' opacity-50' if not channel.enabled else '' }}">
   <a href="/channels/{{ channel.id }}" class="block p-4 no-underline text-inherit">
     <figure class="w-full aspect-square overflow-hidden rounded-lg mb-2">
       {% if channel.performer_image_url %}
@@ -19,10 +19,10 @@
           hx-target="#channel-card-{{ channel.id }}"
           hx-swap="outerHTML"
           class="inline">
-      <button type="submit" class="btn btn-sm {{ 'btn-primary' if not channel.enabled else 'btn-ghost' }} tooltip tooltip-top" data-tip="Toggle auto-scanning for this channel">{{ 'Unwatch' if channel.enabled else 'Watch' }}</button>
+      <button type="submit" class="btn btn-sm {{ 'btn-success' if channel.enabled else 'btn-error btn-outline' }} tooltip tooltip-top" data-tip="Toggle auto-scanning for this channel">{{ 'Watched' if channel.enabled else 'Unwatched' }}</button>
     </form>
     <span id="check-now-{{ channel.id }}">
-      <button type="button" class="btn btn-sm btn-ghost tooltip tooltip-top" data-tip="Trigger an immediate scan for new videos"
+      <button type="button" class="btn btn-sm btn-outline tooltip tooltip-top" data-tip="Trigger an immediate scan for new videos"
               hx-post="/channels/{{ channel.id }}/check-now"
               hx-target="#check-now-{{ channel.id }}"
               hx-swap="innerHTML">

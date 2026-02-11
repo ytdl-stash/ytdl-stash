@@ -1,3 +1,5 @@
-{% for job in jobs %}
+{% for row in job_rows %}
+{% with job=row.job, schedule_display=row.schedule_display, next_run=row.next_run, schedule_edit_value=row.schedule_edit_value, schedule_edit_unit=row.schedule_edit_unit %}
 {% include "jobs/_job_row.html" %}
+{% endwith %}
 {% endfor %}

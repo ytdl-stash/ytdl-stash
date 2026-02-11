@@ -78,6 +78,93 @@ job_registry: dict[str, JobInfo] = {
     ),
 }
 
+# Registry job_id -> APScheduler job id (None = manual-only, no scheduled run).
+APSCHEDULER_ID_MAP: dict[str, str | None] = {
+    "check_all_channels": "channel_checker",
+    "process_downloads": "download_processor",
+    "check_ytdlp_updates": "ytdlp_update_checker",
+    "retry_all_failed": None,
+    "backfill_scrape_generate": None,
+    "regenerate_all": None,
+}
+
+
+def get_job_schedule_info(job_id: str) -> tuple[str, datetime | None]:
+    """Return (interval_display, next_run_time) for a registry job.
+    Manual-only jobs return ('Manual', None)."""
+    apscheduler_id = APSCHEDULER_ID_MAP.get(job_id)
+    if apscheduler_id is None:
+        return ("Manual", None)
+    job = scheduler.get_job(apscheduler_id)
+    if job is None:
+        return ("—", None)
+    next_run = job.next_run_time
+    # Format interval from trigger (IntervalTrigger has .interval as timedelta).
+    interval_display = "—"
+    trigger = getattr(job, "trigger", None)
+    if trigger is not None:
+        interval = getattr(trigger, "interval", None)
+        if interval is not None and isinstance(interval, timedelta):
+            total = int(interval.total_seconds())
+            if total >= 3600:
+                h = total // 3600
+                interval_display = f"Every {h}h"
+            else:
+                interval_display = f"Every {total}s"
+    return (interval_display, next_run)
+
+
+def get_job_schedule_edit_value(job_id: str) -> tuple[int, str] | None:
+    """Return (numeric_value, unit) for the schedule edit form, or None if manual-only.
+    unit is 'seconds' or 'hours'."""
+    apscheduler_id = APSCHEDULER_ID_MAP.get(job_id)
+    if apscheduler_id is None:
+        return None
+    job = scheduler.get_job(apscheduler_id)
+    if job is None:
+        return None
+    trigger = getattr(job, "trigger", None)
+    if trigger is None:
+        return None
+    interval = getattr(trigger, "interval", None)
+    if interval is None or not isinstance(interval, timedelta):
+        return None
+    total = int(interval.total_seconds())
+    if apscheduler_id == "ytdlp_update_checker":
+        return (max(1, total // 3600), "hours")
+    return (max(10, total), "seconds")
+
+
+def reschedule_job(
+    job_id: str,
+    *,
+    seconds: int | None = None,
+    hours: int | None = None,
+) -> bool:
+    """Reschedule a job with a new interval. Returns True if rescheduled, False if not schedulable or invalid."""
+    apscheduler_id = APSCHEDULER_ID_MAP.get(job_id)
+    if apscheduler_id is None:
+        return False
+    if scheduler.get_job(apscheduler_id) is None:
+        return False
+    if apscheduler_id == "ytdlp_update_checker":
+        if hours is None or hours < 1:
+            return False
+        scheduler.reschedule_job(
+            apscheduler_id,
+            trigger="interval",
+            hours=hours,
+        )
+    else:
+        if seconds is None or seconds < 10:
+            return False
+        scheduler.reschedule_job(
+            apscheduler_id,
+            trigger="interval",
+            seconds=seconds,
+        )
+    return True
+
 
 async def _run_tracked(job_id: str, coro_fn) -> None:
     """Wrap a job coroutine with tracking: set running flag, record timing."""
@@ -610,31 +697,36 @@ def stop_job(job_id: str) -> bool:
 def start_scheduler() -> None:
     """Start the scheduler. Call from FastAPI lifespan after init_db."""
     settings = get_settings()
+    channel_secs = max(10, settings.channel_check_interval_seconds)
+    download_secs = max(10, settings.download_process_interval_seconds)
+    ytdlp_hours = max(1, int(settings.ytdlp_update_check_interval_hours))
     scheduler.add_job(
         _channel_checker,
         "interval",
-        seconds=60,
+        seconds=channel_secs,
         id="channel_checker",
         max_instances=1,
     )
     scheduler.add_job(
         _download_processor,
         "interval",
-        seconds=30,
+        seconds=download_secs,
         id="download_processor",
         max_instances=1,
     )
     scheduler.add_job(
         _ytdlp_update_checker,
         "interval",
-        hours=max(1, int(settings.ytdlp_update_check_interval_hours)),
+        hours=ytdlp_hours,
         id="ytdlp_update_checker",
         max_instances=1,
     )
     scheduler.start()
     logger.info(
-        "Scheduler started (channel_checker=60s, download_processor=30s, ytdlp_update_checker=%sh)",
-        max(1, int(settings.ytdlp_update_check_interval_hours)),
+        "Scheduler started (channel_checker=%ds, download_processor=%ds, ytdlp_update_checker=%dh)",
+        channel_secs,
+        download_secs,
+        ytdlp_hours,
     )
 
 

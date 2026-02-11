@@ -15,13 +15,15 @@
 <p class="mb-4">Background jobs run on a schedule. Use <strong>Run Now</strong> to trigger one immediately.</p>
 
 <div class="overflow-x-auto">
-  <table class="table table-responsive">
+  <table class="table table-responsive table-fixed w-full">
     <thead>
       <tr>
-        <th class="tooltip tooltip-bottom" data-tip="Background task name and description">Job</th>
-        <th class="tooltip tooltip-bottom" data-tip="Current state — Running, Idle, or Error">Status</th>
-        <th class="tooltip tooltip-bottom" data-tip="When this job last executed and how long it took">Last Run</th>
-        <th>Action</th>
+        <th class="w-1/4 tooltip tooltip-bottom" data-tip="Background task name and description">Job</th>
+        <th class="w-20 tooltip tooltip-bottom" data-tip="Current state — Running, Idle, or Error">Status</th>
+        <th class="w-36 tooltip tooltip-bottom" data-tip="How often this job runs">Schedule</th>
+        <th class="w-40 tooltip tooltip-bottom" data-tip="When this job will run next">Next Run</th>
+        <th class="w-40 tooltip tooltip-bottom" data-tip="When this job last executed and how long it took">Last Run</th>
+        <th class="w-28">Action</th>
       </tr>
     </thead>
     <tbody id="job-list"

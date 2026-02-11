@@ -307,6 +307,30 @@
     <div class="card-body">
       <div class="flex flex-wrap items-center gap-4 mb-4">
         <h3 class="text-lg font-semibold mt-0 mb-0">Videos ({{ videos|length }})</h3>
+        <div class="flex items-center gap-2">
+          <input type="search"
+                 name="search"
+                 id="channel-video-search"
+                 value="{{ search }}"
+                 placeholder="Search videos…"
+                 class="input input-sm input-bordered w-48"
+                 hx-get="/channels/{{ channel.id }}/videos"
+                 hx-trigger="input changed delay:300ms, search"
+                 hx-target="#channel-videos-table-wrapper"
+                 hx-swap="outerHTML"
+                 hx-include="this"
+                 hx-push-url="false"
+                 aria-label="Search videos by title">
+          {% if search %}
+          <button type="button" class="btn btn-sm btn-ghost"
+                  hx-get="/channels/{{ channel.id }}/videos"
+                  hx-target="#channel-videos-table-wrapper"
+                  hx-swap="outerHTML"
+                  aria-label="Clear search">
+            ✕
+          </button>
+          {% endif %}
+        </div>
         <div class="flex flex-wrap gap-2 ml-auto">
           <span id="retry-skipped-container-detail">
             <button type="button" class="btn btn-sm btn-warning tooltip tooltip-bottom" data-tip="Reset this channel's skipped videos back to pending"
