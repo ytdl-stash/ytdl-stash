@@ -82,7 +82,7 @@ gh run watch
 1. `.github/workflows/release.yml` triggers on `v*` tags.
 2. Docker Buildx builds `linux/amd64` and `linux/arm64` images.
 3. The `APP_VERSION` build arg bakes the tag name into the container's `VERSION` file.
-4. Images are pushed to `ghcr.io/jpittelkow/ytdl-stash` with tags:
+4. Images are pushed to `ghcr.io/spincity07/ytdl-stash` with tags:
    - `0.14.0` (full semver)
    - `0.14` (major.minor)
    - `0` (major)
