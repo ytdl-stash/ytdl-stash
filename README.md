@@ -28,7 +28,7 @@ Monitor video channels, download new videos with [yt-dlp](https://github.com/yt-
    ```yaml
    services:
      ytdl-stash:
-       image: ghcr.io/<OWNER>/ytdl-stash:latest
+       image: ghcr.io/ytdl-stash/ytdl-stash:latest
        # ... keep the rest of docker-compose.yml (ports, volumes, environment)
    ```
 
@@ -171,10 +171,10 @@ git push origin v1.0.0
 ```
 
 This produces multi-platform images (linux/amd64 + linux/arm64) tagged as:
-- `ghcr.io/<OWNER>/ytdl-stash:1.0.0`
-- `ghcr.io/<OWNER>/ytdl-stash:1.0`
-- `ghcr.io/<OWNER>/ytdl-stash:1`
-- `ghcr.io/<OWNER>/ytdl-stash:latest`
+- `ghcr.io/ytdl-stash/ytdl-stash:1.0.0`
+- `ghcr.io/ytdl-stash/ytdl-stash:1.0`
+- `ghcr.io/ytdl-stash/ytdl-stash:1`
+- `ghcr.io/ytdl-stash/ytdl-stash:latest`
 
 ## More
 
