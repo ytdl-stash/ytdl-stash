@@ -1,4 +1,5 @@
 fastapi>=0.115,<1.0
+starlette<1.0  # 1.0.0 dropped legacy TemplateResponse(name, ctx) — pinning until call sites migrate to (request, name, ctx)
 uvicorn[standard]>=0.34,<1.0
 sqlalchemy[asyncio]>=2.0,<3.0
 aiosqlite>=0.21,<1.0
