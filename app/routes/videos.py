@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/videos", tags=["videos"])
 
 ACTIVE_DOWNLOAD_STATUSES = ("downloading", "cancelling", "downloaded", "importing")
+REDOWNLOAD_ALLOWED_STATUSES = frozenset(
+    {"imported", "synced", "failed", "cancelled", "skipped"}
+)
 
 VIDEO_SORT_OPTIONS = {
     "created_at_desc": lambda: desc(Video.created_at),
@@ -414,17 +417,40 @@ async def redownload_video(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """Force a fresh download. Clears filename/oshash, deletes existing file if present, sets pending."""
+    """Force a fresh download.
+
+    For videos already linked to a Stash scene, the scene is destroyed first
+    (with delete_file=True, delete_generated=True) so re-import produces a
+    clean replacement rather than orphaning the old scene. Then any remaining
+    local file is removed and the video is reset to ``pending``.
+    """
     video = await db.get(Video, video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-    if video.status not in {"failed", "cancelled", "skipped"}:
+    if video.status not in REDOWNLOAD_ALLOWED_STATUSES:
         raise HTTPException(
             status_code=400,
-            detail="Only failed/cancelled/skipped videos can be redownloaded",
+            detail=f"Cannot redownload a video in status '{video.status}'",
         )
 
-    # Delete existing file if we know its path and it exists
+    if video.stash_scene_id:
+        try:
+            async with StashClient.from_settings(settings) as stash:
+                await stash.destroy_scene(
+                    video.stash_scene_id,
+                    delete_file=True,
+                    delete_generated=True,
+                )
+            logger.info(
+                "Video %s: destroyed Stash scene %s for redownload",
+                video_id, video.stash_scene_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "Video %s: failed to destroy Stash scene %s: %s",
+                video_id, video.stash_scene_id, e,
+            )
+
     if video.original_filename:
         candidate = os.path.join(settings.download_dir, video.original_filename)
         if os.path.isfile(candidate):
@@ -437,6 +463,10 @@ async def redownload_video(
     video.original_filename = None
     video.oshash = None
     video.stash_scene_id = None
+    video.downloaded_at = None
+    video.synced_at = None
+    video.scrape_attempted_at = None
+    video.generate_triggered_at = None
     video.status = "pending"
     video.error_message = None
     logger.info("Video %s reset to pending for redownload", video_id)

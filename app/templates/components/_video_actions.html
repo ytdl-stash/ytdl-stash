@@ -42,11 +42,14 @@
           hx-confirm="Retry import for '{{ video.title|e }}'?">
     Retry
   </button>
-  <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Force a fresh download (deletes existing file)"
+  {% endif %}
+  {% if video.status in ['imported', 'synced', 'failed', 'cancelled', 'skipped'] %}
+  <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top"
+          data-tip="Force a fresh download{% if video.stash_scene_id %} (deletes the Stash scene and file){% else %} (deletes existing file){% endif %}"
           hx-post="/videos/{{ video.id }}/redownload"
           hx-target="{{ hx_status_target }}"
           hx-swap="outerHTML"
-          hx-confirm="Force re-download for '{{ video.title|e }}'? This will re-download the video.">
+          hx-confirm="Force re-download for '{{ video.title|e }}'?{% if video.stash_scene_id %} The existing Stash scene will be deleted.{% endif %}">
     Redownload
   </button>
   {% endif %}

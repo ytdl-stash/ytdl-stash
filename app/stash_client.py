@@ -251,6 +251,12 @@ mutation SceneUpdate($input: SceneUpdateInput!) {
 }
 """
 
+_SCENE_DESTROY_MUTATION = """
+mutation SceneDestroy($input: SceneDestroyInput!) {
+    sceneDestroy(input: $input)
+}
+"""
+
 _SCRAPE_SCENE_URL_QUERY = """
 query ScrapeSceneURL($url: String!) {
     scrapeSceneURL(url: $url) {
@@ -1139,6 +1145,29 @@ class StashClient:
         if organized is not None:
             scene_input["organized"] = organized
         await self._query(_SCENE_UPDATE_MUTATION, {"input": scene_input})
+
+    async def destroy_scene(
+        self,
+        scene_id: str,
+        *,
+        delete_file: bool = True,
+        delete_generated: bool = True,
+    ) -> bool:
+        """Delete a scene from Stash. Returns True on success.
+
+        ``delete_file`` also removes the underlying media file from disk;
+        ``delete_generated`` removes generated artifacts (covers, previews,
+        sprites, phashes).
+        """
+        variables = {
+            "input": {
+                "id": scene_id,
+                "delete_file": delete_file,
+                "delete_generated": delete_generated,
+            }
+        }
+        data = await self._query(_SCENE_DESTROY_MUTATION, variables)
+        return bool(data.get("sceneDestroy"))
 
     # ------------------------------------------------------------------
     # Tags
