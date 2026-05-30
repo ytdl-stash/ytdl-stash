@@ -1,14 +1,68 @@
 /*
  * Tailwind + DaisyUI source. Compiled to ../app.css by `npm run build:css`
- * (and at Docker image build time). Scans the templates so only the utility
- * classes actually used are emitted. Custom rules live in ../style.css.
+ * (and at Docker build time). Scans the templates so only the utility
+ * classes actually used are emitted.
+ *
+ * Theme: "controlroom" — flat dark console. Slate surfaces, azure primary,
+ * teal success. Fonts self-hosted (no CDN), see @font-face below.
  */
 @import "tailwindcss";
 
 /* Scan Jinja templates for utility classes (path is relative to this file). */
 @source "../../templates";
 
-/* DaisyUI component library + the themes we use. */
+/* ---- Self-hosted fonts (latin subset) ---- */
+@font-face { font-family: "Schibsted Grotesk"; font-style: normal; font-weight: 400; font-display: swap; src: url("/static/fonts/schibsted-grotesk-400.woff2") format("woff2"); }
+@font-face { font-family: "Schibsted Grotesk"; font-style: normal; font-weight: 500; font-display: swap; src: url("/static/fonts/schibsted-grotesk-500.woff2") format("woff2"); }
+@font-face { font-family: "Schibsted Grotesk"; font-style: normal; font-weight: 600; font-display: swap; src: url("/static/fonts/schibsted-grotesk-600.woff2") format("woff2"); }
+@font-face { font-family: "Schibsted Grotesk"; font-style: normal; font-weight: 700; font-display: swap; src: url("/static/fonts/schibsted-grotesk-700.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/static/fonts/ibm-plex-mono-400.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("/static/fonts/ibm-plex-mono-500.woff2") format("woff2"); }
+
+@theme {
+  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+/* DaisyUI + custom flat theme. */
 @plugin "daisyui" {
-  themes: dark --default, light;
+  themes: controlroom --default, light;
+}
+@plugin "daisyui/theme" {
+  name: "controlroom";
+  default: true;
+  prefersdark: true;
+  color-scheme: "dark";
+
+  --color-base-100: #161b22;   /* page background (darkest)        */
+  --color-base-200: #1e242e;   /* cards / rail / elevated surfaces */
+  --color-base-300: #2b3340;   /* borders / hover / dropdowns      */
+  --color-base-content: #d7dce5;
+
+  --color-primary: #5b9dff;    /* azure */
+  --color-primary-content: #07142e;
+  --color-secondary: #b794f6;  /* violet */
+  --color-secondary-content: #1a1030;
+  --color-accent: #2dd4bf;     /* teal */
+  --color-accent-content: #04201c;
+  --color-neutral: #252c37;
+  --color-neutral-content: #d7dce5;
+
+  --color-info: #5cc8ee;
+  --color-info-content: #041e26;
+  --color-success: #2dd4bf;    /* teal — synced/healthy */
+  --color-success-content: #04201c;
+  --color-warning: #fbbf24;    /* amber — pending */
+  --color-warning-content: #2a1c00;
+  --color-error: #fb7185;      /* rose — failed */
+  --color-error-content: #2a0410;
+
+  --radius-selector: 0.5rem;
+  --radius-field: 0.55rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;                  /* flat — no 3D gradients/shadows */
+  --noise: 0;
 }

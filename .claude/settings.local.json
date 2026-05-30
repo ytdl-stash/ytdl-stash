@@ -29,7 +29,10 @@
       "Bash(npx --prefix /c/Users/jpitt_6932a9v/code/ytdl-stash tailwindcss -i iso.css -o iso.out.css)",
       "Bash(grep -oE '\\\\.\\(w|h|basis\\)-[0-9]\\\\\\\\?/[0-9]+' iso.out.css)",
       "Bash(grep -oE '\\\\.w-[0-9]\\\\\\\\/[0-9]' /tmp/iso.out.css)",
-      "Bash(grep -oE '\\\\.w-[0-9]\\\\\\\\/[0-9]+' .tmp-iso/iso.out.css)"
+      "Bash(grep -oE '\\\\.w-[0-9]\\\\\\\\/[0-9]+' .tmp-iso/iso.out.css)",
+      "Bash(node shot.mjs dashboard.html channels.html videos.html jobs.html logs.html settings.html login.html)",
+      "Bash(node shot.mjs dashboard-v2.html channels.html videos.html jobs.html logs.html settings.html login.html)",
+      "Bash(node shot-live.mjs)"
     ]
   }
 }
