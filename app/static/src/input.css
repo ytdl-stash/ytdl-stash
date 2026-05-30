@@ -1,0 +1,14 @@
+/*
+ * Tailwind + DaisyUI source. Compiled to ../app.css by `npm run build:css`
+ * (and at Docker image build time). Scans the templates so only the utility
+ * classes actually used are emitted. Custom rules live in ../style.css.
+ */
+@import "tailwindcss";
+
+/* Scan Jinja templates for utility classes (path is relative to this file). */
+@source "../../templates";
+
+/* DaisyUI component library + the themes we use. */
+@plugin "daisyui" {
+  themes: dark --default, light;
+}

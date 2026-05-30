@@ -47,3 +47,6 @@ VERSION
 htmlcov/
 .coverage
 .pytest_cache/
+
+# Node / frontend build (app/static/app.css IS committed; node_modules is not)
+node_modules/

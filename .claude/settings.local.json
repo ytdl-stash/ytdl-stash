@@ -17,7 +17,12 @@
       "Bash(/tmp/phverify/Scripts/python.exe -m pip install --quiet \"yt-dlp>=2025.1\")",
       "Bash(echo \"installed:$?\")",
       "Bash(/tmp/phverify/Scripts/python.exe -c \"import yt_dlp; print\\('yt-dlp', yt_dlp.version.__version__\\)\")",
-      "PowerShell(powershell -ExecutionPolicy Bypass -File \"scripts/release.ps1\" -Bump patch)"
+      "PowerShell(powershell -ExecutionPolicy Bypass -File \"scripts/release.ps1\" -Bump patch)",
+      "PowerShell(gh auth setup-git 2>&1; Write-Output \"---setup done---\"; git push origin main 2>&1; Write-Output \"---branch pushed: $LASTEXITCODE---\"; git push origin v0.37.2 2>&1; Write-Output \"---tag pushed: $LASTEXITCODE---\")",
+      "PowerShell(git remote get-url origin)",
+      "PowerShell(gh auth status 2>&1)",
+      "Bash(docker rm *)",
+      "Bash(docker rmi *)"
     ]
   }
 }

@@ -62,7 +62,7 @@
 {% else %}
 <p>No recent downloads.</p>
 {% endif %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
 <script>
 (function() {
   var data = {{ chart_data | tojson }};
@@ -80,6 +80,16 @@
     if (resolved && resolved.startsWith('rgb(')) {
       chartColor = resolved;
       bgAlpha = resolved.replace(')', ', 0.25)').replace('rgb(', 'rgba(');
+    }
+  } catch (_) {}
+  // Grid lines derived from the theme's text color at low alpha, so they're
+  // visible on both the dark and light themes (a fixed black was invisible
+  // on dark). Falls back to a neutral gray that works on either.
+  var gridColor = 'rgba(128, 128, 128, 0.15)';
+  try {
+    var bodyColor = getComputedStyle(document.body).color;
+    if (bodyColor && bodyColor.startsWith('rgb(')) {
+      gridColor = bodyColor.replace(')', ', 0.12)').replace('rgb(', 'rgba(');
     }
   } catch (_) {}
   new Chart(ctx, {
@@ -128,12 +138,12 @@
       },
       scales: {
         x: {
-          grid: { color: 'rgba(0,0,0,0.06)', drawBorder: false },
+          grid: { color: gridColor, drawBorder: false },
           ticks: { maxTicksLimit: 8, font: { size: 11 } }
         },
         y: {
           beginAtZero: true,
-          grid: { color: 'rgba(0,0,0,0.06)', drawBorder: false },
+          grid: { color: gridColor, drawBorder: false },
           ticks: { precision: 0, font: { size: 11 } }
         }
       }

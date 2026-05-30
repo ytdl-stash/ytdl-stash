@@ -1,0 +1,14 @@
+{
+  "name": "ytdl-stash-assets",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Frontend asset build for ytdl-stash (Tailwind + DaisyUI). Produces app/static/app.css.",
+  "scripts": {
+    "build:css": "tailwindcss -i app/static/src/input.css -o app/static/app.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "daisyui": "^5.0.0",
+    "tailwindcss": "^4.1.0"
+  }
+}
