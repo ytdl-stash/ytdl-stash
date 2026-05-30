@@ -22,7 +22,14 @@
       "PowerShell(git remote get-url origin)",
       "PowerShell(gh auth status 2>&1)",
       "Bash(docker rm *)",
-      "Bash(docker rmi *)"
+      "Bash(docker rmi *)",
+      "Bash(grep -oE '\\\\.w-1\\\\\\\\?/[0-9]' app/static/app.css)",
+      "Bash(npx tailwindcss *)",
+      "Bash(grep -oE '\\\\.w-[0-9]\\\\\\\\/[0-9]' /tmp/wtest.css)",
+      "Bash(npx --prefix /c/Users/jpitt_6932a9v/code/ytdl-stash tailwindcss -i iso.css -o iso.out.css)",
+      "Bash(grep -oE '\\\\.\\(w|h|basis\\)-[0-9]\\\\\\\\?/[0-9]+' iso.out.css)",
+      "Bash(grep -oE '\\\\.w-[0-9]\\\\\\\\/[0-9]' /tmp/iso.out.css)",
+      "Bash(grep -oE '\\\\.w-[0-9]\\\\\\\\/[0-9]+' .tmp-iso/iso.out.css)"
     ]
   }
 }

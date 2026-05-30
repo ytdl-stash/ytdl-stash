@@ -52,6 +52,19 @@
   transform: translateY(-50%) translateX(0.25rem);
 }
 
+/*
+ * DaisyUI's .tooltip sets `display: inline-block`. When applied to a table
+ * header/cell (e.g. the column tooltips on the Jobs table and the th_tooltip
+ * macro) that breaks the cell out of the table layout, so the heading row no
+ * longer aligns with the columns below. Force tooltip'd cells back to their
+ * native table display. Positioning still works — both .tooltip rules set
+ * position: relative, which the absolutely-positioned ::before anchors to.
+ */
+th.tooltip,
+td.tooltip {
+  display: table-cell;
+}
+
 /* HTMX loading indicator */
 .htmx-indicator {
   display: none;
