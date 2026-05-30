@@ -15,8 +15,14 @@ from yt_dlp.utils import DownloadError
 from collections.abc import Callable
 
 from app.config import Settings
+from app import ytdlp_patches
 
 logger = logging.getLogger(__name__)
+
+# Apply local patches for upstream yt-dlp bugs before any YoutubeDL is built.
+# All yt-dlp usage funnels through this module, so this is the one chokepoint
+# that guarantees the patches are live for web, scheduler, and script paths.
+ytdlp_patches.apply_patches()
 
 
 class DownloadCancelled(Exception):

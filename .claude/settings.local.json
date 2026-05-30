@@ -11,7 +11,13 @@
       "Bash(sqlite3:*)",
       "Bash(docker ps:*)",
       "Bash(docker exec:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "WebFetch(domain:patch-diff.githubusercontent.com)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(/tmp/phverify/Scripts/python.exe -m pip install --quiet \"yt-dlp>=2025.1\")",
+      "Bash(echo \"installed:$?\")",
+      "Bash(/tmp/phverify/Scripts/python.exe -c \"import yt_dlp; print\\('yt-dlp', yt_dlp.version.__version__\\)\")",
+      "PowerShell(powershell -ExecutionPolicy Bypass -File \"scripts/release.ps1\" -Bump patch)"
     ]
   }
 }

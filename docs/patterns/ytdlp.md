@@ -261,3 +261,28 @@ Common errors and their meanings:
 - **"HTTP Error 403: Forbidden"**: Rate-limited or needs cookies.
 - **"Unable to extract"**: Extractor broken; update yt-dlp.
 - **"Incomplete data"**: Transient network issue; retry.
+- **"HTTP Error 410: Gone" (PornHub)**: Site rejects yt-dlp's TLS handshake.
+  Patched locally — see "Local Patches" below.
+
+---
+
+## Local Patches
+
+When yt-dlp ships a bug we can't wait for upstream to fix, we monkeypatch it at
+runtime rather than forking. Patches live in [`app/ytdlp_patches.py`](../../app/ytdlp_patches.py)
+and are applied once at import time of `app/downloader.py` (the single chokepoint
+for all yt-dlp usage). Each patch is idempotent and failure-tolerant.
+
+**Active: PornHub "HTTP Error 410: Gone"** ([yt-dlp #16729](https://github.com/yt-dlp/yt-dlp/issues/16729))
+- PornHub rejects yt-dlp's default TLS handshake with a 410 on both the watch
+  page and the media CDN. The request succeeds with a *legacy* OpenSSL context.
+- The shim wraps `YoutubeDL.urlopen` to attach the `legacy_ssl=True` request
+  extension for any PornHub host or media CDN (`phncdn`/`phprcdn`), and bumps the
+  `accessAgeDisclaimerPH` cookie to `2` so HLS formats are exposed. This mirrors
+  the (still-unmerged) upstream PR #16776.
+- **Remove this patch** once a fix is merged upstream and we pin a nightly that
+  includes it. Updating yt-dlp alone does NOT fix this today — neither PR is merged.
+
+> Alternative (no code): some users report the impersonation approach (PR #16794)
+> works. Since the app already supports `impersonate`, you can try setting
+> `YTDL_YTDLP_IMPERSONATE=chrome` instead of / in addition to the patch.
