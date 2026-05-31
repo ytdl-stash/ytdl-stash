@@ -194,48 +194,43 @@ td.tooltip {
 }
 
 /* ==========================================================================
-   "Control Room" shell — sidebar rail layout + flat refinements.
+   "Control Room" shell — responsive TOP nav.
    Colors come from the DaisyUI "controlroom" theme variables.
    ========================================================================== */
-:root { --cr-rail: 240px; }
+html, body { max-width: 100%; overflow-x: hidden; }
 body { letter-spacing: -0.005em; }
 
-.cr-app { display: grid; grid-template-columns: var(--cr-rail) 1fr; min-height: 100vh; }
-@media (max-width: 1023px) {
-  .cr-app { grid-template-columns: 1fr; }
-  .cr-rail { display: none; }
-}
+.cr-topnav { position: sticky; top: 0; z-index: 30; background: var(--color-base-200); border-bottom: 1px solid var(--color-base-300); }
+.cr-topnav-inner { max-width: 1280px; margin: 0 auto; display: flex; align-items: center; gap: 20px; padding: 0 24px; height: 58px; }
+@media (max-width: 640px) { .cr-topnav-inner { padding: 0 16px; } }
 
-.cr-rail {
-  position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column;
-  padding: 22px 16px; border-right: 1px solid var(--color-base-300); background: var(--color-base-200);
-}
-.cr-brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 22px; text-decoration: none; color: var(--color-base-content); }
-.cr-mark { width: 30px; height: 30px; border-radius: 8px; flex: none; background: var(--color-primary); display: grid; place-items: center; }
-.cr-mark svg { width: 17px; height: 17px; color: var(--color-primary-content); }
-.cr-name { font-weight: 700; letter-spacing: -.02em; font-size: 15.5px; }
+.cr-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--color-base-content); flex: none; }
+.cr-mark { width: 28px; height: 28px; border-radius: 7px; flex: none; background: var(--color-primary); display: grid; place-items: center; }
+.cr-mark svg { width: 16px; height: 16px; color: var(--color-primary-content); }
+.cr-name { font-weight: 700; letter-spacing: -.02em; font-size: 15px; }
 .cr-name b { color: var(--color-primary); }
 
-.cr-nav { display: flex; flex-direction: column; gap: 2px; }
-.cr-eyebrow { font-family: var(--font-mono, monospace); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: color-mix(in srgb, var(--color-base-content) 38%, transparent); padding: 16px 10px 7px; }
-.cr-nav a { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 10px; color: color-mix(in srgb, var(--color-base-content) 68%, transparent); text-decoration: none; font-weight: 500; font-size: 13.5px; position: relative; transition: background .14s, color .14s; }
-.cr-nav a svg { width: 17px; height: 17px; opacity: .82; }
-.cr-nav a:hover { background: var(--color-base-100); color: var(--color-base-content); }
-.cr-nav a.active { background: var(--color-base-100); color: var(--color-base-content); }
-.cr-nav a.active::before { content: ""; position: absolute; left: -16px; top: 50%; transform: translateY(-50%); width: 3px; height: 20px; border-radius: 0 3px 3px 0; background: var(--color-primary); }
+.cr-toplinks { display: flex; align-items: center; gap: 2px; height: 100%; }
+.cr-toplinks a { display: flex; align-items: center; height: 100%; padding: 0 13px; color: color-mix(in srgb, var(--color-base-content) 58%, transparent); text-decoration: none; font-weight: 500; font-size: 13.5px; border-bottom: 2px solid transparent; transition: color .14s, border-color .14s; }
+.cr-toplinks a:hover { color: var(--color-base-content); }
+.cr-toplinks a.active { color: var(--color-base-content); border-bottom-color: var(--color-primary); }
 
-.cr-railfoot { margin-top: auto; padding: 14px 10px 4px; border-top: 1px solid var(--color-base-300); display: flex; flex-direction: column; gap: 8px; }
-.cr-stat { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono, monospace); font-size: 11px; color: color-mix(in srgb, var(--color-base-content) 68%, transparent); }
+.cr-topright { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.cr-status { display: flex; align-items: center; gap: 7px; font-family: var(--font-mono, monospace); font-size: 11px; color: color-mix(in srgb, var(--color-base-content) 60%, transparent); white-space: nowrap; }
 .cr-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--color-success); }
 .cr-dot.warn { background: var(--color-warning); }
 
-.cr-main { min-width: 0; display: flex; flex-direction: column; }
-.cr-content { padding: 24px 30px 48px; max-width: 1320px; width: 100%; }
-@media (max-width: 640px) { .cr-content { padding: 18px 16px 40px; } }
-.cr-mobilebar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--color-base-300); background: var(--color-base-200); }
-.cr-mobilebar .cr-brand { padding: 0; }
-.dropdown-content.cr-nav { gap: 0; }
-.dropdown-content.cr-nav .cr-eyebrow:first-child { padding-top: 4px; }
+/* Mobile dropdown nav (links rendered inside a DaisyUI dropdown). */
+.cr-topmenu { display: flex; flex-direction: column; gap: 1px; }
+.cr-topmenu a { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 8px; color: color-mix(in srgb, var(--color-base-content) 78%, transparent); text-decoration: none; font-size: 14px; font-weight: 500; }
+.cr-topmenu a:hover { background: var(--color-base-300); color: var(--color-base-content); }
+.cr-topmenu a.active { color: var(--color-primary); }
+
+@media (max-width: 1023px) { .cr-toplinks { display: none; } }
+@media (max-width: 600px) { .cr-status { display: none; } }
+
+.cr-content { margin-inline: auto; max-width: 1240px; width: 100%; padding: 26px 24px 56px; }
+@media (max-width: 640px) { .cr-content { padding: 18px 16px 44px; } }
 
 /* ==========================================================================
    Mockup-fidelity layer — restyles DaisyUI components to the flat console
@@ -282,8 +277,50 @@ body { letter-spacing: -0.005em; }
 .stats { background: var(--color-base-200); border: 1px solid var(--color-base-300); box-shadow: none; }
 .stat-value { font-family: var(--font-mono); font-weight: 500; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
 
-/* ---- Buttons ---- */
-.btn { font-weight: 600; letter-spacing: -.005em; box-shadow: none; }
+/* ---- Buttons — defined treatment with a clear hierarchy ---- */
+.btn {
+  height: 2.25rem; min-height: 2.25rem; padding: 0 0.9rem;
+  font-weight: 600; font-size: 12.5px; letter-spacing: -.005em;
+  border-width: 1px; box-shadow: none;
+  background: var(--color-base-300);
+  border-color: color-mix(in srgb, var(--color-base-content) 15%, transparent);
+  color: var(--color-base-content);
+  transition: transform .07s ease, background-color .14s, border-color .14s, box-shadow .14s, color .14s;
+}
+.btn:hover { background: color-mix(in srgb, var(--color-base-content) 12%, transparent); border-color: color-mix(in srgb, var(--color-base-content) 26%, transparent); }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent); }
+.btn-xs { height: 1.6rem; min-height: 1.6rem; padding: 0 .55rem; font-size: 10.5px; }
+.btn-sm { height: 1.85rem; min-height: 1.85rem; padding: 0 .7rem; font-size: 11.5px; }
+.btn-lg { height: 2.7rem; min-height: 2.7rem; padding: 0 1.3rem; font-size: 14px; }
+
+/* Filled — primary actions (azure) and positive actions (teal). */
+.btn-primary { background: var(--color-primary); color: var(--color-primary-content); border-color: transparent; box-shadow: inset 0 1px 0 rgba(255,255,255,.28); }
+.btn-primary:hover { background: color-mix(in srgb, var(--color-primary) 86%, white); }
+.btn-success { background: var(--color-success); color: var(--color-success-content); border-color: transparent; box-shadow: inset 0 1px 0 rgba(255,255,255,.22); }
+.btn-success:hover { background: color-mix(in srgb, var(--color-success) 86%, white); }
+
+/* Soft tinted — secondary / status actions (match the badge language). */
+.btn-secondary { background: color-mix(in srgb, var(--color-secondary) 16%, transparent); color: var(--color-secondary); border-color: color-mix(in srgb, var(--color-secondary) 42%, transparent); }
+.btn-secondary:hover { background: color-mix(in srgb, var(--color-secondary) 26%, transparent); border-color: color-mix(in srgb, var(--color-secondary) 58%, transparent); }
+.btn-warning { background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning); border-color: color-mix(in srgb, var(--color-warning) 40%, transparent); }
+.btn-warning:hover { background: color-mix(in srgb, var(--color-warning) 24%, transparent); }
+.btn-error { background: color-mix(in srgb, var(--color-error) 13%, transparent); color: var(--color-error); border-color: color-mix(in srgb, var(--color-error) 40%, transparent); }
+.btn-error:hover { background: color-mix(in srgb, var(--color-error) 22%, transparent); }
+.btn-info { background: color-mix(in srgb, var(--color-info) 15%, transparent); color: var(--color-info); border-color: color-mix(in srgb, var(--color-info) 40%, transparent); }
+.btn-info:hover { background: color-mix(in srgb, var(--color-info) 24%, transparent); }
+
+/* Outline / ghost (incl. the rose-outline "Unwatched" combo). */
+.btn-outline { background: transparent; color: color-mix(in srgb, var(--color-base-content) 72%, transparent); border-color: color-mix(in srgb, var(--color-base-content) 22%, transparent); box-shadow: none; }
+.btn-outline:hover { background: color-mix(in srgb, var(--color-base-content) 9%, transparent); color: var(--color-base-content); }
+.btn-error.btn-outline { color: var(--color-error); border-color: color-mix(in srgb, var(--color-error) 45%, transparent); background: transparent; }
+.btn-error.btn-outline:hover { background: color-mix(in srgb, var(--color-error) 12%, transparent); }
+.btn-ghost { background: transparent; border-color: transparent; color: color-mix(in srgb, var(--color-base-content) 64%, transparent); box-shadow: none; }
+.btn-ghost:hover { background: color-mix(in srgb, var(--color-base-content) 10%, transparent); color: var(--color-base-content); }
+
+/* Active (e.g. current pagination page) + disabled states. */
+.btn-active { background: var(--color-primary); color: var(--color-primary-content); border-color: transparent; }
+.btn:disabled, .btn[disabled], .btn-disabled { background: var(--color-base-300); color: color-mix(in srgb, var(--color-base-content) 38%, transparent); border-color: var(--color-base-300); box-shadow: none; opacity: 1; }
 
 /* ---- Status badges → soft outline pills (mono, uppercase) ---- */
 .badge {

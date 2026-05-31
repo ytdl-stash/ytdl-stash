@@ -11,54 +11,41 @@
 <body>
 {% set path = request.url.path %}
 {% macro navlinks() %}
-  <span class="cr-eyebrow">Operate</span>
-  <a href="/" class="{{ 'active' if path == '/' }}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Dashboard</a>
-  <a href="/channels" class="{{ 'active' if path.startswith('/channels') }}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/></svg>Channels</a>
-  <a href="/videos" class="{{ 'active' if path.startswith('/videos') }}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>Videos</a>
-  <span class="cr-eyebrow">System</span>
-  <a href="/jobs" class="{{ 'active' if path.startswith('/jobs') }}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10l2 2M19 5l-2 2M7 17l-2 2"/></svg>Jobs</a>
-  <a href="/logs" class="{{ 'active' if path.startswith('/logs') }}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 5h16M4 10h16M4 15h10M4 20h7"/></svg>Logs</a>
-  <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.5 7.5 0 000-2l2-1.5-2-3.4-2.3 1a7.5 7.5 0 00-1.7-1l-.3-2.6h-4l-.3 2.6a7.5 7.5 0 00-1.7 1l-2.3-1-2 3.4L4.6 11a7.5 7.5 0 000 2l-2 1.5 2 3.4 2.3-1a7.5 7.5 0 001.7 1l.3 2.6h4l.3-2.6a7.5 7.5 0 001.7-1l2.3 1 2-3.4z"/></svg>Settings</a>
-  {% if is_password_set() %}
-  <a href="/logout">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 17l-5-5 5-5M5 12h12"/></svg>Log out</a>
-  {% endif %}
+  <a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a>
+  <a href="/channels" class="{{ 'active' if path.startswith('/channels') }}">Channels</a>
+  <a href="/videos" class="{{ 'active' if path.startswith('/videos') }}">Videos</a>
+  <a href="/jobs" class="{{ 'active' if path.startswith('/jobs') }}">Jobs</a>
+  <a href="/logs" class="{{ 'active' if path.startswith('/logs') }}">Logs</a>
+  <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">Settings</a>
+  {% if is_password_set() %}<a href="/logout">Log out</a>{% endif %}
 {% endmacro %}
 
-<div class="cr-app">
-  <aside class="cr-rail">
+<header class="cr-topnav">
+  <div class="cr-topnav-inner">
     <a href="/" class="cr-brand">
       <span class="cr-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg></span>
       <span class="cr-name">ytdl<b>·</b>stash</span>
     </a>
-    <nav class="cr-nav">{{ navlinks() }}</nav>
-    <div class="cr-railfoot">
-      <div class="cr-stat"><span class="cr-dot {{ 'warn' if is_downloads_paused() else 'live' }}"></span> Downloads {{ 'paused' if is_downloads_paused() else 'active' }}</div>
-      <div class="cr-stat"><span class="cr-dot {{ 'warn' if is_channels_paused() else 'live' }}"></span> Scans {{ 'paused' if is_channels_paused() else 'active' }}</div>
-    </div>
-  </aside>
-
-  <div class="cr-main">
-    <header class="cr-mobilebar lg:hidden">
-      <a href="/" class="cr-brand"><span class="cr-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg></span><span class="cr-name">ytdl<b>·</b>stash</span></a>
-      <div class="dropdown dropdown-end ml-auto">
+    <nav class="cr-toplinks">{{ navlinks() }}</nav>
+    <div class="cr-topright">
+      <span class="cr-status">
+        <span class="cr-dot {{ 'warn' if (is_downloads_paused() or is_channels_paused()) else '' }}"></span>
+        {{ 'Paused' if (is_downloads_paused() or is_channels_paused()) else 'All systems active' }}
+      </span>
+      <div class="dropdown dropdown-end lg:hidden">
         <button type="button" tabindex="0" class="btn btn-ghost btn-sm btn-square" aria-label="Open menu">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
-        <nav tabindex="0" class="cr-nav dropdown-content bg-base-200 rounded-box z-50 mt-2 w-52 p-2 shadow-lg border border-base-300">{{ navlinks() }}</nav>
+        <div tabindex="0" class="cr-topmenu dropdown-content bg-base-200 rounded-box z-50 mt-2 w-56 p-2 shadow-lg border border-base-300">{{ navlinks() }}</div>
       </div>
-    </header>
-    {% include "components/_pause_banner.html" %}
-    <main class="cr-content">
-      {% block content %}{% endblock %}
-    </main>
+    </div>
   </div>
-</div>
+</header>
+
+{% include "components/_pause_banner.html" %}
+
+<main class="cr-content">
+  {% block content %}{% endblock %}
+</main>
 </body>
 </html>
