@@ -2,6 +2,9 @@
    For layout=table or detail: hx_status_target (e.g. #video-status-123), hx_row_target (e.g. #video-row-123).
    For layout=detail: detail_page=true (Delete has no hx-target, triggers full reload).
    For layout=active: hx_container_target (e.g. #active-downloads).
+
+   layout=table renders a compact icon "action rail" (icons + hover tooltip).
+   layout=detail / active render labeled buttons.
 #}
 {% if layout == 'active' %}
   {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
@@ -17,12 +20,67 @@
   {% include "components/_loading_button.html" with context %}
   {% endwith %}
   {% endif %}
+
+{% elif layout == 'table' %}
+  {# ---- compact icon action rail ---- #}
+  <div class="cr-act">
+    <a href="/videos/{{ video.id }}" class="cr-actbtn" data-tip="View details" aria-label="View details">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg>
+    </a>
+    {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
+    <button type="button" class="cr-actbtn warn" data-tip="Cancel this download" aria-label="Stop download"
+            hx-post="/videos/{{ video.id }}/stop"
+            hx-target="{{ hx_status_target }}"
+            hx-swap="outerHTML"
+            hx-confirm="Stop processing for '{{ video.title|e }}'? (If downloading, this may take a moment)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+    </button>
+    {% elif video.status == 'cancelling' %}
+    <span class="cr-actbtn" aria-label="Stopping" data-tip="Stopping…"><span class="loading loading-spinner loading-xs"></span></span>
+    {% endif %}
+    {% if video.status in ['failed', 'cancelled', 'skipped'] %}
+    <button type="button" class="cr-actbtn primary" data-tip="Retry import" aria-label="Retry import"
+            hx-post="/videos/{{ video.id }}/retry"
+            hx-target="{{ hx_status_target }}"
+            hx-swap="outerHTML"
+            hx-confirm="Retry import for '{{ video.title|e }}'?">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8"/><path d="M3 3v5h5"/></svg>
+    </button>
+    {% endif %}
+    {% if video.status in ['imported', 'synced', 'failed', 'cancelled', 'skipped'] %}
+    <button type="button" class="cr-actbtn warn"
+            data-tip="Force re-download{% if video.stash_scene_id %} (deletes the Stash scene and file){% else %} (deletes existing file){% endif %}" aria-label="Force re-download"
+            hx-post="/videos/{{ video.id }}/redownload"
+            hx-target="{{ hx_status_target }}"
+            hx-swap="outerHTML"
+            hx-confirm="Force re-download for '{{ video.title|e }}'?{% if video.stash_scene_id %} The existing Stash scene will be deleted.{% endif %}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+    </button>
+    {% endif %}
+    {% if video.stash_scene_id %}
+    <button type="button" class="cr-actbtn info" data-tip="Re-sync metadata from Stash" aria-label="Re-sync from Stash"
+            hx-post="/videos/{{ video.id }}/resync"
+            hx-target="{{ hx_status_target }}"
+            hx-swap="outerHTML"
+            hx-disabled-elt="this"
+            hx-indicator="this">
+      <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+      <svg class="cr-act-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 01-9 9c-2.4 0-4.6-.94-6.2-2.5M3 12a9 9 0 019-9c2.4 0 4.6.94 6.2 2.5"/><path d="M21 3v5h-5M3 21v-5h5"/></svg>
+    </button>
+    {% endif %}
+    <span class="cr-act-sep" aria-hidden="true"></span>
+    <button type="button" class="cr-actbtn danger" data-tip="Delete video" aria-label="Delete video"
+            hx-delete="/videos/{{ video.id }}"
+            {% if not detail_page %}hx-target="{{ hx_row_target }}" hx-swap="outerHTML swap:1s"{% endif %}
+            hx-confirm="Delete this video?">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m2 0v14a1 1 0 01-1 1H7a1 1 0 01-1-1V6"/></svg>
+    </button>
+  </div>
+
 {% else %}
-  {% if layout == 'table' %}
-  <a href="/videos/{{ video.id }}" class="btn btn-sm btn-ghost tooltip tooltip-top" data-tip="View full video details">Detail</a>
-  {% endif %}
+  {# ---- layout == 'detail': labeled buttons ---- #}
   {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
-  <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="{% if layout == 'detail' %}Cancel processing for this video{% else %}Cancel this download{% endif %}"
+  <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel processing for this video"
           hx-post="/videos/{{ video.id }}/stop"
           hx-target="{{ hx_status_target }}"
           hx-swap="outerHTML"
@@ -61,12 +119,12 @@
           hx-disabled-elt="this"
           hx-indicator="this">
     <span class="htmx-indicator loading loading-spinner loading-xs"></span>
-    {{ 'Re-sync from Stash' if layout == 'detail' else 'Re-sync' }}
+    Re-sync from Stash
   </button>
   {% endif %}
-  <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="{% if layout == 'detail' %}Permanently remove this video record{% else %}Remove this video record{% endif %}"
+  <button type="button" class="btn btn-sm btn-error tooltip tooltip-top" data-tip="Permanently remove this video record"
           hx-delete="/videos/{{ video.id }}"
-          {% if layout != 'detail' and not detail_page %}hx-target="{{ hx_row_target }}" hx-swap="outerHTML swap:1s"{% endif %}
+          {% if not detail_page %}hx-target="{{ hx_row_target }}" hx-swap="outerHTML swap:1s"{% endif %}
           hx-confirm="Delete this video?">
     Delete
   </button>

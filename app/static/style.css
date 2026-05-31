@@ -11,18 +11,19 @@
 [data-tip].tooltip::before {
   content: attr(data-tip);
   position: absolute;
-  z-index: 50;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--rounded-box, 0.25rem);
-  font-size: 0.75rem;
-  line-height: 1.25;
+  z-index: 60;
+  padding: 0.3rem 0.55rem;
+  border-radius: 7px;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  font-weight: 500;
   max-width: 16rem;
   white-space: normal;
   text-align: center;
-  background: oklch(var(--b3));
-  color: oklch(var(--bc));
-  border: 1px solid oklch(var(--b3) / 0.8);
-  box-shadow: 0 1px 3px oklch(var(--bc) / 0.1);
+  background: var(--color-base-300);
+  color: var(--color-base-content);
+  border: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -374,3 +375,76 @@ body { letter-spacing: -0.005em; }
 .cr-ring { position: absolute; top: 9px; right: 9px; width: 10px; height: 10px; border-radius: 50%; background: var(--color-success); box-shadow: 0 0 0 3px var(--color-base-200); }
 .cr-ring.off { background: color-mix(in srgb, var(--color-base-content) 35%, transparent); }
 .cr-vidcount { font-family: var(--font-mono); font-size: 11px; color: color-mix(in srgb, var(--color-base-content) 55%, transparent); }
+
+/* ==========================================================================
+   Rounded table cards — every data table sits in a base-200 panel.
+   Targets the .overflow-x-auto wrapper that holds a DaisyUI .table.
+   ========================================================================== */
+.overflow-x-auto:has(> table.table) {
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  border-radius: .75rem;
+  overflow: hidden;            /* clip the table's square corners to the radius */
+}
+.overflow-x-auto:has(> table.table) > table.table { margin: 0; }
+/* lift the heading-row underline so it spans full width inside the card */
+.overflow-x-auto:has(> table.table) > table.table thead th {
+  background: var(--color-base-200);
+  border-bottom: 1px solid var(--color-base-300);
+}
+.overflow-x-auto:has(> table.table) > table.table tbody tr:last-child td {
+  border-bottom: none;
+}
+/* On mobile the table collapses to per-row cards (see .table-responsive);
+   drop the outer panel so those row-cards stand on their own. */
+@media (max-width: 768px) {
+  .overflow-x-auto:has(> table.table) {
+    background: transparent; border: none; border-radius: 0; overflow: visible;
+  }
+}
+
+/* ==========================================================================
+   Icon action rail — compact per-row actions for the videos tables.
+   ========================================================================== */
+.cr-act { display: flex; align-items: center; gap: 3px; justify-content: flex-end; }
+.cr-actbtn {
+  position: relative; width: 30px; height: 30px; padding: 0;
+  display: inline-grid; place-items: center;
+  border-radius: 7px; border: 1px solid transparent; background: transparent; cursor: pointer;
+  color: color-mix(in srgb, var(--color-base-content) 52%, transparent);
+  transition: background-color .13s, color .13s, border-color .13s;
+}
+.cr-actbtn svg { width: 15px; height: 15px; }
+.cr-actbtn:hover { background: var(--color-base-300); color: var(--color-base-content); border-color: color-mix(in srgb, var(--color-base-content) 14%, transparent); }
+.cr-actbtn:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent); }
+/* action-specific hover accents (match the button/badge language) */
+.cr-actbtn.primary:hover { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent); border-color: color-mix(in srgb, var(--color-primary) 40%, transparent); }
+.cr-actbtn.warn:hover    { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 12%, transparent); border-color: color-mix(in srgb, var(--color-warning) 40%, transparent); }
+.cr-actbtn.info:hover    { color: var(--color-info);    background: color-mix(in srgb, var(--color-info) 12%, transparent);    border-color: color-mix(in srgb, var(--color-info) 40%, transparent); }
+.cr-actbtn.danger:hover  { color: var(--color-error);   background: color-mix(in srgb, var(--color-error) 12%, transparent);   border-color: color-mix(in srgb, var(--color-error) 40%, transparent); }
+.cr-actbtn.htmx-request .cr-act-ico { display: none; }
+.cr-act-sep { width: 1px; height: 18px; background: var(--color-base-300); margin: 0 2px; flex: none; }
+
+/* tooltip — anchored to the right edge so it never clips at the table boundary */
+.cr-actbtn[data-tip]::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 7px); right: -4px;
+  background: var(--color-base-300); color: var(--color-base-content);
+  font-family: var(--font-sans); font-size: 11px; font-weight: 500; letter-spacing: 0;
+  padding: 5px 9px; border-radius: 7px; white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .4);
+  opacity: 0; transform: translateY(3px); pointer-events: none;
+  transition: opacity .13s, transform .13s; z-index: 60;
+}
+.cr-actbtn[data-tip]::before {
+  content: ""; position: absolute; bottom: calc(100% + 2px); right: 9px;
+  border: 5px solid transparent; border-top-color: var(--color-base-300);
+  opacity: 0; transition: opacity .13s; z-index: 60;
+}
+.cr-actbtn:hover[data-tip]::after { opacity: 1; transform: translateY(0); }
+.cr-actbtn:hover[data-tip]::before { opacity: 1; }
+
+/* On mobile (card rows), left-align the rail under its "Actions" label. */
+@media (max-width: 768px) {
+  .cr-act { justify-content: flex-start; flex-wrap: wrap; }
+}

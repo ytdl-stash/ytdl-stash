@@ -33,7 +33,9 @@
       "Bash(node shot.mjs dashboard.html channels.html videos.html jobs.html logs.html settings.html login.html)",
       "Bash(node shot.mjs dashboard-v2.html channels.html videos.html jobs.html logs.html settings.html login.html)",
       "Bash(node shot-live.mjs)",
-      "Bash(node shot-two.mjs)"
+      "Bash(node shot-two.mjs)",
+      "Bash(cd /c/tmp/ytdl-stash-redesign && cat shot-file.mjs 2>/dev/null | head -40)",
+      "Bash(node shot-verify.mjs)"
     ]
   }
 }
