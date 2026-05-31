@@ -1,20 +1,24 @@
-<div id="channel-card-{{ channel.id }}" class="card card-bordered bg-base-200 hover:shadow-lg transition-shadow{{ ' opacity-50' if not channel.enabled else '' }}">
-  <a href="/channels/{{ channel.id }}" class="block p-4 no-underline text-inherit">
-    <figure class="w-full aspect-square overflow-hidden rounded-lg mb-2">
+<div id="channel-card-{{ channel.id }}" class="card bg-base-200 transition-transform hover:-translate-y-0.5{{ ' opacity-50' if not channel.enabled else '' }}">
+  <a href="/channels/{{ channel.id }}" class="block no-underline text-inherit">
+    <figure class="relative w-full aspect-square overflow-hidden bg-base-300" style="border-radius: 0.7rem 0.7rem 0 0;">
       {% if channel.performer_image_url %}
-      <img src="{{ channel.performer_image_url }}{% if settings.stash_api_key and settings.stash_url.rstrip('/') in channel.performer_image_url %}{% if '?' in channel.performer_image_url %}&{% else %}?{% endif %}apikey={{ settings.stash_api_key }}{% endif %}" alt="" class="w-full aspect-square object-cover block" loading="lazy">
-      {% else %}
-      <div class="w-full aspect-square bg-base-300 block rounded-lg"></div>
+      <img src="{{ channel.performer_image_url }}{% if settings.stash_api_key and settings.stash_url.rstrip('/') in channel.performer_image_url %}{% if '?' in channel.performer_image_url %}&{% else %}?{% endif %}apikey={{ settings.stash_api_key }}{% endif %}" alt="" class="w-full h-full object-cover block" loading="lazy">
       {% endif %}
+      <span class="cr-ring {{ '' if channel.enabled else 'off' }} tooltip tooltip-left" data-tip="{{ 'Watching' if channel.enabled else 'Not watching' }}" aria-label="{{ 'Watching' if channel.enabled else 'Not watching' }}"></span>
     </figure>
-    <h3 class="card-title text-base m-0 mb-1">{{ channel.name }}</h3>
-    <span class="badge badge-ghost badge-sm mr-2">{{ channel.site }}</span>
-    <span class="text-sm text-base-content/60">{{ channel.videos|length }} video{{ channel.videos|length != 1 and 's' or '' }}</span>
-    <span class="{% if channel.enabled %}watched-indicator{% else %}not-watched-indicator{% endif %} tooltip tooltip-bottom" data-tip="{% if channel.enabled %}Watching{% else %}Not watching{% endif %}" aria-label="{% if channel.enabled %}Watching{% else %}Not watching{% endif %}"></span>
-    <span class="{% if channel.stash_performer_id %}stash-performer-linked{% else %}stash-performer-unlinked{% endif %} tooltip tooltip-bottom" data-tip="Performer: {% if channel.stash_performer_id %}Linked{% else %}Not linked{% endif %}" aria-label="Performer: {% if channel.stash_performer_id %}Linked{% else %}Not linked{% endif %}"></span>
-    <span class="{% if channel.stash_studio_id %}stash-studio-linked{% else %}stash-studio-unlinked{% endif %} tooltip tooltip-bottom" data-tip="Studio: {% if channel.stash_studio_id %}Linked{% else %}Not linked{% endif %}" aria-label="Studio: {% if channel.stash_studio_id %}Linked{% else %}Not linked{% endif %}"></span>
+    <div class="px-4 pt-3">
+      <h3 class="card-title text-base m-0 mb-2 truncate">{{ channel.name }}</h3>
+      <div class="flex items-center gap-2 mb-2">
+        <span class="cr-tag">{{ channel.site }}</span>
+        <span class="cr-vidcount">{{ channel.videos|length }} video{{ channel.videos|length != 1 and 's' or '' }}</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="cr-tag {{ 'on' if channel.stash_performer_id else '' }} tooltip tooltip-bottom" data-tip="Performer: {{ 'Linked' if channel.stash_performer_id else 'Not linked' }}">P {{ '✓' if channel.stash_performer_id else '—' }}</span>
+        <span class="cr-tag {{ 'on' if channel.stash_studio_id else '' }} tooltip tooltip-bottom" data-tip="Studio: {{ 'Linked' if channel.stash_studio_id else 'Not linked' }}">S {{ '✓' if channel.stash_studio_id else '—' }}</span>
+      </div>
+    </div>
   </a>
-  <div class="card-actions px-4 pb-4 flex flex-wrap gap-2">
+  <div class="card-actions px-4 pb-4 pt-3 flex flex-wrap gap-2">
     <form hx-post="/channels/{{ channel.id }}/toggle"
           hx-target="#channel-card-{{ channel.id }}"
           hx-swap="outerHTML"
