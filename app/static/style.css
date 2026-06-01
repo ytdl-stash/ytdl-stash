@@ -198,7 +198,11 @@ td.tooltip {
    "Control Room" shell — responsive TOP nav.
    Colors come from the DaisyUI "controlroom" theme variables.
    ========================================================================== */
-html, body { max-width: 100%; overflow-x: hidden; }
+/* Use overflow-x: clip (not hidden) — `hidden` coerces overflow-y to `auto`,
+   which turns <body> into a clip container that crops absolutely-positioned
+   overlays (e.g. the mobile nav dropdown) on short pages. `clip` prevents the
+   horizontal scroll without affecting the vertical axis. */
+html, body { max-width: 100%; overflow-x: clip; }
 body { letter-spacing: -0.005em; }
 
 .cr-topnav { position: sticky; top: 0; z-index: 30; background: var(--color-base-200); border-bottom: 1px solid var(--color-base-300); }
@@ -221,8 +225,12 @@ body { letter-spacing: -0.005em; }
 .cr-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--color-success); }
 .cr-dot.warn { background: var(--color-warning); }
 
-/* Mobile dropdown nav (links rendered inside a DaisyUI dropdown). */
-.cr-topmenu { display: flex; flex-direction: column; gap: 1px; }
+/* Mobile dropdown nav (links rendered inside a DaisyUI dropdown).
+   NOTE: do NOT set `display` on .cr-topmenu. style.css is unlayered and would
+   override DaisyUI's layered open/closed `display` toggle — leaving the closed
+   menu present (opacity:0 but hit-testable) and overlapping page content, so
+   taps land on its first link (Dashboard → "/"). Let DaisyUI own display;
+   the anchors below are block-level flex items and stack on their own. */
 .cr-topmenu a { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 8px; color: color-mix(in srgb, var(--color-base-content) 78%, transparent); text-decoration: none; font-size: 14px; font-weight: 500; }
 .cr-topmenu a:hover { background: var(--color-base-300); color: var(--color-base-content); }
 .cr-topmenu a.active { color: var(--color-primary); }
@@ -332,6 +340,7 @@ body { letter-spacing: -0.005em; }
 .badge-primary   { color: var(--color-primary);   background: color-mix(in srgb, var(--color-primary) 14%, transparent);   border-color: color-mix(in srgb, var(--color-primary) 42%, transparent); }
 .badge-warning   { color: var(--color-warning);   background: color-mix(in srgb, var(--color-warning) 13%, transparent);   border-color: color-mix(in srgb, var(--color-warning) 38%, transparent); }
 .badge-error     { color: var(--color-error);     background: color-mix(in srgb, var(--color-error) 13%, transparent);     border-color: color-mix(in srgb, var(--color-error) 38%, transparent); }
+.badge-info      { color: var(--color-info);      background: color-mix(in srgb, var(--color-info) 14%, transparent);      border-color: color-mix(in srgb, var(--color-info) 42%, transparent); }
 .badge-secondary { color: var(--color-secondary); background: color-mix(in srgb, var(--color-secondary) 14%, transparent); border-color: color-mix(in srgb, var(--color-secondary) 42%, transparent); }
 .badge-ghost     { color: color-mix(in srgb, var(--color-base-content) 62%, transparent); background: var(--color-base-300); border-color: var(--color-base-300); }
 
@@ -444,7 +453,76 @@ body { letter-spacing: -0.005em; }
 .cr-actbtn:hover[data-tip]::after { opacity: 1; transform: translateY(0); }
 .cr-actbtn:hover[data-tip]::before { opacity: 1; }
 
-/* On mobile (card rows), left-align the rail under its "Actions" label. */
+/* On mobile (card rows), left-align the rail. */
 @media (max-width: 768px) {
-  .cr-act { justify-content: flex-start; flex-wrap: wrap; }
+  .cr-act { justify-content: flex-start; flex-wrap: wrap; gap: 4px; }
+  .cr-actbtn { width: 34px; height: 34px; }
+  .cr-actbtn svg { width: 17px; height: 17px; }
+}
+
+/* ==========================================================================
+   Mobile menu button (hamburger) — make it a real, tappable target.
+   ========================================================================== */
+.cr-burger {
+  width: 42px; height: 42px; min-height: 42px; padding: 0;
+  display: inline-grid; place-items: center;
+  border-radius: 10px;
+  background: var(--color-base-300);
+  border: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
+  color: var(--color-base-content);
+  transition: background-color .13s, border-color .13s;
+}
+.cr-burger:hover { background: color-mix(in srgb, var(--color-base-content) 14%, transparent); }
+.cr-burger:active { transform: translateY(1px); }
+.cr-burger svg { width: 24px; height: 24px; }
+
+/* ==========================================================================
+   Mobile video cards — replace the 7-line label stack with a compact,
+   thumbnail-left card. Applies only to tables tagged .cr-video-table.
+   ========================================================================== */
+@media (max-width: 768px) {
+  .cr-video-table tbody tr {
+    position: relative;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+    padding: 12px 12px 12px 116px; min-height: 84px;
+    background: var(--color-base-200);
+    border: 1px solid var(--color-base-300);
+    border-radius: .7rem; margin-bottom: 10px;
+  }
+  .cr-video-table tbody td { display: block; padding: 0; border: none; }
+  .cr-video-table tbody td::before { content: none !important; }  /* kill data-labels */
+
+  /* thumbnail pinned left, fixed size */
+  .cr-video-table tbody td.cr-c-thumb {
+    position: absolute; left: 12px; top: 12px; width: 96px;
+  }
+  .cr-video-table tbody td.cr-c-thumb :is(img, div) {
+    width: 96px !important; height: 58px !important; object-fit: cover; border-radius: 8px;
+  }
+  .cr-video-table tbody td.cr-c-thumb a { display: block; line-height: 0; }
+
+  /* title — full width of the content area, clamp to 2 lines */
+  .cr-video-table tbody td.cr-c-title {
+    order: 1; flex: 0 0 100%; min-width: 0;
+    font-size: 14px; font-weight: 600; line-height: 1.3; letter-spacing: -.01em;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .cr-video-table tbody td.cr-c-title a { color: var(--color-base-content) !important; }
+
+  /* meta line — channel · date · duration, then the status pill, inline */
+  .cr-video-table tbody td.cr-c-channel { order: 2; }
+  .cr-video-table tbody td.cr-c-date    { order: 3; }
+  .cr-video-table tbody td.cr-c-dur     { order: 4; }
+  .cr-video-table tbody td.cr-c-status  { order: 5; }
+  .cr-video-table tbody td:is(.cr-c-channel, .cr-c-date, .cr-c-dur) {
+    font-size: 12px; color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+  }
+  .cr-video-table tbody td.cr-c-channel a { color: inherit !important; }
+  /* middot separators that don't lead the line */
+  .cr-video-table tbody td.cr-c-channel ~ td.cr-c-date::before { content: "·"; margin: 0 6px; opacity: .55; }
+  .cr-video-table tbody td.cr-c-date ~ td.cr-c-dur::before { content: "·"; margin: 0 6px; opacity: .55; }
+  .cr-video-table tbody td.cr-c-status { margin-left: 4px; }
+
+  /* action rail — own line at the bottom */
+  .cr-video-table tbody td.cr-c-actions { order: 6; flex: 0 0 100%; margin-top: 4px; }
 }

@@ -18,7 +18,7 @@
       <tr>{% call th_tooltip("How many videos download simultaneously") %}Max concurrent downloads{% endcall %}<td>{{ settings.max_concurrent_downloads }}</td></tr>
       <tr>{% call th_tooltip("Seconds to wait between starting each download") %}Download delay (seconds){% endcall %}<td>{{ settings.download_delay_seconds }}</td></tr>
       <tr>{% call th_tooltip("Path to a Netscape-format cookies file for authenticated downloads") %}Cookies file{% endcall %}<td class="break-all">{{ settings.cookies_file or '—' }}</td></tr>
-      <tr>{% call th_tooltip("Filename template passed to yt-dlp") %}yt-dlp output template{% endcall %}<td class="break-all"><code>{{ settings.ytdlp_output_template }}</code></td></tr>
+      <tr>{% call th_tooltip("Filename template passed to yt-dlp", "top") %}yt-dlp output template{% endcall %}<td class="break-all"><code>{{ settings.ytdlp_output_template }}</code></td></tr>
     </tbody>
   </table>
 </div>
@@ -57,10 +57,10 @@
       <tr>
         <th>Generate options</th>
         <td>
-          <span class="badge {{ 'badge-info' if settings.stash_generate_covers else 'badge-ghost' }} mr-1 tooltip tooltip-bottom" data-tip="Generate cover images">Covers</span>
-          <span class="badge {{ 'badge-info' if settings.stash_generate_previews else 'badge-ghost' }} mr-1 tooltip tooltip-bottom" data-tip="Generate video preview clips">Previews</span>
-          <span class="badge {{ 'badge-info' if settings.stash_generate_sprites else 'badge-ghost' }} mr-1 tooltip tooltip-bottom" data-tip="Generate sprite sheets">Sprites</span>
-          <span class="badge {{ 'badge-info' if settings.stash_generate_phashes else 'badge-ghost' }} tooltip tooltip-bottom" data-tip="Generate perceptual hashes">Phashes</span>
+          <span class="badge {{ 'badge-info' if settings.stash_generate_covers else 'badge-ghost' }} mr-1 tooltip tooltip-top" data-tip="Generate cover images">Covers</span>
+          <span class="badge {{ 'badge-info' if settings.stash_generate_previews else 'badge-ghost' }} mr-1 tooltip tooltip-top" data-tip="Generate video preview clips">Previews</span>
+          <span class="badge {{ 'badge-info' if settings.stash_generate_sprites else 'badge-ghost' }} mr-1 tooltip tooltip-top" data-tip="Generate sprite sheets">Sprites</span>
+          <span class="badge {{ 'badge-info' if settings.stash_generate_phashes else 'badge-ghost' }} tooltip tooltip-top" data-tip="Generate perceptual hashes">Phashes</span>
         </td>
       </tr>
       {% endif %}

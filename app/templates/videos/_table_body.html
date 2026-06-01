@@ -1,16 +1,16 @@
 {% for video in videos %}
 <tr id="video-row-{{ video.id }}">
-  <td data-label="Thumb" class="w-24 p-1">
+  <td data-label="Thumb" class="w-24 p-1 cr-c-thumb">
     {% with size='md', link_url='/videos/' ~ video.id %}
     {% include "components/_video_thumbnail.html" with context %}
     {% endwith %}
   </td>
-  <td data-label="Title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
-  <td data-label="Channel">{% if video.channel %}<a href="/channels/{{ video.channel.id }}" class="link link-hover">{{ video.channel.name }}</a>{% else %}—{% endif %}</td>
-  <td data-label="Status">{% include "videos/_status_badge.html" %}</td>
-  <td data-label="Upload Date">{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>
-  <td data-label="Duration">{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</td>
-  <td data-label="Actions">
+  <td data-label="Title" class="cr-c-title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
+  <td data-label="Channel" class="cr-c-channel">{% if video.channel %}<a href="/channels/{{ video.channel.id }}" class="link link-hover">{{ video.channel.name }}</a>{% else %}—{% endif %}</td>
+  <td data-label="Status" class="cr-c-status">{% include "videos/_status_badge.html" %}</td>
+  <td data-label="Upload Date" class="cr-c-date">{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>
+  <td data-label="Duration" class="cr-c-dur">{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</td>
+  <td data-label="Actions" class="cr-c-actions">
     {% with layout='table', hx_status_target='#video-status-' ~ video.id, hx_row_target='#video-row-' ~ video.id %}
     {% include "components/_video_actions.html" with context %}
     {% endwith %}

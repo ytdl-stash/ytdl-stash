@@ -50,3 +50,6 @@ htmlcov/
 
 # Node / frontend build (app/static/app.css IS committed; node_modules is not)
 node_modules/
+
+# Local Claude Code settings (may contain tokens) — never commit
+.claude/settings.local.json
