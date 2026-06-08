@@ -296,7 +296,7 @@
      ══════════════════════════════════════════════════════════════════════ #}
   {% set poll_url = '/channels/' ~ channel.id ~ '/active_downloads' %}
   {% set container_id = 'channel-active-downloads-' ~ channel.id %}
-  {% call collapse("Active downloads", open=true) %}
+  {% call collapse("Pipeline activity", open=true) %}
     {% include "videos/_active_downloads.html" with context %}
   {% endcall %}
 

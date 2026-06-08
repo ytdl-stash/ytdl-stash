@@ -134,6 +134,7 @@ These control what happens **after** a scene is synced to Stash.
 | `YTDL_STASH_GENERATE_PREVIEWS` | `bool` | `true` | Optional | Generate video previews (when generate is enabled) |
 | `YTDL_STASH_GENERATE_SPRITES` | `bool` | `true` | Optional | Generate sprite sheets (when generate is enabled) |
 | `YTDL_STASH_GENERATE_PHASHES` | `bool` | `true` | Optional | Generate perceptual hashes (when generate is enabled) |
+| `YTDL_STASH_ORGANIZED_SETTLE_SECONDS` | `int` | `5` | Optional | Head-start (0–60s) to let an asynchronous Stash file move settle — e.g. a **renamer plugin** that relocates/renames the file on import or `organized`. After an import scan, ytdl-stash waits for the scene's file path to stop changing before generating and before recording the file's final location. Set `0` if you don't run a renamer. |
 
 ### Folder mapping (Stash path)
 

@@ -31,6 +31,17 @@ router = APIRouter(prefix="/channels", tags=["channels"])
 
 ACTIVE_DOWNLOAD_STATUSES = ("downloading", "cancelling", "downloaded", "importing")
 
+
+def _active_panel_filter(videos):
+    """Videos for the active-downloads panel: transitional status OR a live
+    pipeline phase (so synced-but-still-generating videos stay visible)."""
+    phase_ids = download_progress.video_ids_with_phase()
+    return [
+        v for v in videos
+        if v.status in ACTIVE_DOWNLOAD_STATUSES or v.id in phase_ids
+    ]
+
+
 CHANNEL_VIDEO_SORT_OPTIONS = {
     "created_at_desc": lambda: desc(Video.created_at),
     "upload_date_desc": lambda: desc(Video.upload_date),
@@ -560,7 +571,7 @@ async def channel_active_downloads(
     channel = await _load_channel_with_videos(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
+    active_videos = _active_panel_filter(channel.videos)
     return templates.TemplateResponse(
         "videos/_active_downloads.html",
         {
@@ -645,7 +656,7 @@ async def channel_detail(
     result = await db.execute(stmt)
     videos = list(result.scalars().all())
 
-    active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
+    active_videos = _active_panel_filter(channel.videos)
     return templates.TemplateResponse(
         "channels/detail.html",
         {
@@ -680,7 +691,7 @@ async def _channel_sync_response(
                 key=lambda v: v.upload_date or date.min,
                 reverse=True,
             )
-            active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
+            active_videos = _active_panel_filter(channel.videos)
             return templates.TemplateResponse(
                 "channels/_detail_card.html",
                 {
@@ -990,7 +1001,7 @@ async def channel_toggle(
                 key=lambda v: v.upload_date or date.min,
                 reverse=True,
             )
-            active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
+            active_videos = _active_panel_filter(channel.videos)
             return templates.TemplateResponse(
                 "channels/_detail_card.html",
                 {
@@ -1047,7 +1058,7 @@ async def update_channel(
                 key=lambda v: v.upload_date or date.min,
                 reverse=True,
             )
-            active_videos = [v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES]
+            active_videos = _active_panel_filter(channel.videos)
             return templates.TemplateResponse(
                 "channels/_detail_card.html",
                 {

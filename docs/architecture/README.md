@@ -246,7 +246,7 @@ The Settings page (`/settings`) displays the effective configuration **read at s
 | `YTDL_STASH_GENERATE_PREVIEWS` | `True` | Generate video previews (only when generate is enabled) |
 | `YTDL_STASH_GENERATE_SPRITES` | `True` | Generate sprite sheets (only when generate is enabled) |
 | `YTDL_STASH_GENERATE_PHASHES` | `True` | Generate perceptual hashes (only when generate is enabled) |
-| `YTDL_STASH_ORGANIZED_SETTLE_SECONDS` | `5` | **Deprecated.** No longer used; generate now runs before organized. Retained for backwards compat. |
+| `YTDL_STASH_ORGANIZED_SETTLE_SECONDS` | `5` | Head-start (0–60s) for an async Stash file move (e.g. a renamer plugin) to settle. After an import scan, ytdl-stash waits for the scene's file path to stabilize before generate and before recording the final path. (Was unused for a period when generate ran before organized; **re-activated** for the import-scan settle in the [2026-06-08 renamer-race fix](../journal/2026-06-08-fix-import-renamer-race.md).) |
 | `YTDL_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 ## Optional app password

@@ -306,6 +306,9 @@ If the mount points differ, a path translation may be needed.
 1. Call `find_scene_by_oshash(video.oshash)`.
 2. If not found, fallback to `find_scene_by_title(video.title)`.
 3. If still not found, set `video.status = "failed"` with error message.
+4. **Wait for the file path to settle** (`stash_client.wait_for_scene_path_stable`): a Stash **renamer plugin** can move/rename the file *asynchronously* on import — this is **not** part of the scan job, so `wait_for_job` returns before it finishes. After an initial `YTDL_STASH_ORGANIZED_SETTLE_SECONDS` head-start, poll the scene until its `files[0].path` stops changing, then set `video.original_filename` from Stash's actual path. This keeps the DB in sync with the renamer and ensures generate (step 10b) runs against the file's final location instead of racing a move in progress.
+
+> **Why this matters for imports.** YoutubeDL-Material imports start with `original_filename` set to a full path and no oshash, so a stale path is especially damaging (e.g. `os.path.join(download_dir, original_filename)` can escape `download_dir`). Reconciling from Stash here is what keeps imported records correct after the renamer runs.
 
 ---
 
@@ -412,7 +415,7 @@ video.status = "synced"
 **What happens**:
 1. Call `stash_client.trigger_generate(scene_ids=[scene.id])` — returns job ID.
 2. Call `stash_client.wait_for_job(generate_job_id)` — polls until generate completes (queue-aware: 30 min queue + 5 min run).
-3. File is still at its original location during generate; no race with file-move.
+3. The file's path was already settled in step 7 (a renamer plugin may have moved/renamed it during the import scan), so generate runs against the file's **final** location — no race with an in-flight move.
 
 **Error handling**: Best-effort. Failures are logged as warnings but do not change the video's `synced` status.
 
@@ -426,7 +429,7 @@ video.status = "synced"
 1. Call `stash_client.update_scene(scene_id, organized=True)`.
 2. Any Stash file-move rule triggered by organized runs **after** generate is done.
 
-**Why this ordering**: Generate runs first and waits for completion. Organized is set last. No settle delay needed.
+**Why this ordering**: Generate runs first and waits for completion, then organized is set last — so a file move triggered by `organized` can't strand the generate job. If your renamer instead moves files on **import** (not `organized`), that move is settled earlier in step 7 (see `YTDL_STASH_ORGANIZED_SETTLE_SECONDS`).
 
 ---
 

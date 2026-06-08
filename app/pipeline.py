@@ -499,6 +499,11 @@ async def process_single_download(
                 "Video %s: scene already in Stash (id=%s), skipping download",
                 video.id, scene["id"],
             )
+            # Keep our record of the on-disk filename in sync with Stash — a
+            # renamer plugin may have moved/renamed the file since we last saw it.
+            existing_path = stash.scene_primary_path(scene)
+            if existing_path:
+                video.original_filename = os.path.basename(existing_path)
             await _apply_metadata_and_sync(video, scene, stash, settings, db)
             await db.commit()
             return
@@ -744,6 +749,18 @@ async def process_single_download(
         if scene is None:
             raise RuntimeError("Scene not found in Stash after scan job completed")
         logger.info("Video %s: Stash scene found (id=%s)", video.id, scene["id"])
+
+        # The scan job is done, but a Stash renamer plugin may still be moving/
+        # renaming the file asynchronously (it isn't part of the scan job).
+        # Wait for the path to settle BEFORE update_scene/generate so they don't
+        # race a file mid-move, and record where the file actually ended up.
+        download_progress.set_phase(video.id, "Finalizing in Stash")
+        settled_path = await stash.wait_for_scene_path_stable(
+            scene["id"], settle=settings.stash_organized_settle_seconds
+        )
+        if settled_path:
+            video.original_filename = os.path.basename(settled_path)
+            logger.info("Video %s: file settled at %s", video.id, settled_path)
 
         download_progress.set_phase(video.id, "Syncing metadata")
         await _apply_metadata_and_sync(video, scene, stash, settings, db)

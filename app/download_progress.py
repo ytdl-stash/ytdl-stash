@@ -92,6 +92,15 @@ class DownloadProgressStore:
         with self._lock:
             return dict(self._by_video_id)
 
+    def video_ids_with_phase(self) -> set[int]:
+        """Video IDs that currently have a live pipeline phase. Thread-safe.
+
+        Used to keep videos visible in the active panel while they're still
+        doing work whose DB status isn't "active" (e.g. synced but generating).
+        """
+        with self._lock:
+            return {vid for vid, view in self._by_video_id.items() if view.phase}
+
     def update_from_ytdlp_hook(self, video_id: int, d: dict) -> None:
         """Update progress from a yt-dlp `progress_hooks` callback dict."""
         try:

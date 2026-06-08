@@ -86,6 +86,9 @@ query FindScene($id: ID!) {
         date
         code
         urls
+        files {
+            path
+        }
         paths {
             screenshot
         }
@@ -741,6 +744,47 @@ class StashClient:
         """Fetch a scene by Stash ID. Returns full scene dict or None."""
         data = await self._query(_FIND_SCENE_BY_ID_QUERY, {"id": scene_id})
         return data.get("findScene")
+
+    @staticmethod
+    def scene_primary_path(scene: dict | None) -> str | None:
+        """Return a scene's primary file path (from a query that selects files{path})."""
+        files = (scene or {}).get("files") or []
+        if files and isinstance(files[0], dict):
+            return files[0].get("path")
+        return None
+
+    async def wait_for_scene_path_stable(
+        self,
+        scene_id: str,
+        *,
+        settle: float = 2.0,
+        interval: float = 1.0,
+        attempts: int = 6,
+    ) -> str | None:
+        """Wait until a scene's primary file path stops changing, then return it.
+
+        A Stash renamer plugin can move/rename the underlying file
+        *asynchronously* after an import scan — that work is NOT part of the
+        scan job, so ``wait_for_job`` returns before it finishes. Callers that
+        will act on the file (generate) or want to record its real location
+        should await this first to avoid racing a file mid-move.
+
+        ``settle`` gives the async move time to begin before we start trusting
+        the path; we then poll until the path is unchanged across two reads.
+        Returns the final observed path, or None if it can't be read.
+        """
+        if settle > 0:
+            await asyncio.sleep(settle)
+        prev: str | None = None
+        final: str | None = None
+        for i in range(max(1, attempts)):
+            scene = await self.find_scene_by_id(scene_id)
+            final = self.scene_primary_path(scene)
+            if i > 0 and final is not None and final == prev:
+                return final
+            prev = final
+            await asyncio.sleep(interval)
+        return final
 
     def _performer_dict(self, p: dict) -> dict:
         """Build {id, name, urls, image_path} from GraphQL performer result."""

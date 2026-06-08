@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import asc, desc, func, select
+from sqlalchemy import asc, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -28,6 +28,24 @@ ACTIVE_DOWNLOAD_STATUSES = ("downloading", "cancelling", "downloaded", "importin
 REDOWNLOAD_ALLOWED_STATUSES = frozenset(
     {"imported", "synced", "failed", "cancelled", "skipped"}
 )
+
+
+def _active_panel_condition():
+    """SQL filter for the active-downloads panel: videos in a transitional
+    status, OR any with a live pipeline phase (e.g. synced-but-still-generating)
+    so post-sync work stays visible instead of vanishing when status flips."""
+    phase_ids = download_progress.video_ids_with_phase()
+    cond = Video.status.in_(ACTIVE_DOWNLOAD_STATUSES)
+    return or_(cond, Video.id.in_(phase_ids)) if phase_ids else cond
+
+
+def _active_panel_filter(videos):
+    """In-memory equivalent of _active_panel_condition for loaded video lists."""
+    phase_ids = download_progress.video_ids_with_phase()
+    return [
+        v for v in videos
+        if v.status in ACTIVE_DOWNLOAD_STATUSES or v.id in phase_ids
+    ]
 
 VIDEO_SORT_OPTIONS = {
     "created_at_desc": lambda: desc(Video.created_at),
@@ -132,7 +150,7 @@ async def list_videos(
     )
     active_stmt = (
         select(Video)
-        .where(Video.status.in_(ACTIVE_DOWNLOAD_STATUSES))
+        .where(_active_panel_condition())
         .options(selectinload(Video.channel))
         .order_by(Video.created_at.desc())
     )
@@ -160,7 +178,7 @@ async def active_downloads(
     """HTMX partial: active downloads panel (videos in transitional status with progress)."""
     stmt = (
         select(Video)
-        .where(Video.status.in_(ACTIVE_DOWNLOAD_STATUSES))
+        .where(_active_panel_condition())
         .options(selectinload(Video.channel))
         .order_by(Video.created_at.desc())
     )
@@ -452,13 +470,27 @@ async def redownload_video(
             )
 
     if video.original_filename:
-        candidate = os.path.join(settings.download_dir, video.original_filename)
-        if os.path.isfile(candidate):
+        candidate = os.path.abspath(os.path.join(settings.download_dir, video.original_filename))
+        download_root = os.path.abspath(settings.download_dir)
+        # Guard against an absolute/foreign original_filename (imported records
+        # store a full path): os.path.join lets it escape download_dir and could
+        # target an unintended file. Only delete files genuinely under
+        # download_dir; the real Stash-managed file is removed above via
+        # destroy_scene(delete_file=True).
+        within_download_dir = (
+            candidate == download_root or candidate.startswith(download_root + os.sep)
+        )
+        if within_download_dir and os.path.isfile(candidate):
             try:
                 os.remove(candidate)
                 logger.info("Video %s: deleted existing file %s", video_id, candidate)
             except OSError as e:
                 logger.warning("Video %s: could not delete %s: %s", video_id, candidate, e)
+        elif not within_download_dir:
+            logger.info(
+                "Video %s: skipping local delete of %r (outside download_dir; Stash-managed)",
+                video_id, video.original_filename,
+            )
 
     video.original_filename = None
     video.oshash = None
@@ -524,7 +556,7 @@ async def stop_video(
         if hx_target == "active-downloads":
             stmt = (
                 select(Video)
-                .where(Video.status.in_(ACTIVE_DOWNLOAD_STATUSES))
+                .where(_active_panel_condition())
                 .options(selectinload(Video.channel))
                 .order_by(Video.created_at.desc())
             )
@@ -553,9 +585,7 @@ async def stop_video(
                 )
                 channel = result.scalar_one_or_none()
                 if channel:
-                    active_videos = [
-                        v for v in channel.videos if v.status in ACTIVE_DOWNLOAD_STATUSES
-                    ]
+                    active_videos = _active_panel_filter(channel.videos)
                     return templates.TemplateResponse(
                         "videos/_active_downloads.html",
                         {
