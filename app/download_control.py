@@ -31,6 +31,7 @@ class DownloadControl:
         self._download_tasks: dict[int, asyncio.Task] = {}
         self._downloads_paused: bool = False
         self._channels_paused: bool = False
+        self._stash_healthy: bool = True
 
     # ------------------------------------------------------------------
     # Active / cancel tracking (unchanged)
@@ -129,6 +130,14 @@ class DownloadControl:
     def is_channels_paused(self) -> bool:
         with self._lock:
             return self._channels_paused
+
+    def set_stash_health(self, healthy: bool) -> None:
+        with self._lock:
+            self._stash_healthy = healthy
+
+    def is_stash_healthy(self) -> bool:
+        with self._lock:
+            return self._stash_healthy
 
 
 download_control = DownloadControl()

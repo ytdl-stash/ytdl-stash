@@ -27,6 +27,8 @@
       {% if p.eta %} • ETA {{ p.eta }}{% endif %}
     </small>
   </div>
+  {% elif p and p.phase %}
+  <span class="badge badge-primary badge-sm animate-pulse mt-2">{{ p.phase }}</span>
   {% endif %}
 </div>
 {% else %}
@@ -52,6 +54,8 @@
       {% if p.eta %} • ETA {{ p.eta }}{% endif %}
     </small>
   </span>
+  {% elif p and p.phase %}
+  <span class="badge badge-primary badge-sm animate-pulse">{{ p.phase }}</span>
   {% endif %}
 </span>
 {% endif %}

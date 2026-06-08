@@ -61,6 +61,7 @@ class DownloadProgressView:
     speed: str | None
     eta: str | None
     status: str | None
+    phase: str | None
     updated_at: float
 
 
@@ -72,6 +73,20 @@ class DownloadProgressStore:
     def clear(self, video_id: int) -> None:
         with self._lock:
             self._by_video_id.pop(video_id, None)
+
+    def set_phase(self, video_id: int, phase: str) -> None:
+        """Set a phase label for a video (no download metrics). Thread-safe."""
+        with self._lock:
+            self._by_video_id[video_id] = DownloadProgressView(
+                percent=None,
+                downloaded=None,
+                total=None,
+                speed=None,
+                eta=None,
+                status=None,
+                phase=phase,
+                updated_at=time.time(),
+            )
 
     def snapshot(self) -> dict[int, DownloadProgressView]:
         with self._lock:
@@ -110,6 +125,7 @@ class DownloadProgressStore:
                 if isinstance(eta_seconds, (int, float))
                 else None,
                 status=str(status) if status is not None else None,
+                phase="Downloading",
                 updated_at=time.time(),
             )
 

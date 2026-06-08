@@ -28,9 +28,27 @@
     </a>
     <nav class="cr-toplinks">{{ navlinks() }}</nav>
     <div class="cr-topright">
-      <span class="cr-status">
-        <span class="cr-dot {{ 'warn' if (is_downloads_paused() or is_channels_paused()) else '' }}"></span>
-        {{ 'Paused' if (is_downloads_paused() or is_channels_paused()) else 'All systems active' }}
+      <button type="button"
+              class="btn btn-sm btn-success tooltip tooltip-bottom"
+              data-tip="Add a channel: scrape metadata, link to Stash, then save"
+              hx-get="/channels/add-modal"
+              hx-target="#add-channel-modal-body"
+              hx-swap="innerHTML"
+              hx-trigger="click"
+              hx-on::after-request="document.getElementById('add-channel-modal').showModal()">
+        + Add Channel
+      </button>
+      <span class="cr-status"
+            hx-get="/jobs/system-status"
+            hx-trigger="every 30s"
+            hx-swap="outerHTML">
+        {% if not is_stash_healthy() %}
+        <span class="cr-dot error"></span>Stash unreachable
+        {% elif is_downloads_paused() or is_channels_paused() %}
+        <span class="cr-dot warn"></span>Paused
+        {% else %}
+        <span class="cr-dot"></span>All systems active
+        {% endif %}
       </span>
       <div class="dropdown dropdown-end lg:hidden">
         <button type="button" tabindex="0" class="cr-burger" aria-label="Open menu">
@@ -47,5 +65,59 @@
 <main class="cr-content">
   {% block content %}{% endblock %}
 </main>
+
+{# Add Channel modal — available on every page so the persistent nav button works. #}
+{% include "channels/_add_modal.html" %}
+<script>
+  document.body.addEventListener('closeAddChannelModal', function () {
+    var modal = document.getElementById('add-channel-modal');
+    if (modal) modal.close();
+    // The new channel card renders into #channel-grid, which only exists on the
+    // Channels page. When the modal was opened from elsewhere (persistent nav
+    // button), send the user to /channels so they can see the result.
+    if (!document.getElementById('channel-grid')) {
+      window.location.href = '/channels';
+    }
+  });
+</script>
+
+{# Shared confirmation modal — replaces the native browser confirm() for any
+   element carrying hx-confirm (currently only Delete actions). #}
+<dialog id="cr-confirm-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="text-lg font-bold">Please confirm</h3>
+    <p id="cr-confirm-text" class="py-4"></p>
+    <div class="modal-action">
+      <button type="button" id="cr-confirm-cancel" class="btn btn-ghost">Cancel</button>
+      <button type="button" id="cr-confirm-ok" class="btn btn-error">Confirm</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button type="submit">close</button></form>
+</dialog>
+<script>
+(function () {
+  const modal = document.getElementById('cr-confirm-modal');
+  const text = document.getElementById('cr-confirm-text');
+  const okBtn = document.getElementById('cr-confirm-ok');
+  const cancelBtn = document.getElementById('cr-confirm-cancel');
+  let pending = null;
+
+  cancelBtn.addEventListener('click', function () { modal.close(); });
+  modal.addEventListener('close', function () { pending = null; });
+  okBtn.addEventListener('click', function () {
+    const issue = pending;
+    modal.close();           // fires 'close' → clears pending
+    if (issue) issue();
+  });
+
+  document.addEventListener('htmx:confirm', function (evt) {
+    if (!evt.detail.question) return;   // no hx-confirm → let htmx proceed
+    evt.preventDefault();
+    text.textContent = evt.detail.question;
+    pending = function () { evt.detail.issueRequest(true); };
+    modal.showModal();
+  });
+})();
+</script>
 </body>
 </html>

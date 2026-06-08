@@ -30,6 +30,8 @@
                 {% if p.eta %} · ETA {{ p.eta }}{% endif %}
               </small>
             </div>
+            {% elif p and p.phase %}
+            <span class="badge badge-primary badge-sm animate-pulse">{{ p.phase }}</span>
             {% else %}
             <span class="badge badge-primary badge-sm">{{ video.status }}</span>
             {% endif %}

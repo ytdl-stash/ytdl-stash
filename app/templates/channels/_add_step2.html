@@ -16,32 +16,32 @@
     </div>
     {% endif %}
     <div class="flex-1 min-w-0">
-      <label class="form-control w-full">
-        <span class="label-text">Display name</span>
+      <label class="flex flex-col gap-1 w-full">
+        <span class="text-sm font-medium">Display name</span>
         <input type="text" name="name" value="{{ name|e }}" class="input input-bordered w-full">
       </label>
       <p class="text-sm text-base-content/70 mt-1">Site: <span class="badge badge-ghost">{{ site|e }}</span></p>
     </div>
   </div>
   {% if description %}
-  <div class="form-control">
-    <span class="label-text">Description</span>
+  <div class="flex flex-col gap-1">
+    <span class="text-sm font-medium">Description</span>
     <p class="text-sm text-base-content/80 mt-1 line-clamp-3">{{ description|e }}</p>
     <input type="hidden" name="description" value="{{ description|e }}">
   </div>
   {% endif %}
   <input type="hidden" name="thumbnail" value="{{ thumbnail|default('', true) }}">
   <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Hours between automatic scans">Interval (hours)</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Hours between automatic scans">Interval (hours)</span>
       <input type="number" name="check_interval_hours" value="{{ check_interval_hours }}" min="1" class="input input-bordered w-full">
     </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Only download videos uploaded within this many days">Max Age (days)</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Only download videos uploaded within this many days">Max Age (days)</span>
       <input type="number" name="max_video_age_days" placeholder="No limit" value="{{ max_video_age_days or '' }}" min="1" step="1" class="input input-bordered w-full">
     </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Skip videos shorter than this many seconds">Min Duration (sec)</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Skip videos shorter than this many seconds">Min Duration (sec)</span>
       <input type="number" name="min_duration_seconds" placeholder="No limit" value="{{ min_duration_seconds or '' }}" min="1" step="1" class="input input-bordered w-full">
     </label>
   </div>

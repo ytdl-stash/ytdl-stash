@@ -75,22 +75,22 @@
               hx-swap="outerHTML"
               hx-indicator="#spinner-settings-detail"
               class="mt-4 space-y-4 max-w-md">
-          <div class="form-control">
-            <label class="label" for="channel-name-detail"><span class="label-text">Name</span></label>
+          <label class="flex flex-col gap-1">
+            <span class="text-sm font-medium">Name</span>
             <input type="text" id="channel-name-detail" name="name" value="{{ channel.name|e }}" class="input input-bordered input-sm w-full" aria-label="Channel name">
-          </div>
-          <div class="form-control">
-            <label class="label" for="channel-interval-detail"><span class="label-text">Check interval (hours)</span></label>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-sm font-medium">Check interval (hours)</span>
             <input type="number" id="channel-interval-detail" name="check_interval_hours" value="{{ channel.check_interval_hours }}" min="1" class="input input-bordered input-sm w-full" aria-label="Check interval hours">
-          </div>
-          <div class="form-control">
-            <label class="label" for="channel-max-age-detail"><span class="label-text">Max video age (days)</span></label>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-sm font-medium">Max video age (days)</span>
             <input type="number" id="channel-max-age-detail" name="max_video_age_days" value="{{ channel.max_video_age_days or '' }}" min="1" placeholder="No limit" class="input input-bordered input-sm w-full" aria-label="Max video age days">
-          </div>
-          <div class="form-control">
-            <label class="label" for="channel-min-duration-detail"><span class="label-text">Min duration (seconds)</span></label>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-sm font-medium">Min duration (seconds)</span>
             <input type="number" id="channel-min-duration-detail" name="min_duration_seconds" value="{{ channel.min_duration_seconds or '' }}" min="1" placeholder="No minimum" class="input input-bordered input-sm w-full" aria-label="Min duration seconds">
-          </div>
+          </label>
           <input type="hidden" name="enabled" value="{{ 'true' if channel.enabled else 'false' }}">
           <div class="flex flex-wrap gap-2">
             <button type="submit" class="btn btn-sm btn-primary">Save settings</button>

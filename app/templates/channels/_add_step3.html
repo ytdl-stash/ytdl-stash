@@ -6,7 +6,7 @@
 
 <div class="space-y-4 mb-4">
   <div>
-    <span class="label-text font-medium">Performer</span>
+    <span class="text-sm font-medium">Performer</span>
     {% if performer_match %}
     <div class="flex items-center gap-2 mt-1">
       {% if performer_match.get('image_path') %}
@@ -24,7 +24,7 @@
     {% endif %}
   </div>
   <div>
-    <span class="label-text font-medium">Studio</span>
+    <span class="text-sm font-medium">Studio</span>
     {% if studio_match %}
     <div class="flex items-center gap-2 mt-1">
       <span>{{ studio_match.name|e }}</span>

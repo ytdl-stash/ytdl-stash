@@ -32,8 +32,8 @@
       hx-on::before-request="if(event.detail.elt===this) document.getElementById('page-input').value='1'">
   <input type="hidden" name="page" id="page-input" value="{{ page }}">
   <div class="flex flex-wrap items-end gap-4">
-    <label class="form-control w-full max-w-xs">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Show videos from a specific channel">Channel</span>
+    <label class="flex flex-col gap-1 w-full max-w-xs">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Show videos from a specific channel">Channel</span>
       <select name="channel_id" class="select select-bordered w-full">
         <option value="">All</option>
         {% for c in channels %}
@@ -41,8 +41,8 @@
         {% endfor %}
       </select>
     </label>
-    <label class="form-control w-full max-w-xs">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Filter by video processing status">Status</span>
+    <label class="flex flex-col gap-1 w-full max-w-xs">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Filter by video processing status">Status</span>
       <select name="status" class="select select-bordered w-full">
         <option value="">All</option>
         <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>Pending</option>
@@ -57,8 +57,8 @@
         <option value="cancelled" {% if selected_status == 'cancelled' %}selected{% endif %}>Cancelled</option>
       </select>
     </label>
-    <label class="form-control w-full max-w-xs">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Sort videos by column">Sort by</span>
+    <label class="flex flex-col gap-1 w-full max-w-xs">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Sort videos by column">Sort by</span>
       <select name="sort" class="select select-bordered w-full">
         <option value="created_at_desc" {% if sort == 'created_at_desc' %}selected{% endif %}>Date Added (newest)</option>
         <option value="upload_date_desc" {% if sort == 'upload_date_desc' %}selected{% endif %}>Upload Date (newest)</option>

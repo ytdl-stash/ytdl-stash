@@ -221,9 +221,10 @@ body { letter-spacing: -0.005em; }
 .cr-toplinks a.active { color: var(--color-base-content); border-bottom-color: var(--color-primary); }
 
 .cr-topright { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-.cr-status { display: flex; align-items: center; gap: 7px; font-family: var(--font-mono, monospace); font-size: 11px; color: color-mix(in srgb, var(--color-base-content) 60%, transparent); white-space: nowrap; }
+.cr-status { display: flex; align-items: center; gap: 7px; font-family: inherit; font-size: 11px; color: color-mix(in srgb, var(--color-base-content) 60%, transparent); white-space: nowrap; }
 .cr-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--color-success); }
 .cr-dot.warn { background: var(--color-warning); }
+.cr-dot.error { background: var(--color-error); }
 
 /* Mobile dropdown nav (links rendered inside a DaisyUI dropdown).
    NOTE: do NOT set `display` on .cr-topmenu. style.css is unlayered and would
@@ -250,10 +251,10 @@ body { letter-spacing: -0.005em; }
 .cr-content { margin-inline: auto; max-width: 1240px; }
 
 /* Eyebrow / micro-label treatment (mono, uppercase, tracked). */
-.cr-eyebrow { font-family: var(--font-mono); }
+.cr-eyebrow { }
 .cr-tile .cr-k,
 .stat-title {
-  font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em;
+  font-family: inherit; font-size: 10px; letter-spacing: .14em;
   text-transform: uppercase; font-weight: 500;
   color: color-mix(in srgb, var(--color-base-content) 46%, transparent);
 }
@@ -276,7 +277,7 @@ body { letter-spacing: -0.005em; }
 .cr-tile .cr-top { display: flex; align-items: center; gap: 8px; }
 .cr-tile .cr-ico { margin-left: auto; opacity: .5; }
 .cr-tile .cr-ico svg { width: 15px; height: 15px; }
-.cr-tile .cr-v { font-family: var(--font-mono); font-size: 30px; font-weight: 500; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+.cr-tile .cr-v { font-family: inherit; font-size: 30px; font-weight: 500; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
 .cr-tile .cr-sub { font-size: 11.5px; color: color-mix(in srgb, var(--color-base-content) 50%, transparent); }
 .cr-tile.is-accent .cr-v { color: var(--color-primary); }
 .cr-tile.is-warn .cr-v { color: var(--color-warning); }
@@ -284,7 +285,7 @@ body { letter-spacing: -0.005em; }
 
 /* DaisyUI .stats fallback (if still used anywhere) */
 .stats { background: var(--color-base-200); border: 1px solid var(--color-base-300); box-shadow: none; }
-.stat-value { font-family: var(--font-mono); font-weight: 500; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.stat-value { font-family: inherit; font-weight: 500; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
 
 /* ---- Buttons — defined treatment with a clear hierarchy ---- */
 .btn {
@@ -333,7 +334,7 @@ body { letter-spacing: -0.005em; }
 
 /* ---- Status badges → soft outline pills (mono, uppercase) ---- */
 .badge {
-  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .03em;
+  font-family: inherit; text-transform: uppercase; letter-spacing: .03em;
   font-weight: 500; border-radius: 999px; border-width: 1px; background: transparent;
 }
 .badge-success   { color: var(--color-success);   background: color-mix(in srgb, var(--color-success) 14%, transparent);   border-color: color-mix(in srgb, var(--color-success) 42%, transparent); }
@@ -362,7 +363,7 @@ body { letter-spacing: -0.005em; }
 .collapse { border: 1px solid var(--color-base-300); border-radius: .75rem; background: var(--color-base-200); }
 
 /* ---- Log console (mono rows) ---- */
-.cr-log { font-family: var(--font-mono); font-size: 12px; background: var(--color-base-100); border: 1px solid var(--color-base-300); border-radius: .75rem; overflow: hidden; max-height: 72vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.cr-log { font-family: inherit; font-size: 12px; background: var(--color-base-100); border: 1px solid var(--color-base-300); border-radius: .75rem; overflow: hidden; max-height: 72vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .cr-logrow { display: grid; grid-template-columns: 150px 64px 156px 1fr; gap: 14px; padding: 7px 16px; border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 5%, transparent); align-items: baseline; }
 .cr-logrow:last-child { border-bottom: none; }
 .cr-logrow:hover { background: color-mix(in srgb, var(--color-base-content) 3%, transparent); }
@@ -379,11 +380,11 @@ body { letter-spacing: -0.005em; }
 @media (max-width: 720px) { .cr-logrow { grid-template-columns: 1fr; gap: 1px; } .cr-logrow .lg { display: none; } }
 
 /* ---- Channel card bits ---- */
-.cr-tag { font-family: var(--font-mono); font-size: 9.5px; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--color-base-300); color: color-mix(in srgb, var(--color-base-content) 50%, transparent); text-transform: uppercase; letter-spacing: .05em; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.cr-tag { font-family: inherit; font-size: 9.5px; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--color-base-300); color: color-mix(in srgb, var(--color-base-content) 50%, transparent); text-transform: uppercase; letter-spacing: .05em; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .cr-tag.on { color: var(--color-success); border-color: color-mix(in srgb, var(--color-success) 40%, transparent); background: color-mix(in srgb, var(--color-success) 12%, transparent); }
 .cr-ring { position: absolute; top: 9px; right: 9px; width: 10px; height: 10px; border-radius: 50%; background: var(--color-success); box-shadow: 0 0 0 3px var(--color-base-200); }
 .cr-ring.off { background: color-mix(in srgb, var(--color-base-content) 35%, transparent); }
-.cr-vidcount { font-family: var(--font-mono); font-size: 11px; color: color-mix(in srgb, var(--color-base-content) 55%, transparent); }
+.cr-vidcount { font-family: inherit; font-size: 11px; color: color-mix(in srgb, var(--color-base-content) 55%, transparent); }
 
 /* ==========================================================================
    Rounded table cards — every data table sits in a base-200 panel.

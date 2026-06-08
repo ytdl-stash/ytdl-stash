@@ -396,3 +396,30 @@ async def resume_channels(request: Request):
         resp.headers["HX-Trigger"] = "pauseStateChanged"
         return resp
     return HTMLResponse("Channel scanning resumed", status_code=200)
+
+
+@router.get("/system-status")
+async def system_status(request: Request):
+    """Return the nav bar status indicator HTML fragment (polled by HTMX)."""
+    stash_healthy = download_control.is_stash_healthy()
+    paused = download_control.is_downloads_paused() or download_control.is_channels_paused()
+
+    if not stash_healthy:
+        dot_class = "cr-dot error"
+        label = "Stash unreachable"
+    elif paused:
+        dot_class = "cr-dot warn"
+        label = "Paused"
+    else:
+        dot_class = "cr-dot"
+        label = "All systems active"
+
+    html_content = (
+        f'<span class="cr-status"'
+        f' hx-get="/jobs/system-status"'
+        f' hx-trigger="every 30s"'
+        f' hx-swap="outerHTML">'
+        f'<span class="{dot_class}"></span>{label}'
+        f'</span>'
+    )
+    return HTMLResponse(html_content)

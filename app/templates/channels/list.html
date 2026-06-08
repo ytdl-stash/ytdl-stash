@@ -58,26 +58,9 @@
         </li>
       </ul>
     </div>
-    <button type="button"
-            class="btn btn-sm btn-success tooltip tooltip-bottom"
-            data-tip="Add a channel: scrape metadata, link to Stash, then save"
-            hx-get="/channels/add-modal"
-            hx-target="#add-channel-modal-body"
-            hx-swap="innerHTML"
-            hx-trigger="click"
-            hx-on::after-request="document.getElementById('add-channel-modal').showModal()">
-      + Add Channel
-    </button>
   </span>
 </div>
-{% include "channels/_add_modal.html" %}
 <div id="channels-content">
   {% include "channels/_list_content.html" %}
 </div>
-<script>
-  document.body.addEventListener('closeAddChannelModal', function () {
-    var modal = document.getElementById('add-channel-modal');
-    if (modal) modal.close();
-  });
-</script>
 {% endblock %}

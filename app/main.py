@@ -26,6 +26,7 @@ from app.download_control import download_control as _dc
 
 templates.env.globals["is_downloads_paused"] = _dc.is_downloads_paused
 templates.env.globals["is_channels_paused"] = _dc.is_channels_paused
+templates.env.globals["is_stash_healthy"] = _dc.is_stash_healthy
 
 
 def status_badge_class(status: str | None) -> str:

@@ -628,6 +628,19 @@ async def _download_processor() -> None:
     await _run_tracked("process_downloads", _do_process_downloads)
 
 
+async def _stash_health_checker() -> None:
+    """Run every 30s: check Stash connectivity and update the in-memory flag."""
+    from app.download_control import download_control
+
+    settings = get_settings()
+    try:
+        async with StashClient.from_settings(settings) as stash:
+            healthy = await stash.health_check()
+    except Exception:
+        healthy = False
+    download_control.set_stash_health(healthy)
+
+
 async def _ytdlp_update_checker() -> None:
     """Run periodically: check whether yt-dlp has an update available."""
     await _run_tracked("check_ytdlp_updates", _do_check_ytdlp_updates)
@@ -719,6 +732,13 @@ def start_scheduler() -> None:
         "interval",
         hours=ytdlp_hours,
         id="ytdlp_update_checker",
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _stash_health_checker,
+        "interval",
+        seconds=30,
+        id="stash_health_checker",
         max_instances=1,
     )
     scheduler.start()

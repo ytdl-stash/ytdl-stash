@@ -89,54 +89,54 @@
   hx-swap="innerHTML"
   hx-indicator="#ytdlp-env-spinner">
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="yt-dlp format selection string (e.g. bestvideo+bestaudio/best)">Format</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="yt-dlp format selection string (e.g. bestvideo+bestaudio/best)">Format</span>
       <input type="text" name="ytdlp_format" value="{{ settings.ytdlp_format or '' }}" placeholder="bestvideo+bestaudio/best" class="input input-bordered w-full">
     </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Browser to impersonate for anti-bot bypass">Impersonate</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Browser to impersonate for anti-bot bypass">Impersonate</span>
       <input type="text" name="ytdlp_impersonate" value="{{ settings.ytdlp_impersonate or '' }}" placeholder="chrome" class="input input-bordered w-full">
     </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="HTTP User-Agent header sent by yt-dlp">User-Agent</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="HTTP User-Agent header sent by yt-dlp">User-Agent</span>
       <input type="text" name="ytdlp_user_agent" value="{{ settings.ytdlp_user_agent or '' }}" placeholder="Mozilla/5.0 ..." class="input input-bordered w-full">
     </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="HTTP Referer header for requests">Referer</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="HTTP Referer header for requests">Referer</span>
       <input type="text" name="ytdlp_referer" value="{{ settings.ytdlp_referer or '' }}" placeholder="https://example.com/" class="input input-bordered w-full">
     </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Proxy URL (e.g. socks5://127.0.0.1:9050)">Proxy</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Proxy URL (e.g. socks5://127.0.0.1:9050)">Proxy</span>
       <input type="text" name="ytdlp_proxy" value="{{ settings.ytdlp_proxy or '' }}" placeholder="socks5://127.0.0.1:9050" class="input input-bordered w-full">
     </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Socket timeout in seconds for network requests">Socket timeout (seconds)</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Socket timeout in seconds for network requests">Socket timeout (seconds)</span>
       <input type="number" name="ytdlp_socket_timeout_seconds" value="{{ settings.ytdlp_socket_timeout_seconds or '' }}" min="1" step="1" class="input input-bordered w-full">
     </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Number of retries for failed requests">Retries</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Number of retries for failed requests">Retries</span>
       <input type="number" name="ytdlp_retries" value="{{ settings.ytdlp_retries }}" min="0" step="1" class="input input-bordered w-full">
     </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Retries for fragment downloads (e.g. HLS)">Fragment retries</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Retries for fragment downloads (e.g. HLS)">Fragment retries</span>
       <input type="number" name="ytdlp_fragment_retries" value="{{ settings.ytdlp_fragment_retries }}" min="0" step="1" class="input input-bordered w-full">
     </label>
-    <label class="form-control w-full">
-      <span class="label-text tooltip tooltip-bottom" data-tip="Hours between yt-dlp update checks">Update check interval (hours)</span>
+    <label class="flex flex-col gap-1 w-full">
+      <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Hours between yt-dlp update checks">Update check interval (hours)</span>
       <input type="number" name="ytdlp_update_check_interval_hours" value="{{ settings.ytdlp_update_check_interval_hours }}" min="1" step="1" class="input input-bordered w-full">
     </label>
   </div>
 
-  <label class="form-control w-full max-w-2xl mb-4">
-    <span class="label-text tooltip tooltip-bottom" data-tip="Custom HTTP headers as JSON object">HTTP headers JSON</span>
+  <label class="flex flex-col gap-1 w-full max-w-2xl mb-4">
+    <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Custom HTTP headers as JSON object">HTTP headers JSON</span>
     <textarea name="ytdlp_http_headers_json" rows="4" class="textarea textarea-bordered w-full">{{ settings.ytdlp_http_headers_json }}</textarea>
   </label>
-  <label class="form-control w-full max-w-2xl mb-4">
-    <span class="label-text tooltip tooltip-bottom" data-tip="Extra yt-dlp options for channel/video list scans">Scan options JSON (merged into yt-dlp options for channel scans)</span>
+  <label class="flex flex-col gap-1 w-full max-w-2xl mb-4">
+    <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Extra yt-dlp options for channel/video list scans">Scan options JSON (merged into yt-dlp options for channel scans)</span>
     <textarea name="ytdlp_scan_opts_json" rows="4" class="textarea textarea-bordered w-full">{{ settings.ytdlp_scan_opts_json }}</textarea>
   </label>
-  <label class="form-control w-full max-w-2xl mb-4">
-    <span class="label-text tooltip tooltip-bottom" data-tip="Extra yt-dlp options for actual downloads">Download options JSON (merged into yt-dlp options for downloads)</span>
+  <label class="flex flex-col gap-1 w-full max-w-2xl mb-4">
+    <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Extra yt-dlp options for actual downloads">Download options JSON (merged into yt-dlp options for downloads)</span>
     <textarea name="ytdlp_download_opts_json" rows="4" class="textarea textarea-bordered w-full">{{ settings.ytdlp_download_opts_json }}</textarea>
   </label>
 
@@ -168,8 +168,8 @@
       hx-swap="innerHTML"
       hx-encoding="multipart/form-data"
       hx-indicator="#import-spinner">
-  <label class="form-control w-full max-w-md">
-    <span class="label-text">JSON file (local_db.json)</span>
+  <label class="flex flex-col gap-1 w-full max-w-md">
+    <span class="text-sm font-medium">JSON file (local_db.json)</span>
     <input type="file" id="import-file" name="file" accept=".json" required class="file-input file-input-bordered w-full max-w-md">
   </label>
   <label class="flex items-center gap-2 cursor-pointer">

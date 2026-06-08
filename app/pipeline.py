@@ -267,6 +267,7 @@ async def run_scrape_and_generate(
     # 1. Scrape the video URL via Stash's configured scrapers
     if settings.stash_scrape_after_sync and not skip_scrape:
         try:
+            download_progress.set_phase(video.id, "Scraping")
             logger.info("Video %s: scraping URL %s via Stash", video.id, video.url)
             scraped = await stash.scrape_scene_url(video.url)
             if scraped:
@@ -283,6 +284,7 @@ async def run_scrape_and_generate(
     # 2. Trigger Stash generate and wait for completion (before organized)
     if settings.stash_generate_after_sync and not skip_generate:
         try:
+            download_progress.set_phase(video.id, "Generating")
             logger.info("Video %s: triggering Stash generate for scene %s", video.id, scene_id)
             job_id = await stash.trigger_generate(
                 scene_ids=[scene_id],
@@ -486,6 +488,7 @@ async def process_single_download(
         # Early scene lookup: if scene already in Stash (e.g. retry after
         # timeout, or Stash moved file), skip download and scan entirely.
         # ------------------------------------------------------------------
+        download_progress.set_phase(video.id, "Checking Stash")
         scene: dict | None = None
         if video.oshash:
             scene = await stash.find_scene_by_oshash(video.oshash)
@@ -539,6 +542,7 @@ async def process_single_download(
                 or (channel.max_video_age_days is not None and video.upload_date is None)
             )
             if needs_metadata:
+                download_progress.set_phase(video.id, "Extracting metadata")
                 logger.info(
                     "Video %s: extracting metadata to check filters (min_duration=%s, max_age=%s)",
                     video.id,
@@ -596,6 +600,8 @@ async def process_single_download(
                     await db.commit()
                     download_progress.clear(video.id)
                     return
+
+            download_progress.set_phase(video.id, "Downloading")
 
             last_hook_ts = 0.0
             last_hook_status: str | None = None
@@ -700,6 +706,7 @@ async def process_single_download(
             raise DownloadCancelled("Download cancelled by user")
 
         filepath = existing_filepath
+        download_progress.set_phase(video.id, "Computing file hash")
         logger.info("Video %s: computing oshash for %s", video.id, filepath)
         oshash = await async_compute_oshash(filepath)
         video.oshash = oshash
@@ -715,6 +722,7 @@ async def process_single_download(
         if download_control.is_cancel_requested(video.id):
             raise DownloadCancelled("Download cancelled by user")
 
+        download_progress.set_phase(video.id, "Scanning in Stash")
         scan_path = filepath
         if settings.stash_download_dir:
             # Only replace when path is under download_dir (prefix match)
@@ -737,8 +745,10 @@ async def process_single_download(
             raise RuntimeError("Scene not found in Stash after scan job completed")
         logger.info("Video %s: Stash scene found (id=%s)", video.id, scene["id"])
 
+        download_progress.set_phase(video.id, "Syncing metadata")
         await _apply_metadata_and_sync(video, scene, stash, settings, db)
         await db.commit()
+        download_progress.clear(video.id)
 
     except DownloadCancelled as e:
         download_progress.clear(video_id)
