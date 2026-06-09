@@ -6,8 +6,9 @@
    layout=table renders a compact icon "action rail" (icons + hover tooltip).
    layout=detail / active render labeled buttons.
 
-   Note: only Delete prompts for confirmation (via the shared modal in base.html,
-   triggered by hx-confirm). Other actions fire immediately.
+   Note: only Delete and Redownload prompt for confirmation (via the shared modal
+   in base.html, triggered by hx-confirm) — both are destructive. Other actions
+   fire immediately.
 #}
 {% if layout == 'active' %}
   {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
@@ -52,7 +53,8 @@
             data-tip="Force re-download{% if video.stash_scene_id %} (deletes the Stash scene and file){% else %} (deletes existing file){% endif %}" aria-label="Force re-download"
             hx-post="/videos/{{ video.id }}/redownload"
             hx-target="{{ hx_status_target }}"
-            hx-swap="outerHTML">
+            hx-swap="outerHTML"
+            hx-confirm="Force re-download for '{{ video.title|e }}'?{% if video.stash_scene_id %} The existing Stash scene and file will be deleted.{% endif %}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
     </button>
     {% endif %}
@@ -103,7 +105,8 @@
           data-tip="Force a fresh download{% if video.stash_scene_id %} (deletes the Stash scene and file){% else %} (deletes existing file){% endif %}"
           hx-post="/videos/{{ video.id }}/redownload"
           hx-target="{{ hx_status_target }}"
-          hx-swap="outerHTML">
+          hx-swap="outerHTML"
+          hx-confirm="Force re-download for '{{ video.title|e }}'?{% if video.stash_scene_id %} The existing Stash scene and file will be deleted.{% endif %}">
     Redownload
   </button>
   {% endif %}

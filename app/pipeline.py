@@ -320,6 +320,12 @@ async def run_scrape_and_generate(
         except Exception as e:
             logger.warning("Video %s: post-sync scene re-sync failed (non-fatal): %s", video.id, e)
 
+    # This is the final pipeline step for every caller — the main download, the
+    # early-scene-lookup shortcut, and the scheduler backfill/regenerate jobs.
+    # Clear the live phase here so callers that don't otherwise clear can't leave
+    # a stale "Scraping"/"Generating" entry pinning the video in the active panel.
+    download_progress.clear(video.id)
+
 
 async def _apply_metadata_and_sync(
     video: Video,
@@ -755,9 +761,15 @@ async def process_single_download(
         # Wait for the path to settle BEFORE update_scene/generate so they don't
         # race a file mid-move, and record where the file actually ended up.
         download_progress.set_phase(video.id, "Finalizing in Stash")
-        settled_path = await stash.wait_for_scene_path_stable(
-            scene["id"], settle=settings.stash_organized_settle_seconds
-        )
+        try:
+            settled_path = await stash.wait_for_scene_path_stable(
+                scene["id"], settle=settings.stash_organized_settle_seconds
+            )
+        except Exception as e:
+            # Best-effort: the scene is already found and the download succeeded.
+            # A transient Stash error here must not fail the video.
+            logger.warning("Video %s: path-settle check failed (non-fatal): %s", video.id, e)
+            settled_path = None
         if settled_path:
             video.original_filename = os.path.basename(settled_path)
             logger.info("Video %s: file settled at %s", video.id, settled_path)
