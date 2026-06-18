@@ -8,11 +8,11 @@
       {% include "components/_pause_toggle.html" %}
     {% endwith %}
     <span id="job-inline-retry_all_failed">
-      <button type="button" class="btn btn-sm btn-secondary tooltip tooltip-bottom" data-tip="Retry all failed videos (import-only when possible; full re-download otherwise)"
+      <button type="button" class="btn btn-sm btn-secondary tooltip tooltip-bottom" data-tip="Retry all failed videos. Any linked to a Stash scene get the scene + file deleted and re-downloaded; otherwise import-only when a file exists."
               hx-post="/jobs/retry_all_failed/trigger"
               hx-target="#job-inline-retry_all_failed"
               hx-swap="innerHTML"
-              hx-confirm="Retry ALL failed videos? (Import-only when file exists; full re-download otherwise)">
+              hx-confirm="Retry ALL failed videos? Any still linked to a Stash scene will have that scene and file deleted, then re-downloaded.">
         Retry All Failed
       </button>
     </span>

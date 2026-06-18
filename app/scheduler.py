@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Callable, Coroutine
+from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -13,7 +14,12 @@ from sqlalchemy import and_, or_, select, update
 from app import database as db_module
 from app.config import get_settings
 from app.models import Channel, Video
-from app.pipeline import process_channel_scan, process_pending_downloads, run_scrape_and_generate
+from app.pipeline import (
+    hard_reset_video,
+    process_channel_scan,
+    process_pending_downloads,
+    run_scrape_and_generate,
+)
 from app.stash_client import StashClient
 from app.ytdlp_updates import check_for_update as ytdlp_check_for_update
 
@@ -59,7 +65,7 @@ job_registry: dict[str, JobInfo] = {
     "retry_all_failed": JobInfo(
         id="retry_all_failed",
         name="Retry All Failed",
-        description="Retry all failed videos (import-only when oshash/filename exists; full re-download otherwise).",
+        description="Retry all failed videos. Any still linked to a Stash scene get the scene + file destroyed and re-downloaded; otherwise import-only when a local file exists.",
     ),
     "check_ytdlp_updates": JobInfo(
         id="check_ytdlp_updates",
@@ -83,7 +89,12 @@ APSCHEDULER_ID_MAP: dict[str, str | None] = {
     "check_all_channels": "channel_checker",
     "process_downloads": "download_processor",
     "check_ytdlp_updates": "ytdlp_update_checker",
-    "retry_all_failed": None,
+    # Schedulable only when an interval is configured (0 = manual-only).
+    "retry_all_failed": (
+        "retry_failed_scheduler"
+        if get_settings().retry_failed_interval_hours > 0
+        else None
+    ),
     "backfill_scrape_generate": None,
     "regenerate_all": None,
 }
@@ -130,7 +141,7 @@ def get_job_schedule_edit_value(job_id: str) -> tuple[int, str] | None:
     if interval is None or not isinstance(interval, timedelta):
         return None
     total = int(interval.total_seconds())
-    if apscheduler_id == "ytdlp_update_checker":
+    if apscheduler_id in ("ytdlp_update_checker", "retry_failed_scheduler"):
         return (max(1, total // 3600), "hours")
     return (max(10, total), "seconds")
 
@@ -147,7 +158,7 @@ def reschedule_job(
         return False
     if scheduler.get_job(apscheduler_id) is None:
         return False
-    if apscheduler_id == "ytdlp_update_checker":
+    if apscheduler_id in ("ytdlp_update_checker", "retry_failed_scheduler"):
         if hours is None or hours < 1:
             return False
         scheduler.reschedule_job(
@@ -366,46 +377,65 @@ async def _do_process_downloads() -> None:
 
 
 async def _do_retry_all_failed() -> None:
-    """Reset failed videos: to downloaded (import-only retry) when oshash/filename
-    exists, otherwise to pending (full re-download).
+    """Reset failed videos for another run.
+
+    Videos still linked to a Stash scene are fully torn down (scene + file +
+    generated content destroyed) so the import is cleanly redone; videos with a
+    local file/oshash but no scene are reset to ``downloaded`` (import-only); the
+    rest go to ``pending`` (full download).
     """
     if db_module.async_session is None:
         logger.warning("Retry all failed skipped: database session not initialized")
         return
+    settings = get_settings()
     async with db_module.async_session() as db:
         try:
-            result = await db.execute(
-                select(Video.id, Video.oshash, Video.original_filename)
-                .where(Video.status == "failed")
+            videos = list(
+                (await db.execute(select(Video).where(Video.status == "failed")))
+                .scalars()
+                .all()
             )
-            rows = result.all()
+            if not videos:
+                logger.debug("Retry all failed: nothing to retry")
+                return
+
+            wiped = 0
             to_downloaded = 0
             to_pending = 0
-            for video_id, oshash, original_filename in rows:
-                if oshash or original_filename:
-                    await db.execute(
-                        update(Video)
-                        .where(Video.id == video_id)
-                        .values(status="downloaded", error_message=None)
+            async with AsyncExitStack() as stack:
+                # One Stash client for the whole batch, opened only if needed.
+                stash: StashClient | None = None
+                if any(v.stash_scene_id for v in videos):
+                    stash = await stack.enter_async_context(
+                        StashClient.from_settings(settings)
                     )
-                    to_downloaded += 1
-                else:
-                    await db.execute(
-                        update(Video)
-                        .where(Video.id == video_id)
-                        .values(status="pending", error_message=None)
-                    )
-                    to_pending += 1
-            await db.commit()
-            total = to_downloaded + to_pending
-            if total:
-                logger.info(
-                    "Retry all failed: reset %d video(s) — %d to downloaded, %d to pending",
-                    total, to_downloaded, to_pending,
-                )
+                for video in videos:
+                    if video.stash_scene_id:
+                        await hard_reset_video(video, stash, settings)  # -> pending
+                        wiped += 1
+                    elif video.oshash or video.original_filename:
+                        video.status = "downloaded"
+                        video.error_message = None
+                        to_downloaded += 1
+                    else:
+                        video.status = "pending"
+                        video.error_message = None
+                        to_pending += 1
+                await db.commit()
+
+            logger.info(
+                "Retry all failed: reset %d video(s) — %d scene-wiped, %d import-only, %d full download",
+                wiped + to_downloaded + to_pending, wiped, to_downloaded, to_pending,
+            )
         except Exception:
             await db.rollback()
             raise
+
+
+async def _retry_failed_scheduler() -> None:
+    """Scheduled wrapper for auto-retrying failed videos. Registered only when
+    YTDL_RETRY_FAILED_INTERVAL_HOURS > 0; tracked like the other registry jobs."""
+    await _run_tracked("retry_all_failed", _do_retry_all_failed)
 
 
 # ---------------------------------------------------------------------------
@@ -741,12 +771,23 @@ def start_scheduler() -> None:
         id="stash_health_checker",
         max_instances=1,
     )
+    retry_hours = int(settings.retry_failed_interval_hours)
+    if retry_hours > 0:
+        scheduler.add_job(
+            _retry_failed_scheduler,
+            "interval",
+            hours=retry_hours,
+            id="retry_failed_scheduler",
+            max_instances=1,
+        )
     scheduler.start()
     logger.info(
-        "Scheduler started (channel_checker=%ds, download_processor=%ds, ytdlp_update_checker=%dh)",
+        "Scheduler started (channel_checker=%ds, download_processor=%ds, "
+        "ytdlp_update_checker=%dh, retry_failed=%s)",
         channel_secs,
         download_secs,
         ytdlp_hours,
+        f"{retry_hours}h" if retry_hours > 0 else "off",
     )
 
 

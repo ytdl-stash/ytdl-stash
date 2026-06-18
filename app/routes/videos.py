@@ -19,6 +19,7 @@ from app.download_control import download_control
 from app.download_progress import download_progress
 from app.main import templates
 from app.models import Channel, Video
+from app.pipeline import hard_reset_video
 from app.stash_client import StashClient
 
 logger = logging.getLogger(__name__)
@@ -402,8 +403,15 @@ async def retry_video(
     video_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    """Reset failed video to pending. Returns HTMX _status_badge.html or redirect."""
+    """Reset a failed/cancelled/skipped video for another run.
+
+    If the video is still linked to a Stash scene, that scene — plus its file and
+    generated content — is destroyed first so the import is fully redone rather
+    than re-syncing to the stale scene. Otherwise it's an import-only retry when a
+    local file/oshash exists, or a full download when not.
+    """
     video = await db.get(Video, video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -413,17 +421,24 @@ async def retry_video(
             detail="Only failed/cancelled/skipped videos can be retried",
         )
 
-    if video.oshash or video.original_filename:
+    if video.stash_scene_id:
+        # Linked to Stash → wipe the scene + file and re-download fresh for a clean re-import.
+        async with StashClient.from_settings(settings) as stash:
+            await hard_reset_video(video, stash, settings)
+        logger.info("Video %s reset for retry (Stash scene wiped, full re-download)", video_id)
+    elif video.oshash or video.original_filename:
         video.status = "downloaded"  # skip download, retry import only
+        video.error_message = None
+        logger.info("Video %s reset for retry (status=downloaded, import-only)", video_id)
     else:
         video.status = "pending"  # full pipeline including download
-    video.error_message = None
-    logger.info("Video %s reset for retry (status=%s)", video_id, video.status)
+        video.error_message = None
+        logger.info("Video %s reset for retry (status=pending, full download)", video_id)
 
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
             "videos/_status_badge.html",
-            {"request": request, "video": video},
+            {"request": request, "video": video, "poll_status_badge": True},
         )
     return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
 
@@ -452,55 +467,10 @@ async def redownload_video(
         )
 
     if video.stash_scene_id:
-        try:
-            async with StashClient.from_settings(settings) as stash:
-                await stash.destroy_scene(
-                    video.stash_scene_id,
-                    delete_file=True,
-                    delete_generated=True,
-                )
-            logger.info(
-                "Video %s: destroyed Stash scene %s for redownload",
-                video_id, video.stash_scene_id,
-            )
-        except Exception as e:
-            logger.warning(
-                "Video %s: failed to destroy Stash scene %s: %s",
-                video_id, video.stash_scene_id, e,
-            )
-
-    if video.original_filename:
-        candidate = os.path.abspath(os.path.join(settings.download_dir, video.original_filename))
-        download_root = os.path.abspath(settings.download_dir)
-        # Guard against an absolute/foreign original_filename (imported records
-        # store a full path): os.path.join lets it escape download_dir and could
-        # target an unintended file. Only delete files genuinely under
-        # download_dir; the real Stash-managed file is removed above via
-        # destroy_scene(delete_file=True).
-        within_download_dir = (
-            candidate == download_root or candidate.startswith(download_root + os.sep)
-        )
-        if within_download_dir and os.path.isfile(candidate):
-            try:
-                os.remove(candidate)
-                logger.info("Video %s: deleted existing file %s", video_id, candidate)
-            except OSError as e:
-                logger.warning("Video %s: could not delete %s: %s", video_id, candidate, e)
-        elif not within_download_dir:
-            logger.info(
-                "Video %s: skipping local delete of %r (outside download_dir; Stash-managed)",
-                video_id, video.original_filename,
-            )
-
-    video.original_filename = None
-    video.oshash = None
-    video.stash_scene_id = None
-    video.downloaded_at = None
-    video.synced_at = None
-    video.scrape_attempted_at = None
-    video.generate_triggered_at = None
-    video.status = "pending"
-    video.error_message = None
+        async with StashClient.from_settings(settings) as stash:
+            await hard_reset_video(video, stash, settings)
+    else:
+        await hard_reset_video(video, None, settings)
     logger.info("Video %s reset to pending for redownload", video_id)
 
     if request.headers.get("HX-Request"):

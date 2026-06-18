@@ -327,6 +327,68 @@ async def run_scrape_and_generate(
     download_progress.clear(video.id)
 
 
+async def hard_reset_video(
+    video: Video, stash: "StashClient | None", settings: Settings
+) -> None:
+    """Tear a video down for a fully fresh download + import.
+
+    Destroys any linked Stash scene (scene, file, and generated content),
+    deletes the local file if it lives under ``download_dir``, clears all
+    tracking fields, and sets ``status='pending'``. Shared by Redownload and by
+    Retry (when a scene is linked). The caller owns the StashClient lifecycle
+    and the DB commit; ``stash`` may be ``None`` when no client is available
+    (the link is still cleared so processing isn't blocked on a Stash outage).
+    """
+    if video.stash_scene_id:
+        if stash is not None:
+            try:
+                await stash.destroy_scene(
+                    video.stash_scene_id, delete_file=True, delete_generated=True
+                )
+                logger.info(
+                    "Video %s: destroyed Stash scene %s", video.id, video.stash_scene_id
+                )
+            except Exception as e:
+                logger.warning(
+                    "Video %s: failed to destroy Stash scene %s (non-fatal): %s",
+                    video.id, video.stash_scene_id, e,
+                )
+        else:
+            logger.warning(
+                "Video %s: no Stash client available to destroy scene %s; clearing link only",
+                video.id, video.stash_scene_id,
+            )
+
+    if video.original_filename:
+        candidate = os.path.abspath(os.path.join(settings.download_dir, video.original_filename))
+        download_root = os.path.abspath(settings.download_dir)
+        # Guard against an absolute/foreign original_filename escaping download_dir.
+        within_download_dir = (
+            candidate == download_root or candidate.startswith(download_root + os.sep)
+        )
+        if within_download_dir and os.path.isfile(candidate):
+            try:
+                os.remove(candidate)
+                logger.info("Video %s: deleted existing file %s", video.id, candidate)
+            except OSError as e:
+                logger.warning("Video %s: could not delete %s: %s", video.id, candidate, e)
+        elif not within_download_dir:
+            logger.info(
+                "Video %s: skipping local delete of %r (outside download_dir; Stash-managed)",
+                video.id, video.original_filename,
+            )
+
+    video.original_filename = None
+    video.oshash = None
+    video.stash_scene_id = None
+    video.downloaded_at = None
+    video.synced_at = None
+    video.scrape_attempted_at = None
+    video.generate_triggered_at = None
+    video.status = "pending"
+    video.error_message = None
+
+
 async def _apply_metadata_and_sync(
     video: Video,
     scene: dict,

@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     # Scheduler intervals (seconds for channel check and download processor)
     channel_check_interval_seconds: int = Field(default=60, ge=10, le=86400)
     download_process_interval_seconds: int = Field(default=30, ge=10, le=86400)
+    # Auto-retry failed videos every N hours (0 = disabled / manual-only)
+    retry_failed_interval_hours: int = Field(default=0, ge=0, le=8760)
     log_level: str = "INFO"
 
     # ---------------------------------------------------------------------

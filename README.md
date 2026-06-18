@@ -97,6 +97,7 @@ These are set on the **host** and interpolated by Docker Compose before the cont
 | `YTDL_MAX_CONCURRENT_DOWNLOADS` | `int` | `1` | Optional | Parallel download/import slots (min 1, max 16) |
 | `YTDL_DOWNLOAD_DELAY_SECONDS` | `int` | `5` | Optional | Seconds to wait between successive downloads |
 | `YTDL_YTDLP_UPDATE_CHECK_INTERVAL_HOURS` | `int` | `24` | Optional | Hours between PyPI checks for a newer yt-dlp |
+| `YTDL_RETRY_FAILED_INTERVAL_HOURS` | `int` | `0` | Optional | Auto-run "Retry All Failed" every N hours. `0` = off / manual-only. Retry destroys any linked Stash scene + file and re-downloads for a clean re-import. |
 
 ### yt-dlp options
 

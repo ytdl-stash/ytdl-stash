@@ -22,7 +22,7 @@
         hx-post="/jobs/{{ job.id }}/trigger"
         hx-target="#job-inline-{{ job.id }}"
         hx-swap="innerHTML"
-        hx-confirm="Retry ALL failed videos? (Import-only when file exists; full re-download otherwise)">
+        hx-confirm="Retry ALL failed videos? Any still linked to a Stash scene will have that scene and file deleted, then re-downloaded.">
   Retry All Failed
 </button>
 {% elif job.id == 'check_all_channels' %}

@@ -483,10 +483,12 @@ All failures in steps 1–9 result in `status=failed` with the error message sav
 
 ## Retry and Redownload
 
-**Retry** (import-only when possible):
-1. `POST /videos/{id}/retry` sets `video.status = "downloaded"` when oshash/filename exists, else `"pending"`.
-2. The download processor picks up both `pending` and `downloaded` (no scene) videos.
-3. Pipeline runs early scene lookup; if found, skips download. Otherwise uses file-existence fast-path or downloads.
+**Retry** (`POST /videos/{id}/retry`; failed/cancelled/skipped only):
+1. **If still linked to a Stash scene** → `pipeline.hard_reset_video`: destroy the scene (scene + file + generated content), clear tracking fields, set `status = "pending"`. This forces a fully clean re-import instead of re-syncing to the stale scene.
+2. Else if oshash/filename exists → `status = "downloaded"` (import-only retry); otherwise `status = "pending"` (full download).
+3. The download processor picks up `pending` and `downloaded` (no-scene) videos; early scene lookup → file-existence fast-path → download as applicable.
+
+**Retry All Failed** can run on a schedule — set `YTDL_RETRY_FAILED_INTERVAL_HOURS` > 0 (`0` = manual-only). The bulk job applies the same per-video logic, including the scene-wipe-when-linked step.
 
 **Redownload** (force fresh download):
 1. `POST /videos/{id}/redownload` clears `original_filename`, `oshash`, `stash_scene_id`; sets `status = "pending"`.
