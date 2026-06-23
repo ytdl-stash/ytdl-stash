@@ -13,7 +13,7 @@ from sqlalchemy import and_, or_, select, update
 
 from app import database as db_module
 from app.config import get_settings
-from app.models import Channel, Video
+from app.models import AppState, Channel, Video
 from app.pipeline import (
     hard_reset_video,
     process_channel_scan,
@@ -89,12 +89,8 @@ APSCHEDULER_ID_MAP: dict[str, str | None] = {
     "check_all_channels": "channel_checker",
     "process_downloads": "download_processor",
     "check_ytdlp_updates": "ytdlp_update_checker",
-    # Schedulable only when an interval is configured (0 = manual-only).
-    "retry_all_failed": (
-        "retry_failed_scheduler"
-        if get_settings().retry_failed_interval_hours > 0
-        else None
-    ),
+    # Always schedulable; the interval (0 = off) is persisted and UI-editable.
+    "retry_all_failed": "retry_failed_scheduler",
     "backfill_scrape_generate": None,
     "regenerate_all": None,
 }
@@ -108,7 +104,8 @@ def get_job_schedule_info(job_id: str) -> tuple[str, datetime | None]:
         return ("Manual", None)
     job = scheduler.get_job(apscheduler_id)
     if job is None:
-        return ("—", None)
+        # retry is always schedulable but may be turned off (no live job).
+        return ("Off" if apscheduler_id == "retry_failed_scheduler" else "—", None)
     next_run = job.next_run_time
     # Format interval from trigger (IntervalTrigger has .interval as timedelta).
     interval_display = "—"
@@ -133,7 +130,8 @@ def get_job_schedule_edit_value(job_id: str) -> tuple[int, str] | None:
         return None
     job = scheduler.get_job(apscheduler_id)
     if job is None:
-        return None
+        # retry: still show an editable box (value 0 = off) with no live job.
+        return (0, "hours") if apscheduler_id == "retry_failed_scheduler" else None
     trigger = getattr(job, "trigger", None)
     if trigger is None:
         return None
@@ -156,9 +154,31 @@ def reschedule_job(
     apscheduler_id = APSCHEDULER_ID_MAP.get(job_id)
     if apscheduler_id is None:
         return False
+
+    # Retry-All-Failed can be enabled/disabled at runtime (0 hours = off), so its
+    # live job may not exist yet — handle it before the "job must exist" check.
+    if apscheduler_id == "retry_failed_scheduler":
+        if hours is None or hours < 0:
+            return False
+        existing = scheduler.get_job("retry_failed_scheduler")
+        if hours == 0:
+            if existing is not None:
+                scheduler.remove_job("retry_failed_scheduler")
+        elif existing is not None:
+            scheduler.reschedule_job("retry_failed_scheduler", trigger="interval", hours=hours)
+        else:
+            scheduler.add_job(
+                _retry_failed_scheduler,
+                "interval",
+                hours=hours,
+                id="retry_failed_scheduler",
+                max_instances=1,
+            )
+        return True
+
     if scheduler.get_job(apscheduler_id) is None:
         return False
-    if apscheduler_id in ("ytdlp_update_checker", "retry_failed_scheduler"):
+    if apscheduler_id == "ytdlp_update_checker":
         if hours is None or hours < 1:
             return False
         scheduler.reschedule_job(
@@ -175,6 +195,44 @@ def reschedule_job(
             seconds=seconds,
         )
     return True
+
+
+_RETRY_INTERVAL_KEY = "retry_failed_interval_hours"
+
+
+async def load_retry_interval_hours() -> int | None:
+    """Read the persisted Retry-All-Failed interval (hours), or None if unset.
+
+    Persisted via the Jobs page; falls back to ``YTDL_RETRY_FAILED_INTERVAL_HOURS``
+    (handled by the caller) when this returns None.
+    """
+    if db_module.async_session is None:
+        return None
+    async with db_module.async_session() as session:
+        row = (
+            await session.execute(select(AppState).where(AppState.key == _RETRY_INTERVAL_KEY))
+        ).scalar_one_or_none()
+        if row is None or row.value is None:
+            return None
+        try:
+            return max(0, int(row.value))
+        except (TypeError, ValueError):
+            return None
+
+
+async def persist_retry_interval_hours(hours: int) -> None:
+    """Persist the Retry-All-Failed interval (hours) so it survives restarts."""
+    if db_module.async_session is None:
+        return
+    async with db_module.async_session() as session:
+        row = (
+            await session.execute(select(AppState).where(AppState.key == _RETRY_INTERVAL_KEY))
+        ).scalar_one_or_none()
+        if row is None:
+            session.add(AppState(key=_RETRY_INTERVAL_KEY, value=str(hours)))
+        else:
+            row.value = str(hours)
+        await session.commit()
 
 
 async def _run_tracked(job_id: str, coro_fn) -> None:
@@ -737,8 +795,12 @@ def stop_job(job_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def start_scheduler() -> None:
-    """Start the scheduler. Call from FastAPI lifespan after init_db."""
+def start_scheduler(retry_interval_hours: int | None = None) -> None:
+    """Start the scheduler. Call from FastAPI lifespan after init_db.
+
+    ``retry_interval_hours`` overrides the env-var default for Retry-All-Failed
+    (pass the persisted value loaded from the DB; ``None`` uses the env default).
+    """
     settings = get_settings()
     channel_secs = max(10, settings.channel_check_interval_seconds)
     download_secs = max(10, settings.download_process_interval_seconds)
@@ -771,7 +833,11 @@ def start_scheduler() -> None:
         id="stash_health_checker",
         max_instances=1,
     )
-    retry_hours = int(settings.retry_failed_interval_hours)
+    retry_hours = (
+        retry_interval_hours
+        if retry_interval_hours is not None
+        else int(settings.retry_failed_interval_hours)
+    )
     if retry_hours > 0:
         scheduler.add_job(
             _retry_failed_scheduler,

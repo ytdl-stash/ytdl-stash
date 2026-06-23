@@ -760,6 +760,8 @@ class StashClient:
         settle: float = 2.0,
         interval: float = 1.0,
         attempts: int = 6,
+        total_timeout: float | None = None,
+        require_change: bool = False,
     ) -> str | None:
         """Wait until a scene's primary file path stops changing, then return it.
 
@@ -771,20 +773,68 @@ class StashClient:
 
         ``settle`` gives the async move time to begin before we start trusting
         the path; we then poll until the path is unchanged across two reads.
-        Returns the final observed path, or None if it can't be read.
+
+        When Stash's job queue is busy the renamer can be delayed well past the
+        head-start. ``total_timeout`` (when set) bounds the *whole* wait by
+        wall-clock instead of a fixed ``attempts`` count, so we keep polling for
+        the move to land. ``require_change`` makes the wait insist on observing
+        the path change at least once before accepting it as stable — use it
+        when a renamer is known to run on import, so a not-yet-started move
+        can't masquerade as "settled" and leave us generating against the
+        pre-move path.
+
+        Returns the final observed path, or None if it can't be read. On
+        ``total_timeout`` expiry it returns the last observed path (best effort);
+        if ``require_change`` was set but no change was ever seen, it logs a
+        warning first (the renamer likely didn't run).
         """
         if settle > 0:
             await asyncio.sleep(settle)
+
+        deadline = (
+            time.monotonic() + total_timeout
+            if total_timeout and total_timeout > 0
+            else None
+        )
+
+        initial: str | None = None
         prev: str | None = None
         final: str | None = None
-        for i in range(max(1, attempts)):
+        seen_change = False
+        reads = 0
+        while True:
             scene = await self.find_scene_by_id(scene_id)
             final = self.scene_primary_path(scene)
-            if i > 0 and final is not None and final == prev:
+            if reads == 0:
+                initial = final
+            elif final is not None and final != initial:
+                seen_change = True
+            reads += 1
+
+            # "Stable" = unchanged across two consecutive reads. When a renamer
+            # is expected, also insist we've actually seen the path change, so a
+            # move that hasn't started yet can't look settled.
+            stable = reads > 1 and final is not None and final == prev
+            if require_change and not seen_change:
+                stable = False
+            if stable:
                 return final
             prev = final
+
+            # Termination: wall-clock deadline when given, else fixed attempts.
+            if deadline is not None:
+                if time.monotonic() + interval >= deadline:
+                    if require_change and not seen_change:
+                        logger.warning(
+                            "Stash scene %s: file path never changed within %.0fs; "
+                            "proceeding with %r (renamer may not have run on import)",
+                            scene_id, total_timeout, final,
+                        )
+                    return final
+            elif reads >= max(1, attempts):
+                return final
+
             await asyncio.sleep(interval)
-        return final
 
     def _performer_dict(self, p: dict) -> dict:
         """Build {id, name, urls, image_path} from GraphQL performer result."""

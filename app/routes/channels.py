@@ -21,7 +21,7 @@ from app.downloader import async_extract_channel_metadata, normalize_channel_url
 from app.main import templates
 from app.models import Channel, Video
 from app.performer_sync import sync_channel_performer
-from app.pipeline import process_channel_scan
+from app.pipeline import generate_for_scene, process_channel_scan
 from app.studio_sync import sync_channel_studio
 from app.stash_client import StashClient
 
@@ -895,15 +895,9 @@ async def channel_resync_videos(
                             logger.warning("Channel resync: scrape failed for video %s: %s", vid, e)
                         if settings.stash_generate_after_sync:
                             try:
-                                job_id = await stash.trigger_generate(
-                                    scene_ids=[video.stash_scene_id],
-                                    covers=settings.stash_generate_covers,
-                                    previews=settings.stash_generate_previews,
-                                    sprites=settings.stash_generate_sprites,
-                                    phashes=settings.stash_generate_phashes,
+                                await generate_for_scene(
+                                    video, video.stash_scene_id, stash, settings
                                 )
-                                if job_id:
-                                    await stash.wait_for_job(job_id)
                                 video.generate_triggered_at = datetime.now(UTC)
                             except Exception as e:
                                 logger.warning("Channel resync: generate failed for video %s: %s", vid, e)

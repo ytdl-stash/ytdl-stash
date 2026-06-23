@@ -115,7 +115,15 @@ async def reschedule(
     if APSCHEDULER_ID_MAP.get(job_id) is None:
         raise HTTPException(status_code=400, detail="Job is not scheduled")
 
-    if job_id == "check_ytdlp_updates":
+    if job_id == "retry_all_failed":
+        # 0 = off; any positive value enables the schedule. Persist so it sticks.
+        if hours is None or hours < 0:
+            raise HTTPException(status_code=400, detail="Hours must be 0 or more (0 = off)")
+        ok = scheduler_reschedule_job(job_id, hours=hours)
+        if ok:
+            from app.scheduler import persist_retry_interval_hours
+            await persist_retry_interval_hours(hours)
+    elif job_id == "check_ytdlp_updates":
         if hours is None or hours < 1:
             raise HTTPException(
                 status_code=400,

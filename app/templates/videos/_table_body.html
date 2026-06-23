@@ -16,4 +16,11 @@
     {% endwith %}
   </td>
 </tr>
+{% else %}
+<tr>
+  <td colspan="7" class="text-center text-base-content/60 py-10">
+    No videos match the current filter.<br>
+    <span class="text-sm">Videos that are downloading or importing — including ones you just retried — appear under <strong>Pipeline activity</strong> above.</span>
+  </td>
+</tr>
 {% endfor %}

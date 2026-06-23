@@ -62,7 +62,8 @@ async def lifespan(app: FastAPI):
     await init_db(settings)
     from app.download_control import load_pause_state_from_db
     await load_pause_state_from_db()
-    start_scheduler()
+    from app.scheduler import load_retry_interval_hours
+    start_scheduler(retry_interval_hours=await load_retry_interval_hours())
     yield
     # === SHUTDOWN ===
     logger.info("Shutting down...")

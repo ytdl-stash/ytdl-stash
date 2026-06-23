@@ -307,6 +307,7 @@ If the mount points differ, a path translation may be needed.
 2. If not found, fallback to `find_scene_by_title(video.title)`.
 3. If still not found, set `video.status = "failed"` with error message.
 4. **Wait for the file path to settle** (`stash_client.wait_for_scene_path_stable`): a Stash **renamer plugin** can move/rename the file *asynchronously* on import — this is **not** part of the scan job, so `wait_for_job` returns before it finishes. After an initial `YTDL_STASH_ORGANIZED_SETTLE_SECONDS` head-start, poll the scene until its `files[0].path` stops changing, then set `video.original_filename` from Stash's actual path. This keeps the DB in sync with the renamer and ensures generate (step 10b) runs against the file's final location instead of racing a move in progress.
+   - **Queue-aware settle.** When `YTDL_STASH_EXPECT_RENAMER_ON_IMPORT=true`, the wait *requires* the path to actually change at least once (bounded by `YTDL_STASH_IMPORT_SETTLE_TIMEOUT_SECONDS`, default 600s) before accepting it as stable. This is the fix for a **busy Stash job queue**: the renamer is itself a queued/async hook, so under a backlog it can fire long after the fixed head-start. Without this flag the short poll could return the *pre-move* path (it can't tell "settled" from "not moved yet"), stranding generate against a stale location. With no renamer (the default), the poll returns as soon as the path is stable — unchanged behavior.
 
 > **Why this matters for imports.** YoutubeDL-Material imports start with `original_filename` set to a full path and no oshash, so a stale path is especially damaging (e.g. `os.path.join(download_dir, original_filename)` can escape `download_dir`). Reconciling from Stash here is what keeps imported records correct after the renamer runs.
 
@@ -413,11 +414,11 @@ video.status = "synced"
 **Trigger**: Scene synced in step 9, and `YTDL_STASH_GENERATE_AFTER_SYNC=true`. Runs **before** organized.
 
 **What happens**:
-1. Call `stash_client.trigger_generate(scene_ids=[scene.id])` — returns job ID.
-2. Call `stash_client.wait_for_job(generate_job_id)` — polls until generate completes (queue-aware: 30 min queue + 5 min run).
-3. The file's path was already settled in step 7 (a renamer plugin may have moved/renamed it during the import scan), so generate runs against the file's **final** location — no race with an in-flight move.
+1. `pipeline.generate_for_scene()` (shared by the download pipeline, the Backfill/Regenerate jobs, and the manual re-sync routes) calls `stash_client.trigger_generate(scene_ids=[scene.id])` then `wait_for_job(generate_job_id)` — polls until generate completes (queue-aware: 30 min queue + 5 min run).
+2. The file's path was already settled in step 7 (a renamer plugin may have moved/renamed it during the import scan), so generate runs against the file's **final** location — no race with an in-flight move.
+3. **Verify-after-generate (renamer mode).** When `YTDL_STASH_EXPECT_RENAMER_ON_IMPORT=true`, after the job finishes `generate_for_scene` re-reads the scene's primary path; if it changed *during* the generate (the renamer's move landed mid-job, common under a busy queue), it settles and **regenerates once** so the artifacts aren't keyed to a stale location. With the flag off, this is a plain trigger-and-wait.
 
-**Error handling**: Best-effort. Failures are logged as warnings but do not change the video's `synced` status.
+**Error handling**: Best-effort. Failures are logged as warnings but do not change the video's `synced` status; `generate_triggered_at` stays NULL so the Backfill job retries.
 
 ---
 
@@ -488,7 +489,7 @@ All failures in steps 1–9 result in `status=failed` with the error message sav
 2. Else if oshash/filename exists → `status = "downloaded"` (import-only retry); otherwise `status = "pending"` (full download).
 3. The download processor picks up `pending` and `downloaded` (no-scene) videos; early scene lookup → file-existence fast-path → download as applicable.
 
-**Retry All Failed** can run on a schedule — set `YTDL_RETRY_FAILED_INTERVAL_HOURS` > 0 (`0` = manual-only). The bulk job applies the same per-video logic, including the scene-wipe-when-linked step.
+**Retry All Failed** can run on a schedule — set the interval from the **Jobs page** (the box on that row, hours; `0` = off). It's persisted to `app_state` (key `retry_failed_interval_hours`) and survives restarts; `YTDL_RETRY_FAILED_INTERVAL_HOURS` is only the initial default. The bulk job applies the same per-video logic, including the scene-wipe-when-linked step.
 
 **Redownload** (force fresh download):
 1. `POST /videos/{id}/redownload` clears `original_filename`, `oshash`, `stash_scene_id`; sets `status = "pending"`.

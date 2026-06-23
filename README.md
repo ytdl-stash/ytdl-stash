@@ -97,7 +97,7 @@ These are set on the **host** and interpolated by Docker Compose before the cont
 | `YTDL_MAX_CONCURRENT_DOWNLOADS` | `int` | `1` | Optional | Parallel download/import slots (min 1, max 16) |
 | `YTDL_DOWNLOAD_DELAY_SECONDS` | `int` | `5` | Optional | Seconds to wait between successive downloads |
 | `YTDL_YTDLP_UPDATE_CHECK_INTERVAL_HOURS` | `int` | `24` | Optional | Hours between PyPI checks for a newer yt-dlp |
-| `YTDL_RETRY_FAILED_INTERVAL_HOURS` | `int` | `0` | Optional | Auto-run "Retry All Failed" every N hours. `0` = off / manual-only. Retry destroys any linked Stash scene + file and re-downloads for a clean re-import. |
+| `YTDL_RETRY_FAILED_INTERVAL_HOURS` | `int` | `0` | Optional | **Initial default** for the scheduled "Retry All Failed" interval, in hours (`0` = off). You normally set this from the **Jobs page** (the interval box on that row, `0` = off) — that value is persisted to the DB and survives restarts, overriding this env var. Retry destroys any linked Stash scene + file and re-downloads. |
 
 ### yt-dlp options
 
@@ -136,6 +136,8 @@ These control what happens **after** a scene is synced to Stash.
 | `YTDL_STASH_GENERATE_SPRITES` | `bool` | `true` | Optional | Generate sprite sheets (when generate is enabled) |
 | `YTDL_STASH_GENERATE_PHASHES` | `bool` | `true` | Optional | Generate perceptual hashes (when generate is enabled) |
 | `YTDL_STASH_ORGANIZED_SETTLE_SECONDS` | `int` | `5` | Optional | Head-start (0–60s) to let an asynchronous Stash file move settle — e.g. a **renamer plugin** that relocates/renames the file on import or `organized`. After an import scan, ytdl-stash waits for the scene's file path to stop changing before generating and before recording the file's final location. Set `0` if you don't run a renamer. |
+| `YTDL_STASH_EXPECT_RENAMER_ON_IMPORT` | `bool` | `false` | Optional | Set **`true`** if a renamer plugin moves/renames files on import. The import settle then *waits for the path to actually change* (instead of accepting the pre-move path) and generate re-checks the file didn't move mid-job — fixes silent/empty generation when a **busy Stash job queue** delays the renamer. Leave `false` if no renamer runs on import (default behavior is unchanged). |
+| `YTDL_STASH_IMPORT_SETTLE_TIMEOUT_SECONDS` | `int` | `600` | Optional | Max wall-clock seconds (0–3600) to wait for the renamer's move to land when `YTDL_STASH_EXPECT_RENAMER_ON_IMPORT=true`. Generous so a backed-up Stash queue doesn't cause a premature, stale path; the wait returns as soon as the path is stable, so this only matters when the move is slow. |
 
 ### Folder mapping (Stash path)
 

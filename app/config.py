@@ -72,9 +72,21 @@ class Settings(BaseSettings):
     stash_generate_previews: bool = True
     stash_generate_sprites: bool = True
     stash_generate_phashes: bool = True
-    # Seconds to wait after setting organized=True before triggering
-    # generate, giving Stash time to complete any file-move rule.
+    # Head-start (seconds) before trusting a scene's file path after an import
+    # scan or before generate — gives a Stash renamer / file-move rule time to
+    # begin so we don't read a path that's about to change.
     stash_organized_settle_seconds: int = Field(default=5, ge=0, le=60)
+    # Max wall-clock seconds to wait for a Stash renamer to finish moving a file
+    # on import before we sync/generate. A busy Stash job queue can delay the
+    # renamer well past the head-start; the wait returns as soon as the path is
+    # observed stable, so this only bites when the move is genuinely slow.
+    stash_import_settle_timeout_seconds: int = Field(default=600, ge=0, le=3600)
+    # Set True if a Stash renamer plugin moves/renames files on import. The
+    # import settle then waits for the path to actually change (bounded by
+    # stash_import_settle_timeout_seconds) instead of accepting the pre-move
+    # path, and generate re-checks the file didn't move mid-job. Leave False
+    # when no renamer runs on import (default) — behavior is then unchanged.
+    stash_expect_renamer_on_import: bool = False
 
     model_config = {"env_prefix": "YTDL_"}
 

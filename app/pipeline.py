@@ -242,6 +242,79 @@ async def _resync_scene_from_stash(video: Video, stash: StashClient) -> None:
     )
 
 
+async def generate_for_scene(
+    video: Video,
+    scene_id: str,
+    stash: StashClient,
+    settings: Settings,
+) -> None:
+    """Trigger Stash generate for a scene and wait for the job to finish.
+
+    Centralizes the generate call shared by the download pipeline, the
+    backfill/regenerate jobs, and the manual re-sync routes.
+
+    When ``stash_expect_renamer_on_import`` is set, a renamer plugin may move
+    the file *during* the generate job — especially while Stash's job queue is
+    busy and the move is delayed past our import settle. In that mode we re-read
+    the scene's primary path after generate and, if it moved, let it settle and
+    regenerate once so the artifacts aren't left keyed to a stale location. With
+    the flag off (the default, no renamer) this is a plain
+    trigger-generate-and-wait, so behavior is unchanged for those setups.
+
+    Raises on a hard generate failure (mutation or job error) so callers leave
+    ``generate_triggered_at`` unset and the Backfill job can retry.
+    """
+    expect_renamer = settings.stash_expect_renamer_on_import
+    max_attempts = 2 if expect_renamer else 1
+    # Only the renamer path needs the pre-generate location; skip the extra
+    # query entirely when no renamer is configured (the common case).
+    path_before = (
+        stash.scene_primary_path(await stash.find_scene_by_id(scene_id))
+        if expect_renamer
+        else None
+    )
+
+    for attempt in range(1, max_attempts + 1):
+        logger.info(
+            "Video %s: triggering Stash generate for scene %s%s",
+            video.id, scene_id,
+            f" (attempt {attempt}/{max_attempts})" if max_attempts > 1 else "",
+        )
+        job_id = await stash.trigger_generate(
+            scene_ids=[scene_id],
+            covers=settings.stash_generate_covers,
+            previews=settings.stash_generate_previews,
+            sprites=settings.stash_generate_sprites,
+            phashes=settings.stash_generate_phashes,
+        )
+        if job_id:
+            await stash.wait_for_job(job_id)
+
+        if not expect_renamer:
+            return  # No renamer configured — nothing can race the generate.
+
+        # Renamer expected: confirm the file didn't move during the generate
+        # job. If it did, the artifacts may be stale, so settle and regenerate.
+        settled = await stash.wait_for_scene_path_stable(
+            scene_id,
+            settle=settings.stash_organized_settle_seconds,
+            total_timeout=settings.stash_import_settle_timeout_seconds,
+        )
+        if settled is None or settled == path_before:
+            return
+        logger.warning(
+            "Video %s: scene %s file moved during generate (%r -> %r); regenerating",
+            video.id, scene_id, path_before, settled,
+        )
+        path_before = settled
+
+    logger.warning(
+        "Video %s: scene %s file path still unstable after %d generate attempts; "
+        "keeping best-effort generation result",
+        video.id, scene_id, max_attempts,
+    )
+
+
 async def run_scrape_and_generate(
     video: Video,
     scene_id: str,
@@ -281,20 +354,12 @@ async def run_scrape_and_generate(
         except Exception as e:
             logger.warning("Video %s: post-sync scrape failed (non-fatal): %s", video.id, e)
 
-    # 2. Trigger Stash generate and wait for completion (before organized)
+    # 2. Trigger Stash generate and wait for completion (before organized).
+    #    generate_for_scene guards against a renamer moving the file mid-job.
     if settings.stash_generate_after_sync and not skip_generate:
         try:
             download_progress.set_phase(video.id, "Generating")
-            logger.info("Video %s: triggering Stash generate for scene %s", video.id, scene_id)
-            job_id = await stash.trigger_generate(
-                scene_ids=[scene_id],
-                covers=settings.stash_generate_covers,
-                previews=settings.stash_generate_previews,
-                sprites=settings.stash_generate_sprites,
-                phashes=settings.stash_generate_phashes,
-            )
-            if job_id:
-                await stash.wait_for_job(job_id)
+            await generate_for_scene(video, scene_id, stash, settings)
             video.generate_triggered_at = datetime.now(UTC)
         except Exception as e:
             logger.warning("Video %s: post-sync generate failed (non-fatal): %s", video.id, e)
@@ -825,7 +890,10 @@ async def process_single_download(
         download_progress.set_phase(video.id, "Finalizing in Stash")
         try:
             settled_path = await stash.wait_for_scene_path_stable(
-                scene["id"], settle=settings.stash_organized_settle_seconds
+                scene["id"],
+                settle=settings.stash_organized_settle_seconds,
+                total_timeout=settings.stash_import_settle_timeout_seconds,
+                require_change=settings.stash_expect_renamer_on_import,
             )
         except Exception as e:
             # Best-effort: the scene is already found and the download succeeded.

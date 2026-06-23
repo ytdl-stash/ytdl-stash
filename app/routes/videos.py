@@ -19,7 +19,7 @@ from app.download_control import download_control
 from app.download_progress import download_progress
 from app.main import templates
 from app.models import Channel, Video
-from app.pipeline import hard_reset_video
+from app.pipeline import generate_for_scene, hard_reset_video
 from app.stash_client import StashClient
 
 logger = logging.getLogger(__name__)
@@ -258,15 +258,9 @@ async def resync_all_videos(
                         # Generate
                         if settings.stash_generate_after_sync:
                             try:
-                                job_id = await stash.trigger_generate(
-                                    scene_ids=[video.stash_scene_id],
-                                    covers=settings.stash_generate_covers,
-                                    previews=settings.stash_generate_previews,
-                                    sprites=settings.stash_generate_sprites,
-                                    phashes=settings.stash_generate_phashes,
+                                await generate_for_scene(
+                                    video, video.stash_scene_id, stash, settings
                                 )
-                                if job_id:
-                                    await stash.wait_for_job(job_id)
                                 video.generate_triggered_at = datetime.now(UTC)
                             except Exception as e:
                                 logger.warning("Resync-all: generate failed for video %s: %s", vid, e)
@@ -667,15 +661,9 @@ async def resync_video(
         # Re-generate
         if settings.stash_generate_after_sync:
             try:
-                job_id = await stash.trigger_generate(
-                    scene_ids=[video.stash_scene_id],
-                    covers=settings.stash_generate_covers,
-                    previews=settings.stash_generate_previews,
-                    sprites=settings.stash_generate_sprites,
-                    phashes=settings.stash_generate_phashes,
+                await generate_for_scene(
+                    video, video.stash_scene_id, stash, settings
                 )
-                if job_id:
-                    await stash.wait_for_job(job_id)
                 video.generate_triggered_at = datetime.now(UTC)
             except Exception as e:
                 logger.warning(

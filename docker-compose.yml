@@ -16,6 +16,11 @@ services:
       YTDL_STASH_API_KEY: ${STASH_API_KEY:-}
       YTDL_DOWNLOAD_DIR: /downloads
       # YTDL_STASH_DOWNLOAD_DIR: /data/downloads  # Path to downloads as Stash sees it
+      # A Stash renamer plugin moves/renames files on import: wait for the move
+      # to land and verify generate, so a busy Stash job queue can't leave
+      # scenes without covers/sprites/previews. (Quoted so YAML keeps the string.)
+      YTDL_STASH_EXPECT_RENAMER_ON_IMPORT: "true"
+      # YTDL_STASH_IMPORT_SETTLE_TIMEOUT_SECONDS: 600  # max wait (s) for the move
       YTDL_DATA_DIR: /app/data
       # YTDL_COOKIES_FILE: /app/cookies.txt
       # YTDL_DEFAULT_CHECK_INTERVAL_HOURS: 6
