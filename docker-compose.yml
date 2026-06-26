@@ -21,6 +21,20 @@ services:
       # scenes without covers/sprites/previews. (Quoted so YAML keeps the string.)
       YTDL_STASH_EXPECT_RENAMER_ON_IMPORT: "true"
       # YTDL_STASH_IMPORT_SETTLE_TIMEOUT_SECONDS: 600  # max wait (s) for the move
+      # Per-request Stash GraphQL timeout (default 120). Raise if a busy Stash
+      # queue still causes "Stash request timed out" failures mid-import.
+      # YTDL_STASH_REQUEST_TIMEOUT_SECONDS: 120
+      # Stash job (scan/generate) waits: a RUNNING job is abandoned only after
+      # it makes NO progress for STALL seconds (not a flat time cap); it may sit
+      # QUEUED up to QUEUE seconds.
+      # YTDL_STASH_JOB_STALL_TIMEOUT_SECONDS: 900
+      # YTDL_STASH_JOB_QUEUE_TIMEOUT_SECONDS: 1800
+      # Backpressure (opt-in): before scan/generate, wait (bounded) for Stash's
+      # queue to fall to <= this many jobs, so the app doesn't compete with a
+      # generate-all on Stash's single worker. 0 = off. Stash counts a bulk task
+      # as ONE job, so keep it small (e.g. 2).
+      # YTDL_STASH_MAX_QUEUE_DEPTH: 0
+      # YTDL_STASH_QUEUE_WAIT_TIMEOUT_SECONDS: 300
       YTDL_DATA_DIR: /app/data
       # YTDL_COOKIES_FILE: /app/cookies.txt
       # YTDL_DEFAULT_CHECK_INTERVAL_HOURS: 6

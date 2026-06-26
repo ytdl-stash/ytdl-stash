@@ -280,6 +280,10 @@ async def generate_for_scene(
             video.id, scene_id,
             f" (attempt {attempt}/{max_attempts})" if max_attempts > 1 else "",
         )
+        await stash.wait_for_queue_below(
+            settings.stash_max_queue_depth,
+            timeout=settings.stash_queue_wait_timeout_seconds,
+        )
         job_id = await stash.trigger_generate(
             scene_ids=[scene_id],
             covers=settings.stash_generate_covers,
@@ -288,7 +292,11 @@ async def generate_for_scene(
             phashes=settings.stash_generate_phashes,
         )
         if job_id:
-            await stash.wait_for_job(job_id)
+            await stash.wait_for_job(
+                job_id,
+                queue_timeout=settings.stash_job_queue_timeout_seconds,
+                stall_timeout=settings.stash_job_stall_timeout_seconds,
+            )
 
         if not expect_renamer:
             return  # No renamer configured — nothing can race the generate.
@@ -474,50 +482,62 @@ async def _apply_metadata_and_sync(
         if key:
             channel_by_name[key] = ch
 
+    # Resolve performers/studio and write scene metadata. The scene already
+    # exists in Stash, so a transient hiccup here (e.g. a busy-queue request
+    # timeout) must NOT hard-fail the import and strand a scene with no
+    # metadata or generated artifacts. We catch it, still mark the video
+    # synced, and run generate below; the Backfill job or a manual re-sync can
+    # finish anything that didn't apply.
     performer_ids: list[str] = []
-    for name in video.performers or []:
-        norm_name = _normalize_performer_name(name).lower()
-        if not norm_name:
-            continue
-        ch: Channel | None = None
-        if channel and channel_norm == norm_name:
-            ch = channel
-        elif norm_name in channel_by_name:
-            ch = channel_by_name[norm_name]
-        if ch:
-            if ch.stash_performer_id:
-                pid = ch.stash_performer_id
-            else:
-                pid = await stash.find_or_create_performer_by_url(
-                    name=name,
-                    url=ch.url,
-                    image_url=ch.performer_image_url,
-                )
-        else:
-            pid = await stash.find_or_create_performer(name)
-        performer_ids.append(pid)
-
     studio_id: str | None = None
-    if channel and channel.stash_studio_id:
-        # Verify the studio still exists in Stash (may have been deleted)
-        existing = await stash.get_studio(channel.stash_studio_id)
-        if existing:
-            studio_id = channel.stash_studio_id
-        else:
-            logger.warning(
-                "Video %s: linked studio %s no longer exists in Stash, skipping studio assignment",
-                video.id, channel.stash_studio_id,
-            )
+    try:
+        for name in video.performers or []:
+            norm_name = _normalize_performer_name(name).lower()
+            if not norm_name:
+                continue
+            ch: Channel | None = None
+            if channel and channel_norm == norm_name:
+                ch = channel
+            elif norm_name in channel_by_name:
+                ch = channel_by_name[norm_name]
+            if ch:
+                if ch.stash_performer_id:
+                    pid = ch.stash_performer_id
+                else:
+                    pid = await stash.find_or_create_performer_by_url(
+                        name=name,
+                        url=ch.url,
+                        image_url=ch.performer_image_url,
+                    )
+            else:
+                pid = await stash.find_or_create_performer(name)
+            performer_ids.append(pid)
 
-    date_str = video.upload_date.isoformat() if video.upload_date else None
-    await stash.update_scene(
-        scene_id=scene["id"],
-        title=video.title,
-        urls=[video.url],
-        date=date_str,
-        studio_id=studio_id,
-        performer_ids=performer_ids,
-    )
+        if channel and channel.stash_studio_id:
+            # Verify the studio still exists in Stash (may have been deleted)
+            existing = await stash.get_studio(channel.stash_studio_id)
+            if existing:
+                studio_id = channel.stash_studio_id
+            else:
+                logger.warning(
+                    "Video %s: linked studio %s no longer exists in Stash, skipping studio assignment",
+                    video.id, channel.stash_studio_id,
+                )
+
+        date_str = video.upload_date.isoformat() if video.upload_date else None
+        await stash.update_scene(
+            scene_id=scene["id"],
+            title=video.title,
+            urls=[video.url],
+            date=date_str,
+            studio_id=studio_id,
+            performer_ids=performer_ids,
+        )
+    except Exception as e:
+        logger.warning(
+            "Video %s: applying scene metadata failed (non-fatal, scene already exists): %s",
+            video.id, e,
+        )
 
     video.stash_scene_id = scene["id"]
     video.status = "synced"
@@ -868,6 +888,10 @@ async def process_single_download(
             s = settings.stash_download_dir.rstrip("/")
             if scan_path == d or scan_path.startswith(d + "/"):
                 scan_path = s + scan_path[len(d) :]
+        await stash.wait_for_queue_below(
+            settings.stash_max_queue_depth,
+            timeout=settings.stash_queue_wait_timeout_seconds,
+        )
         logger.info("Video %s: triggering Stash scan for %s", video.id, scan_path)
         scan_job_id = await stash.trigger_scan([scan_path])
 
@@ -875,7 +899,11 @@ async def process_single_download(
             raise DownloadCancelled("Download cancelled by user")
 
         logger.info("Video %s: waiting for Stash scan job %s", video.id, scan_job_id)
-        await stash.wait_for_job(scan_job_id)
+        await stash.wait_for_job(
+            scan_job_id,
+            queue_timeout=settings.stash_job_queue_timeout_seconds,
+            stall_timeout=settings.stash_job_stall_timeout_seconds,
+        )
         scene = await stash.find_scene_by_oshash(oshash)
         if scene is None:
             scene = await stash.find_scene_by_title(video.title)

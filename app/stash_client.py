@@ -50,6 +50,16 @@ query FindJob($input: FindJobInput!) {
 }
 """
 
+_JOB_QUEUE_QUERY = """
+query {
+    jobQueue {
+        id
+        status
+        description
+    }
+}
+"""
+
 _METADATA_SCAN_MUTATION = """
 mutation MetadataScan($input: ScanMetadataInput!) {
     metadataScan(input: $input)
@@ -497,6 +507,7 @@ class StashClient:
         url: str,
         api_key: str = "",
         *,
+        request_timeout: float = 30.0,
         cookies_file: str | None = None,
         image_request_headers: dict[str, str] | None = None,
     ) -> None:
@@ -504,6 +515,12 @@ class StashClient:
         self.headers: dict[str, str] = {"Content-Type": "application/json"}
         if api_key:
             self.headers["ApiKey"] = api_key
+        self._request_timeout = request_timeout
+        # Give slow *responses* the full budget (a busy Stash queue), but keep
+        # connect fast so a dead host still fails quickly.
+        self._timeout = httpx.Timeout(
+            request_timeout, connect=min(10.0, request_timeout)
+        )
         self._client: httpx.AsyncClient | None = None
         # Image download settings — passed through to _url_to_data_uri()
         # so thumbnail downloads use the same cookies/headers as yt-dlp.
@@ -533,13 +550,14 @@ class StashClient:
         return cls(
             url=settings.stash_url,
             api_key=settings.stash_api_key,
+            request_timeout=settings.stash_request_timeout_seconds,
             cookies_file=settings.cookies_file,
             image_request_headers=image_headers or None,
         )
 
     async def __aenter__(self) -> "StashClient":
         self._client = httpx.AsyncClient(
-            headers=self.headers, timeout=30.0
+            headers=self.headers, timeout=self._timeout
         )
         return self
 
@@ -563,7 +581,7 @@ class StashClient:
             if self._client:
                 response = await self._client.post(self.graphql_url, json=payload)
             else:
-                async with httpx.AsyncClient(timeout=30.0) as client:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
                     response = await client.post(
                         self.graphql_url,
                         json=payload,
@@ -575,7 +593,9 @@ class StashClient:
                 f"Cannot connect to Stash at {self.graphql_url!r}. Is it running? {e}"
             ) from e
         except httpx.TimeoutException as e:
-            raise RuntimeError("Stash request timed out after 30s") from e
+            raise RuntimeError(
+                f"Stash request timed out after {self._request_timeout:g}s"
+            ) from e
         except httpx.HTTPStatusError as e:
             if e.response.status_code in (401, 403):
                 raise RuntimeError(
@@ -684,39 +704,32 @@ class StashClient:
         self,
         job_id: str,
         poll_interval: float = 1.5,
-        run_timeout: float = 300,
         queue_timeout: float = 1800,
+        stall_timeout: float = 900,
     ) -> dict:
-        """Poll until job reaches a terminal state. Returns final job dict on FINISHED.
+        """Poll until the job reaches a terminal state. Returns the FINISHED job dict.
 
-        Uses two separate timeouts so that time spent waiting in Stash's job
-        queue does not eat into the budget for the job's actual execution:
+        A job is never killed merely for taking a long time, as long as Stash
+        keeps making progress. Two bounds apply instead:
 
-        * *queue_timeout* (default 30 min) — max wall-clock time to wait while
-          the job is queued (status is not yet RUNNING or terminal).
-        * *run_timeout* (default 5 min) — max wall-clock time once the job
-          transitions to RUNNING.
+        * *queue_timeout* — max time the job may sit QUEUED (not yet RUNNING).
+        * *stall_timeout* — once RUNNING, max time with NO observable progress
+          (neither the progress fraction nor the active sub-task/description
+          changes). Any change resets the clock, so a steadily-advancing job
+          runs as long as it needs — fixing the old flat 5-min cap that could
+          abandon a legitimately long generate mid-run.
 
-        Raises RuntimeError if the job FAILED, was CANCELLED/STOPPING, or if
-        either timeout is exceeded.
+        Raises RuntimeError if the job FAILED / was CANCELLED / STOPPING, if it
+        sits queued past *queue_timeout*, if it stalls past *stall_timeout*, or
+        if it vanishes from Stash.
         """
         queue_deadline = time.monotonic() + queue_timeout
-        run_deadline: float | None = None
+        stall_deadline: float | None = None
+        last_activity: tuple[object, object] | None = None
         terminal = {"FINISHED", "FAILED", "CANCELLED", "STOPPING"}
 
         while True:
             now = time.monotonic()
-
-            # Check the appropriate deadline
-            if run_deadline is not None and now >= run_deadline:
-                raise RuntimeError(
-                    f"Stash job {job_id} timed out after {run_timeout}s of running"
-                )
-            if run_deadline is None and now >= queue_deadline:
-                raise RuntimeError(
-                    f"Stash job {job_id} timed out after {queue_timeout}s waiting in queue"
-                )
-
             job = await self.find_job(job_id)
             if not job:
                 raise RuntimeError(f"Job {job_id} not found in Stash")
@@ -731,13 +744,72 @@ class StashClient:
                     raise RuntimeError(f"Stash job {job_id} was {status.lower()}")
                 return job  # FINISHED
 
-            # Start the run timer the first time we see RUNNING
-            if status == "RUNNING" and run_deadline is None:
-                run_deadline = time.monotonic() + run_timeout
-                logger.debug(
-                    "Stash job %s now RUNNING; run deadline in %ss", job_id, run_timeout
+            if status == "RUNNING":
+                # Any change in progress OR the active sub-task means the job is
+                # alive — reset the stall clock; only a true flat-line trips it.
+                activity = (job.get("progress"), job.get("description"))
+                if activity != last_activity:
+                    last_activity = activity
+                    stall_deadline = now + stall_timeout
+                elif stall_deadline is not None and now >= stall_deadline:
+                    raise RuntimeError(
+                        f"Stash job {job_id} stalled — no progress for "
+                        f"{stall_timeout:g}s (progress={job.get('progress')})"
+                    )
+            elif now >= queue_deadline:
+                raise RuntimeError(
+                    f"Stash job {job_id} timed out after {queue_timeout:g}s "
+                    "waiting in queue"
                 )
 
+            await asyncio.sleep(poll_interval)
+
+    async def get_job_queue(self) -> list[dict]:
+        """Return Stash's current job queue (queued + running jobs)."""
+        data = await self._query(_JOB_QUEUE_QUERY)
+        return data.get("jobQueue") or []
+
+    async def wait_for_queue_below(
+        self,
+        max_depth: int,
+        *,
+        timeout: float,
+        poll_interval: float = 3.0,
+    ) -> None:
+        """Block until Stash's job queue holds at most *max_depth* jobs.
+
+        Backpressure so the app doesn't pile a scan/generate onto a Stash that
+        is already busy with a library-wide task on its single FIFO worker —
+        that contention is what slows individual requests enough to time out.
+
+        Best-effort and always bounded: ``max_depth <= 0`` disables it, and on
+        *timeout* or any query error it logs and returns, so an import is never
+        permanently blocked.
+        """
+        if max_depth <= 0:
+            return
+        deadline = time.monotonic() + timeout
+        logged_wait = False
+        while True:
+            try:
+                depth = len(await self.get_job_queue())
+            except Exception as e:
+                logger.warning("Stash queue check failed (proceeding): %s", e)
+                return
+            if depth <= max_depth:
+                return
+            if time.monotonic() >= deadline:
+                logger.warning(
+                    "Stash queue still deep (%d > %d) after %.0fs; proceeding anyway",
+                    depth, max_depth, timeout,
+                )
+                return
+            if not logged_wait:
+                logger.info(
+                    "Stash queue depth %d > %d; waiting up to %.0fs to drain",
+                    depth, max_depth, timeout,
+                )
+                logged_wait = True
             await asyncio.sleep(poll_interval)
 
     async def find_scene_by_id(self, scene_id: str) -> dict | None:

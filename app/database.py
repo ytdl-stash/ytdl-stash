@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -60,6 +60,33 @@ async def init_db(settings: "Settings") -> None:
         f"sqlite+aiosqlite:///{db_path}",
         echo=False,
     )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _set_sqlite_pragmas(dbapi_conn, _record):  # noqa: ANN001, ANN202
+        """Tune SQLite on every connection.
+
+        ``busy_timeout`` makes a contended write *wait* (up to 30s) for the
+        lock instead of instantly raising ``database is locked`` — the dominant
+        DB error when many channel checks run concurrently on a slow data
+        mount. WAL additionally lets readers and the writer proceed without
+        blocking each other; some network/FUSE mounts can't host WAL's shared
+        memory, so we verify it actually engaged before lowering ``synchronous``
+        and never let a pragma failure break the connection.
+        """
+        cur = dbapi_conn.cursor()
+        try:
+            cur.execute("PRAGMA busy_timeout=30000")
+            # NB: the aiosqlite adapter's cursor.execute() returns None, so read
+            # the result back with a separate fetchone() rather than chaining.
+            cur.execute("PRAGMA journal_mode=WAL")
+            mode = cur.fetchone()
+            if mode and str(mode[0]).lower() == "wal":
+                cur.execute("PRAGMA synchronous=NORMAL")
+        except Exception:
+            logger.warning("Could not apply SQLite tuning pragmas", exc_info=True)
+        finally:
+            cur.close()
+
     async_session = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )

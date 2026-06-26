@@ -87,6 +87,33 @@ class Settings(BaseSettings):
     # path, and generate re-checks the file didn't move mid-job. Leave False
     # when no renamer runs on import (default) — behavior is then unchanged.
     stash_expect_renamer_on_import: bool = False
+    # Max seconds for a single Stash GraphQL request before it times out. A
+    # busy Stash (renamer move + URL scrape + transcode-heavy generate all on
+    # one FIFO queue) can make individual calls exceed the old hard-coded 30s,
+    # which aborted the import mid-sync and left a scene with no covers/
+    # sprites. The connect phase still fails fast (≤10s) so a dead host is
+    # detected quickly; only slow *responses* get the longer budget.
+    stash_request_timeout_seconds: float = Field(default=120.0, ge=5.0, le=600.0)
+
+    # ---------------------------------------------------------------------
+    # Stash job-queue coordination (scan/generate run as async Stash jobs)
+    # ---------------------------------------------------------------------
+    # Max seconds a scan/generate job may sit QUEUED in Stash before we stop
+    # waiting (Stash runs one FIFO queue; a backlog can delay our job).
+    stash_job_queue_timeout_seconds: int = Field(default=1800, ge=30, le=14400)
+    # Once RUNNING, a job is NOT killed for taking long — only if it makes no
+    # observable progress (neither the % nor the active sub-task changes) for
+    # this many seconds. Replaces the old flat 5-minute "running" cap so a
+    # legitimately long generate is never abandoned mid-run.
+    stash_job_stall_timeout_seconds: int = Field(default=900, ge=30, le=14400)
+    # Backpressure: before triggering a scan/generate, wait for Stash's job
+    # queue to fall to at most this many jobs, so the app stops competing with
+    # a library-wide scan / generate-all on Stash's single worker. 0 disables.
+    # NB: Stash counts a bulk task as ONE job, so keep this small (e.g. 2).
+    stash_max_queue_depth: int = Field(default=0, ge=0, le=100)
+    # Max wall-clock seconds to wait on that backpressure before proceeding
+    # anyway, so a perpetually-busy Stash can't stall imports forever.
+    stash_queue_wait_timeout_seconds: int = Field(default=300, ge=0, le=3600)
 
     model_config = {"env_prefix": "YTDL_"}
 
