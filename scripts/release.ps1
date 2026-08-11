@@ -253,7 +253,7 @@ if (-not $DryRun) {
 Write-Info "Commits since $($latestTag):"
 $commitLog -split "`n" | ForEach-Object { Write-Info "  $_" }
 
-$releaseNotes = "## What's Changed`n`n$commitLog`n`n**Full changelog**: https://github.com/spincity07/ytdl-stash/compare/$latestTag...$nextTag"
+$releaseNotes = "## What's Changed`n`n$commitLog`n`n**Full changelog**: https://github.com/ytdl-stash/ytdl-stash/compare/$latestTag...$nextTag"
 
 # -- Confirmation -------------------------------------------------------
 
@@ -304,8 +304,8 @@ Write-Ok "GitHub release created"
 Write-Host ""
 Write-Host "=== Release $nextTag complete! ===" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Release  : https://github.com/spincity07/ytdl-stash/releases/tag/$nextTag" -ForegroundColor White
-Write-Host "  Workflow : https://github.com/spincity07/ytdl-stash/actions" -ForegroundColor White
+Write-Host "  Release  : https://github.com/ytdl-stash/ytdl-stash/releases/tag/$nextTag" -ForegroundColor White
+Write-Host "  Workflow : https://github.com/ytdl-stash/ytdl-stash/actions" -ForegroundColor White
 Write-Host ""
 Write-Host "  The release workflow will build and push the Docker image to ghcr.io." -ForegroundColor Gray
 Write-Host "  Run 'gh run watch' to follow the build." -ForegroundColor Gray

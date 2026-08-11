@@ -18,11 +18,22 @@ When the user says **"push"** (or "push and release", "release a new version"), 
 
 Run from the repo root (e.g. `c:\Users\jpitt_6932a9v\code\ytdl-stash`). The script handles preflight, commit, tag, push, and GitHub release. If the agent hits an internal error when running the script, tell the user to run the same command in their own PowerShell terminal.
 
+## Authentication — non-negotiable for this repo
+
+**One credential only: a classic PAT for `spincity07`, held in the `gh` keyring. Both `gh` and `git push` read it.** Never `jpittelkow` (it is `push: false` here and can never publish), never a second token, never a plaintext credential file.
+
+- **Always prefix `gh` and release commands with `$env:GH_TOKEN = ''; $env:GITHUB_TOKEN = ''`.** An agent tool shell can inherit a stale token from its parent process that survives until the whole session restarts, and it silently overrides the keyring.
+- `spincity07` must be gh's **active** account (`gh auth switch -h github.com -u spincity07`) — git's credential helper serves the active account.
+- `could not read Password for 'https://spincity07@github.com'` means the active account drifted, **not** that the token expired. The remote URL pins the user so the repo fails closed instead of pushing as the wrong identity.
+- Full setup, verification block, rotation steps, and gotchas: `docs/recipes/release.md` → "Authentication — THE RULE".
+
 ## Windows/PowerShell constraints
 
 - Run the script with PowerShell; do **not** use `head`, `bash`, or `&&` chaining.
+- PowerShell has **no `<` input redirection** — pipe instead (`Get-Content f | cmd`).
 
 ## Safety / intent
 
 - This shortcut is only for the user’s explicit "push" instruction; otherwise do not push or release.
 - Never force-push; never bypass hooks unless the user explicitly asks.
+- **Never re-run `release.ps1` after a *failed* push** — it double-bumps the version. Finish by hand: `git push origin main`, `git push origin <tag>`, `gh release create <tag> --notes-file <file>`. `-NoCommit` does *not* help, because the local tag already exists so the script computes the next version and cuts an empty release.

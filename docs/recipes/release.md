@@ -82,7 +82,7 @@ gh run watch
 1. `.github/workflows/release.yml` triggers on `v*` tags.
 2. Docker Buildx builds `linux/amd64` and `linux/arm64` images.
 3. The `APP_VERSION` build arg bakes the tag name into the container's `VERSION` file.
-4. Images are pushed to `ghcr.io/spincity07/ytdl-stash` with tags:
+4. Images are pushed to `ghcr.io/ytdl-stash/ytdl-stash` with tags:
    - `0.14.0` (full semver)
    - `0.14` (major.minor)
    - `0` (major)
@@ -96,6 +96,62 @@ gh run watch
 |------|---------|---------|
 | `git` | Version control | — |
 | `gh` | GitHub CLI (releases) | `winget install GitHub.cli` |
+
+---
+
+## Authentication — THE RULE
+
+**This repo uses exactly one credential: a classic PAT for the `spincity07` account, stored in the `gh` keyring. Both `gh` and `git push` read it. Never `jpittelkow`, never a second token, never a plaintext credential file.**
+
+`jpittelkow` has `pull: true, push: false` here — it can never publish. If a push or release fails, that account is usually why.
+
+### How it's wired
+
+The PAT lives encrypted in the Windows keyring (`gh:github.com:spincity07`). `git` does not have its own copy — this repo's `.git/config` routes git's credential lookup through `gh`:
+
+```ini
+[credential "https://github.com"]
+	helper =
+	helper = !'C:\Program Files\GitHub CLI\gh.exe' auth git-credential
+```
+
+The **empty value first is load-bearing**: it resets the inherited helper chain (the global config would otherwise resolve to the wrong account). `git config --get-all` prints the raw list including globals — that is *not* the resolved chain, since entries before the last empty value are discarded. Don't read it and panic.
+
+`gh auth git-credential` serves gh's **active account**, so `spincity07` must stay active:
+
+```powershell
+gh auth switch -h github.com -u spincity07
+```
+
+The remote URL pins the user (`https://spincity07@github.com/...`), so if the active account drifts, git **fails closed** with `could not read Password` rather than pushing as the wrong identity. That error almost always means the active account changed, not that the token died.
+
+### Verify before releasing
+
+```powershell
+$env:GH_TOKEN = ''; $env:GITHUB_TOKEN = ''
+gh auth token | ForEach-Object { $_.Substring(0,4) }      # want ghp_  (gho_ = wrong credential)
+gh api -i user | Select-String '^X-Oauth-Scopes'          # want repo, workflow, write:packages
+gh api repos/ytdl-stash/ytdl-stash --jq .permissions      # want push: true
+```
+
+### Rotating the PAT
+
+1. Create a classic PAT at github.com/settings/tokens/new **signed in as spincity07**, scopes `repo`, `workflow`, `read:org`, `write:packages`.
+2. Write it to a temporary file, then load it (PowerShell has **no `<` redirection** — pipe instead):
+
+```powershell
+Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+Get-Content "$env:USERPROFILE\.gh-token" | gh auth login -h github.com -p https --with-token
+```
+
+3. Delete the temporary file, then re-run the verify block above.
+
+### Gotchas that have cost real time
+
+- **`GH_TOKEN` overrides the keyring.** If set, `gh auth login --with-token` refuses outright. Keep it unset — it was removed from `HKCU:\Environment` on 2026-08-11.
+- **`--with-token` fails silently on an empty file.** It stores nothing, the previous credential keeps working, and everything looks fine. Assert first: `(Get-Content $f -Raw).Trim().Length` should be ~40.
+- **Check the token *type*, not just that auth works.** `gho_` is a browser-OAuth token, a different credential from your `ghp_` PAT — editing the PAT's scopes then has no effect, and gh's default OAuth scopes (`gist, read:org, repo`) look deceptively close to correct.
+- **`git` and `gh` were once separate stores.** Answering the Credential Manager prompt during `git push` writes a `git:` entry that `gh` never reads. The config above eliminates this, but a reverted `.git/config` brings it back.
 
 ---
 
