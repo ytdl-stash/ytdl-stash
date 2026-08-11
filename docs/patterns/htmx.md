@@ -232,7 +232,9 @@ The Add Channel flow uses a multi-step modal: Step 1 (URL + scrape), Step 2 (rev
 
 **Step transitions**: Each step’s form POSTs to a route that returns the next step’s partial; same target and `innerHTML` swap. Data is carried forward via hidden inputs. Back navigation uses `hx-get` to a route that re-renders the previous step with query (or form) params.
 
-**Close on success**: The final step POSTs to `/channels` with `hx-target="#channel-grid"` and `hx-swap="beforeend"`. The server returns the new channel card partial and `HX-Trigger: closeAddChannelModal`. A script on the page listens for that event and calls `document.getElementById('add-channel-modal').close()`.
+**Close on success**: The final step POSTs to `/channels` with `hx-target="body"` and `hx-swap="none"`. The server returns `_card_oob.html` — the new channel card wrapped in `hx-swap-oob="beforeend:#channel-grid"` — plus `HX-Trigger: closeAddChannelModal`. A script on the page listens for that event and calls `document.getElementById('add-channel-modal').close()`.
+
+**Why OOB and not a direct target**: the modal lives in `base.html`, so Add Channel can be clicked from any page, but `#channel-grid` only exists on the Channels page (and is replaced while Bulk Edit is open). htmx aborts a request whose `hx-target` selector matches nothing — it fires `htmx:targetError` and never opens the connection, so the button silently does nothing. An out-of-band miss, by contrast, is a harmless no-op: the POST still runs, and the `closeAddChannelModal` handler in `base.html` redirects to `/channels` when there's no grid to append to. **Never point `hx-target` at an element that only exists on some pages.**
 
 **Loading states**: Each step’s submit button has an `hx-indicator` pointing to a spinner element inside the modal.
 

@@ -395,7 +395,8 @@ async def add_channel(
 ):
     """Add a new channel. Stash performer/studio sync runs in background.
 
-    Returns HTMX partial _card.html (append to grid) or redirect.
+    Returns HTMX partial _card_oob.html (OOB-appends the card to #channel-grid
+    when that grid is on the page) or redirect.
     """
     url = normalize_channel_url(url.strip())
     user_name = name.strip()
@@ -511,7 +512,7 @@ async def add_channel(
         if not channel:
             raise HTTPException(status_code=404, detail="Channel not found")
         return templates.TemplateResponse(
-            "channels/_card.html",
+            "channels/_card_oob.html",
             {"request": request, "channel": channel, "settings": settings},
             headers={"HX-Trigger": "closeAddChannelModal"},
         )

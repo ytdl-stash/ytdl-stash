@@ -52,10 +52,16 @@
     <input type="hidden" name="min_duration_seconds" value="{{ min_duration_seconds|default('', true)|e }}">
     <button type="submit" class="btn btn-ghost btn-sm">Back</button>
   </form>
+  {# Target body/none rather than #channel-grid: the Add Channel modal lives in
+     base.html and can be opened from any page, but #channel-grid only exists on
+     the Channels page (and not while Bulk Edit is open). A missing hx-target
+     makes htmx raise htmx:targetError and never send the request, so the button
+     looks dead. The new card is appended via hx-swap-oob instead, which is a
+     harmless no-op when the grid isn't on the page. #}
   <form id="save-channel-form"
         hx-post="/channels"
-        hx-target="#channel-grid"
-        hx-swap="beforeend"
+        hx-target="body"
+        hx-swap="none"
         hx-indicator="#save-channel-spinner"
         hx-disabled-elt="find button"
         class="inline">

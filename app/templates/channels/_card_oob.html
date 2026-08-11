@@ -1,0 +1,11 @@
+{# Out-of-band wrapper used by the Add Channel modal response.
+
+   The modal is included on every page (base.html), so the save request cannot
+   rely on #channel-grid existing as its hx-target — htmx aborts the request
+   outright when a target selector matches nothing. Appending out of band keeps
+   the POST working everywhere: on the Channels page the card lands in the grid,
+   and anywhere else the miss is a no-op and the closeAddChannelModal handler
+   redirects to /channels. #}
+<div hx-swap-oob="beforeend:#channel-grid">
+  {% include "channels/_card.html" %}
+</div>
