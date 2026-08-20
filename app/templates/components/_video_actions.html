@@ -82,7 +82,7 @@
   {# ---- layout == 'detail': labeled buttons ---- #}
   {% if video.status in ['pending', 'downloading', 'downloaded', 'importing'] %}
   <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top" data-tip="Cancel processing for this video"
-          hx-post="/videos/{{ video.id }}/stop"
+          hx-post="/videos/{{ video.id }}/stop?detail=1"
           hx-target="{{ hx_status_target }}"
           hx-swap="outerHTML">
     Stop
@@ -94,7 +94,7 @@
   {% endif %}
   {% if video.status in ['failed', 'cancelled', 'skipped'] %}
   <button type="button" class="btn btn-sm btn-primary tooltip tooltip-top" data-tip="Retry import (skip download if possible)"
-          hx-post="/videos/{{ video.id }}/retry"
+          hx-post="/videos/{{ video.id }}/retry?detail=1"
           hx-target="{{ hx_status_target }}"
           hx-swap="outerHTML">
     Retry
@@ -103,7 +103,7 @@
   {% if video.status in ['imported', 'synced', 'failed', 'cancelled', 'skipped'] %}
   <button type="button" class="btn btn-sm btn-warning tooltip tooltip-top"
           data-tip="Force a fresh download{% if video.stash_scene_id %} (deletes the Stash scene and file){% else %} (deletes existing file){% endif %}"
-          hx-post="/videos/{{ video.id }}/redownload"
+          hx-post="/videos/{{ video.id }}/redownload?detail=1"
           hx-target="{{ hx_status_target }}"
           hx-swap="outerHTML"
           hx-confirm="Force re-download for '{{ video.title|e }}'?{% if video.stash_scene_id %} The existing Stash scene and file will be deleted.{% endif %}">
@@ -112,7 +112,7 @@
   {% endif %}
   {% if video.stash_scene_id %}
   <button type="button" class="btn btn-sm btn-info tooltip tooltip-top" data-tip="Re-scrape metadata and regenerate from Stash"
-          hx-post="/videos/{{ video.id }}/resync"
+          hx-post="/videos/{{ video.id }}/resync?detail=1"
           hx-target="{{ hx_status_target }}"
           hx-swap="outerHTML"
           hx-disabled-elt="this"

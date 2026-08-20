@@ -85,6 +85,7 @@ async def _push_to_stash(
     stash: "StashClient",
     stash_studio: dict,
     channel_description: str | None,
+    source_image_url: str | None = None,
 ) -> None:
     """Push source data to Stash for any fields the Stash studio is missing.
 
@@ -98,8 +99,9 @@ async def _push_to_stash(
     if channel.url and channel.url not in stash_urls:
         updates["urls"] = stash_urls + [channel.url]
 
-    if channel.performer_image_url and not _has_custom_image(stash_studio.get("image_path")):
-        data_uri = await stash.download_image_data_uri(channel.performer_image_url)
+    image_url = source_image_url or channel.performer_image_url
+    if image_url and not _has_custom_image(stash_studio.get("image_path")):
+        data_uri = await stash.download_image_data_uri(image_url)
         if data_uri:
             updates["image"] = data_uri
 
@@ -141,7 +143,7 @@ async def sync_channel_studio(
         )
 
         # --- Step 1: Enrich from yt-dlp and get description ---
-        channel_description = await _enrich_channel_and_get_description(
+        channel_description, source_image_url = await _enrich_channel_and_get_description(
             channel, settings
         )
         logger.info(
@@ -165,7 +167,7 @@ async def sync_channel_studio(
             studio_id = await stash.find_or_create_studio_by_url(
                 name=channel.name,
                 url=channel.url,
-                image_url=channel.performer_image_url,
+                image_url=source_image_url or channel.performer_image_url,
                 details=channel_description,
             )
             channel.stash_studio_id = str(studio_id) if studio_id is not None else None
@@ -180,7 +182,7 @@ async def sync_channel_studio(
         # --- Step 4: Push source data → Stash (fill gaps only) ---
         if stash_studio:
             await _push_to_stash(
-                channel, stash, stash_studio, channel_description
+                channel, stash, stash_studio, channel_description, source_image_url
             )
             await _pull_studio_from_stash(channel, stash)
 

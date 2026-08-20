@@ -3,7 +3,7 @@
     <strong>{{ job.name }}</strong>
     <br><small class="text-base-content/60">{{ job.description }}</small>
   </td>
-  <td data-label="Status" class="w-20">
+  <td data-label="Status" class="w-28">
     {% if job.running %}
       <span class="badge badge-primary">Running</span>
     {% elif job.last_error %}

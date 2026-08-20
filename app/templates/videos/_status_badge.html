@@ -8,6 +8,7 @@
      hx-get="/videos/{{ video.id }}/status_badge?detail=1"
      hx-trigger="every 2s"
      hx-swap="outerHTML"
+     hx-target="this"
      {% endif %}>
   <div class="flex flex-wrap items-center gap-2">
     {% if video.error_message %}
@@ -38,6 +39,7 @@
       hx-get="/videos/{{ video.id }}/status_badge"
       hx-trigger="every 2s"
       hx-swap="outerHTML"
+      hx-target="this"
       {% endif %}>
   {% if video.error_message %}
   <span class="video-status__text {{ badge_class }} tooltip tooltip-bottom" data-tip="{{ video.error_message|e }}">{{ video.status }}</span>

@@ -9,9 +9,9 @@
     <h2 class="text-lg font-semibold m-0">Pipeline activity</h2>
     {% for video in active_videos %}
     {% set p = (download_progress or {}).get(video.id) %}
-    <div class="card card-compact bg-base-200 shadow-sm">
+    <div class="card card-sm bg-base-200 shadow-sm">
       <div class="card-body flex-row flex-wrap gap-4 items-center">
-        <div class="flex-shrink-0 w-24">
+        <div class="shrink-0 w-24">
           {% with size='md', link_url='/videos/' ~ video.id %}
           {% include "components/_video_thumbnail.html" with context %}
           {% endwith %}
@@ -37,7 +37,7 @@
             {% endif %}
           </span>
         </div>
-        <div class="flex-shrink-0">
+        <div class="shrink-0">
           {% with layout='active', hx_container_target='#' ~ active_downloads_id %}
           {% include "components/_video_actions.html" with context %}
           {% endwith %}

@@ -1,6 +1,10 @@
 {# Reusable video thumbnail. Pass: video, settings, size (sm|md|lg).
    Optional: link_url, alt (defaults to video.title), placeholder_text (defaults by size).
    sm = w-16 h-12, md = w-24 h-14, lg = w-64 h-36
+   The placeholder always renders underneath; the image (when a URL exists)
+   covers it and removes itself on load error, so a failed load (e.g. a Stash
+   screenshot that isn't generated yet) shows the placeholder instead of the
+   browser's broken-image glyph.
 #}
 {% set size_classes = {
   'sm': ('w-16 h-12', 'No thumb'),
@@ -10,22 +14,16 @@
 {% set dims, default_placeholder = size_classes.get(size, size_classes['md']) %}
 {% set placeholder = placeholder_text | default(default_placeholder) %}
 {% set img_alt = alt | default(video.title) %}
-{% set img_classes = 'rounded ' ~ dims ~ ' object-cover bg-base-300' %}
-{% set placeholder_classes = 'rounded ' ~ dims ~ ' bg-base-300 flex items-center justify-center text-base-content/30 text-xs' %}
+{% set img_src = none %}
 {% if video.stash_scene_id and settings %}
   {% set img_src = settings.stash_url.rstrip('/') ~ '/scene/' ~ video.stash_scene_id ~ '/screenshot' %}
   {% if settings.stash_api_key %}{% set img_src = img_src ~ '?apikey=' ~ settings.stash_api_key %}{% endif %}
-  {% if link_url %}
-  <a href="{{ link_url }}"><img src="{{ img_src }}" alt="{{ img_alt }}" class="{{ img_classes }}" loading="lazy"></a>
-  {% else %}
-  <img src="{{ img_src }}" alt="{{ img_alt }}" class="{{ img_classes }}" loading="lazy">
-  {% endif %}
 {% elif video.thumbnail_url %}
-  {% if link_url %}
-  <a href="{{ link_url }}"><img src="{{ video.thumbnail_url }}" alt="{{ img_alt }}" class="{{ img_classes }}" loading="lazy"></a>
-  {% else %}
-  <img src="{{ video.thumbnail_url }}" alt="{{ img_alt }}" class="{{ img_classes }}" loading="lazy">
-  {% endif %}
-{% else %}
-  <div class="{{ placeholder_classes }}">{{ placeholder }}</div>
+  {% set img_src = video.thumbnail_url %}
 {% endif %}
+{% if link_url %}<a href="{{ link_url }}" class="block w-fit">{% endif %}
+<div class="rounded {{ dims }} bg-base-300 flex items-center justify-center text-base-content/30 text-xs relative overflow-hidden">
+  <span>{{ placeholder }}</span>
+  {% if img_src %}<img src="{{ img_src }}" alt="{{ img_alt }}" class="absolute inset-0 w-full h-full object-cover rounded" loading="lazy" onerror="this.remove()">{% endif %}
+</div>
+{% if link_url %}</a>{% endif %}

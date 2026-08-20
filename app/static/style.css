@@ -336,6 +336,9 @@ body { letter-spacing: -0.005em; }
 .badge {
   font-family: inherit; text-transform: uppercase; letter-spacing: .03em;
   font-weight: 500; border-radius: 999px; border-width: 1px; background: transparent;
+  /* Let long labels (e.g. phase sub-status) wrap and grow the pill instead of
+     overflowing through its fixed-height border (DaisyUI sets height: var(--size)). */
+  height: auto; min-height: var(--size, 1.5rem);
 }
 .badge-success   { color: var(--color-success);   background: color-mix(in srgb, var(--color-success) 14%, transparent);   border-color: color-mix(in srgb, var(--color-success) 42%, transparent); }
 .badge-primary   { color: var(--color-primary);   background: color-mix(in srgb, var(--color-primary) 14%, transparent);   border-color: color-mix(in srgb, var(--color-primary) 42%, transparent); }

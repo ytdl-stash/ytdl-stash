@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.responses import Response
-from sqlalchemy import asc, desc, select
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -83,7 +83,7 @@ async def _load_channels_with_videos(db: AsyncSession) -> list[Channel]:
     result = await db.execute(
         select(Channel)
         .options(selectinload(Channel.videos))
-        .order_by(Channel.name)
+        .order_by(func.lower(Channel.name), Channel.name)
     )
     return list(result.scalars().all())
 
@@ -113,7 +113,7 @@ async def list_channels(
     stmt = (
         select(Channel)
         .options(selectinload(Channel.videos))
-        .order_by(Channel.name)
+        .order_by(func.lower(Channel.name), Channel.name)
     )
     if filter == "watched":
         stmt = stmt.where(Channel.enabled.is_(True))

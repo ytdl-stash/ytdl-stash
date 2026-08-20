@@ -56,7 +56,7 @@ VIDEO_SORT_OPTIONS = {
     "title_desc": lambda: desc(Video.title),
     "duration_desc": lambda: desc(Video.duration_seconds),
     "duration_asc": lambda: asc(Video.duration_seconds),
-    "channel_asc": lambda: asc(Channel.name),
+    "channel_asc": lambda: asc(func.lower(Channel.name)),
     "status_asc": lambda: asc(Video.status),
 }
 VIDEO_SORT_DEFAULT = "created_at_desc"
@@ -147,7 +147,7 @@ async def list_videos(
         return templates.TemplateResponse("videos/_video_list.html", ctx)
 
     channels = list(
-        (await db.execute(select(Channel).order_by(Channel.name))).scalars().all()
+        (await db.execute(select(Channel).order_by(func.lower(Channel.name), Channel.name))).scalars().all()
     )
     active_stmt = (
         select(Video)
@@ -392,12 +392,41 @@ async def video_status_badge(
     return templates.TemplateResponse("videos/_status_badge.html", ctx)
 
 
+async def _status_badge_response(
+    request: Request,
+    db: AsyncSession,
+    video: Video,
+    detail: int | None,
+):
+    """Self-polling status badge partial for HTMX action responses.
+
+    Mirrors ``video_status_badge``: when ``detail`` is set, include the
+    detail-page layout context (progress on its own line + channel link)
+    so the badge keeps its layout after an action on the detail page.
+    """
+    ctx = {
+        "request": request,
+        "video": video,
+        "download_progress": download_progress.snapshot(),
+        "poll_status_badge": True,
+    }
+    if detail:
+        ctx["progress_own_line"] = True
+        ctx["channel"] = (
+            await db.get(Channel, video.channel_id)
+            if video.channel_id is not None
+            else None
+        )
+    return templates.TemplateResponse("videos/_status_badge.html", ctx)
+
+
 @router.post("/{video_id}/retry")
 async def retry_video(
     video_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    detail: int | None = Query(None),
 ):
     """Reset a failed/cancelled/skipped video for another run.
 
@@ -430,10 +459,7 @@ async def retry_video(
         logger.info("Video %s reset for retry (status=pending, full download)", video_id)
 
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse(
-            "videos/_status_badge.html",
-            {"request": request, "video": video, "poll_status_badge": True},
-        )
+        return await _status_badge_response(request, db, video, detail)
     return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
 
 
@@ -443,6 +469,7 @@ async def redownload_video(
     request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    detail: int | None = Query(None),
 ):
     """Force a fresh download.
 
@@ -468,10 +495,7 @@ async def redownload_video(
     logger.info("Video %s reset to pending for redownload", video_id)
 
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse(
-            "videos/_status_badge.html",
-            {"request": request, "video": video, "poll_status_badge": True},
-        )
+        return await _status_badge_response(request, db, video, detail)
     return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
 
 
@@ -481,6 +505,7 @@ async def stop_video(
     request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    detail: int | None = Query(None),
 ):
     """Request a pending/in-flight video to stop.
 
@@ -561,15 +586,7 @@ async def stop_video(
                             "container_id": f"channel-active-downloads-{channel_id}",
                         },
                     )
-        return templates.TemplateResponse(
-            "videos/_status_badge.html",
-            {
-                "request": request,
-                "video": video,
-                "download_progress": download_progress.snapshot(),
-                "poll_status_badge": True,
-            },
-        )
+        return await _status_badge_response(request, db, video, detail)
     return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
 
 
@@ -606,6 +623,7 @@ async def resync_video(
     request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    detail: int | None = Query(None),
 ):
     """Re-sync a synced video's scene from Stash: scrape, apply, generate.
 
@@ -673,13 +691,5 @@ async def resync_video(
     logger.info("Video %s: re-sync complete", video_id)
 
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse(
-            "videos/_status_badge.html",
-            {
-                "request": request,
-                "video": video,
-                "download_progress": download_progress.snapshot(),
-                "poll_status_badge": True,
-            },
-        )
+        return await _status_badge_response(request, db, video, detail)
     return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
