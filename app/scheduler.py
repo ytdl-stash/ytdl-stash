@@ -47,6 +47,7 @@ class JobInfo:
     last_duration_seconds: float | None = None
     last_error: str | None = None
     running: bool = False
+    started_at: datetime | None = None
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
 
@@ -253,6 +254,7 @@ async def _run_tracked(job_id: str, coro_fn) -> None:
 
     start = datetime.now(UTC)
     info.running = True
+    info.started_at = start
     info.last_error = None
     try:
         async with info._lock:
@@ -323,9 +325,16 @@ async def _do_check_all_channels() -> None:
                 logger.debug("Channel checker: no channels due for scanning")
                 return
             logger.info("Channel checker: %d channel(s) due for scanning", len(due))
-            for channel in due:
-                channel_id = channel.id  # capture before possible rollback expires attrs
+            # Capture ids while instances are fresh: a rollback after a failed
+            # scan expires every loaded instance, and touching an expired
+            # attribute lazy-loads synchronously -> MissingGreenlet, which
+            # aborted the whole run after the first failing channel.
+            due_ids = [ch.id for ch in due]
+            for channel_id in due_ids:
                 try:
+                    channel = await db.get(Channel, channel_id)  # refreshes if expired
+                    if channel is None:
+                        continue
                     await process_channel_scan(channel, db, settings)
                 except Exception as e:
                     # Rollback to clear any dirty session state (e.g. failed
@@ -768,6 +777,7 @@ def trigger_job(job_id: str) -> bool:
     # The background task hasn't started yet (create_task only schedules it),
     # so without this the response would still show "Idle".
     info.running = True
+    info.started_at = datetime.now(UTC)
 
     task = asyncio.create_task(_run_tracked(job_id, info.coro_fn))
     _background_tasks.add(task)

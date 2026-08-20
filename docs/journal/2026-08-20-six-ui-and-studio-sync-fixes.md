@@ -68,3 +68,49 @@ URL, the source thumbnail, and string details; gap-fill pushes urls/image/detail
   locally; Docker builds always recompile, so prod only lacked the pulse).
 - Dead-class fixes: `card-compact` → `card-sm` (DaisyUI v5), `flex-shrink-0` → `shrink-0`
   (Tailwind v4) in `_active_downloads.html`, `videos/detail.html`, `channels/_add_step2.html`.
+
+## Follow-up (same day): studio still bare after v0.45.1 — HTML-as-image poisoned the mutation
+Real-world logs (channel 61, "Theluxxs") showed the tuple fix working (`fields: ['name', 'urls',
+'image']`) but `studioCreate` failing with
+`processing image: unsupported image content type "text/html; charset=utf-8"`:
+the yt-dlp thumbnail URL returned an HTML bot-check page, `_url_to_data_uri` labeled unknown
+content types as `image/jpeg` (fallback), Stash sniffed the real bytes and rejected — and because
+name/urls/image ride in one mutation, the **URL was lost and the channel never got linked**. The
+bare studio the user saw came from the concurrent scene-scrape path; the Sync Studio retry then
+failed identically on the gap-fill `studioUpdate`.
+
+Fixes (stash_client.py + studio_sync.py):
+- `_url_to_data_uri` now sniffs magic bytes (jpeg/png/gif/webp/bmp/avif) and returns **None** for
+  anything that isn't a real image (header is trusted only for SVG). Protects performer sync too.
+- `download_image_data_uri` sends the Stash ApiKey when the URL is on our own Stash host, so the
+  channel's performer image is usable as a studio image.
+- Studio image is now a candidate list: yt-dlp source thumbnail first, then
+  `channel.performer_image_url`.
+- Create/gap-fill are image-resilient: if Stash still rejects a mutation containing `image`, it is
+  retried once without it — name/urls/details always land.
+- `find_or_create_studio_by_url` never lets a gap-fill failure prevent returning the found id —
+  linking the channel takes priority over enriching the studio.
+- `_push_to_stash` now delegates to `_gap_fill_studio_url_image_details` (same semantics, one
+  implementation).
+
+Existing bare studios self-heal: clicking **Sync Studio** finds the studio by name, gap-fills
+URL + image, and links the channel.
+
+## Feature (same day): job status scrobbler
+Floating background-activity widget, bottom-right on every page (`base.html`).
+- Shell `.cr-scrob` in base.html is never swapped, so open/closed state survives polling; the inner
+  content polls `GET /jobs/scrobbler` every 3s and swaps only itself (`hx-target="this"`).
+- Pill precedence: running (pulsing blue, e.g. "Channel Check · 2↓ 47%") > error (red) >
+  paused (amber) > idle ("All quiet"). Panel lists only active things: running jobs with elapsed
+  time, job errors (truncated, full text in tooltip), up to 4 in-flight pipeline videos with
+  progress bars / phase text, "+N more", pause chips, links to /jobs and /videos.
+- New: `JobInfo.started_at` (set in `_run_tracked` and eager manual trigger) for elapsed display.
+- Route `GET /jobs/scrobbler` in `app/routes/jobs.py`; partial
+  `components/_scrobbler.html`; `cr-scrob-*` styles in style.css. Hidden ≤768px.
+
+## Bug found while testing it: channel checker died after first failed scan
+`_do_check_all_channels` captured `channel.id` per iteration, but a failed scan's `db.rollback()`
+expires every loaded instance — the next iteration's attribute access lazy-loads synchronously →
+`MissingGreenlet` ("greenlet_spawn has not been called") → the whole job aborted, skipping all
+remaining channels. Fix: capture `due_ids` up front and `await db.get(Channel, id)` inside the
+try (refreshes expired instances properly). One bad channel no longer kills the rest of the run.

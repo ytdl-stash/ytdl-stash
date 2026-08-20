@@ -1,15 +1,17 @@
 """Job routes: list jobs, get status, trigger manual runs, pause/resume controls."""
 
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.main import templates
 from app.download_control import download_control, persist_pause_state
+from app.download_progress import download_progress
 from app.models import Video
 from app.scheduler import (
     APSCHEDULER_ID_MAP,
@@ -431,3 +433,111 @@ async def system_status(request: Request):
         f'</span>'
     )
     return HTMLResponse(html_content)
+
+
+def _fmt_delta(seconds: float) -> str:
+    """Compact duration: '45s', '1m 12s', '1h 3m'."""
+    s = max(0, int(seconds))
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m {s % 60}s"
+    return f"{s // 3600}h {(s % 3600) // 60}m"
+
+
+@router.get("/scrobbler")
+async def scrobbler(request: Request, db: AsyncSession = Depends(get_db)):
+    """HTMX partial: floating background-activity widget (bottom right, all pages).
+
+    Pill summary precedence: running > error > paused > idle. The panel lists
+    only active things (running jobs, job errors, in-flight pipeline videos).
+    """
+    # Local import: routes modules don't import each other at module level.
+    from app.routes.videos import _active_panel_condition
+
+    now = datetime.now(UTC)
+    jobs = list(job_registry.values())
+    running_jobs = [
+        {
+            "job": j,
+            "elapsed": _fmt_delta((now - j.started_at).total_seconds())
+            if j.started_at
+            else None,
+        }
+        for j in jobs
+        if j.running
+    ]
+    error_jobs = [j for j in jobs if j.last_error and not j.running]
+
+    progress = download_progress.snapshot()
+    cond = _active_panel_condition()
+    active_total = (
+        await db.execute(select(func.count()).select_from(Video).where(cond))
+    ).scalar_one() or 0
+    active_videos = []
+    if active_total:
+        result = await db.execute(
+            select(Video).where(cond).order_by(Video.created_at.desc()).limit(4)
+        )
+        active_videos = list(result.scalars().all())
+
+    downloads_paused = download_control.is_downloads_paused()
+    channels_paused = download_control.is_channels_paused()
+
+    percents = [p.percent for p in progress.values() if p.percent is not None]
+    avg_percent = int(sum(percents) / len(percents)) if percents else None
+
+    next_job_name = next_job_in = None
+    pill_suffix = ""
+    if running_jobs or active_total:
+        state = "running"
+        pill_label = (
+            running_jobs[0]["job"].name if running_jobs else f"{active_total} active"
+        )
+        if active_total:
+            pill_suffix = f"· {active_total}↓" + (
+                f" {avg_percent}%" if avg_percent is not None else ""
+            )
+    elif error_jobs:
+        state = "error"
+        pill_label = f"{error_jobs[0].name}: error"
+        if len(error_jobs) > 1:
+            pill_label += f" +{len(error_jobs) - 1}"
+    elif downloads_paused or channels_paused:
+        state = "paused"
+        if downloads_paused and channels_paused:
+            pill_label = "Paused"
+        elif downloads_paused:
+            pill_label = "Downloads paused"
+        else:
+            pill_label = "Channel scans paused"
+    else:
+        state = "idle"
+        pill_label = "All quiet"
+        soonest = None
+        for j in jobs:
+            _, nr = get_job_schedule_info(j.id)
+            if nr and (soonest is None or nr < soonest[1]):
+                soonest = (j.name, nr)
+        if soonest:
+            next_job_name = soonest[0]
+            next_job_in = _fmt_delta((soonest[1] - now).total_seconds())
+
+    return templates.TemplateResponse(
+        "components/_scrobbler.html",
+        {
+            "request": request,
+            "state": state,
+            "pill_label": pill_label,
+            "pill_suffix": pill_suffix,
+            "running_jobs": running_jobs,
+            "error_jobs": error_jobs,
+            "active_videos": active_videos,
+            "active_total": active_total,
+            "download_progress": progress,
+            "downloads_paused": downloads_paused,
+            "channels_paused": channels_paused,
+            "next_job_name": next_job_name,
+            "next_job_in": next_job_in,
+        },
+    )

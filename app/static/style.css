@@ -530,3 +530,66 @@ body { letter-spacing: -0.005em; }
   /* action rail — own line at the bottom */
   .cr-video-table tbody td.cr-c-actions { order: 6; flex: 0 0 100%; margin-top: 4px; }
 }
+
+/* ==========================================================================
+   Scrobbler — floating background-activity widget (bottom right, all pages).
+   Shell (.cr-scrob) lives in base.html; content polls /jobs/scrobbler.
+   ========================================================================== */
+.cr-scrob { position: fixed; right: 16px; bottom: 16px; z-index: 40; font-size: 12.5px; }
+
+.cr-scrob-pill { display: flex; align-items: center; gap: 8px; background: var(--color-base-200);
+  border: 1px solid var(--color-base-300); border-radius: 999px; padding: 7px 14px 7px 11px;
+  cursor: pointer; user-select: none; color: var(--color-base-content); font: inherit;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .45); transition: border-color .15s; white-space: nowrap; }
+.cr-scrob-pill:hover { border-color: color-mix(in srgb, var(--color-base-content) 28%, transparent); }
+.cr-scrob-lbl { font-weight: 600; }
+.cr-scrob-muted { color: color-mix(in srgb, var(--color-base-content) 55%, transparent); font-weight: 400; }
+.cr-dot.run { background: var(--color-primary); animation: cr-scrob-pulse 1.4s ease-in-out infinite; }
+@keyframes cr-scrob-pulse { 50% { opacity: .35; } }
+.cr-scrob-chev { width: 9px; height: 9px; flex: none;
+  border-right: 1.6px solid color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  border-bottom: 1.6px solid color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  transform: rotate(-135deg) translate(-1px, 1px); transition: transform .18s; }
+.cr-scrob.open .cr-scrob-chev { transform: rotate(45deg) translate(-2px, -2px); }
+
+.cr-scrob-panel { position: absolute; right: 0; bottom: calc(100% + 10px); width: 308px;
+  background: var(--color-base-200); border: 1px solid var(--color-base-300); border-radius: 12px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .5); display: none; overflow: hidden; }
+.cr-scrob.open .cr-scrob-panel { display: block; animation: cr-scrob-rise .16s ease-out; }
+@keyframes cr-scrob-rise { from { opacity: 0; transform: translateY(6px); } }
+
+.cr-scrob-head { display: flex; align-items: center; gap: 8px; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--color-base-300); font-weight: 600; font-size: 12px; }
+.cr-scrob-chip { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--color-warning);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent); border-radius: 999px; padding: 2px 8px; }
+.cr-scrob-sec { padding: 9px 14px 4px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em;
+  color: color-mix(in srgb, var(--color-base-content) 42%, transparent); }
+.cr-scrob-item { display: flex; align-items: center; gap: 9px; padding: 6px 14px; }
+.cr-scrob-item .cr-scrob-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-scrob-sub { font-size: 11px; color: color-mix(in srgb, var(--color-base-content) 52%, transparent); flex: none; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-scrob-sub.is-error { color: var(--color-error); }
+.cr-scrob-minidot { width: 7px; height: 7px; }
+.cr-scrob-spin { width: 11px; height: 11px; flex: none; border-radius: 50%;
+  border: 1.7px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  border-top-color: var(--color-primary); animation: cr-scrob-rot .9s linear infinite; }
+@keyframes cr-scrob-rot { to { transform: rotate(360deg); } }
+
+.cr-scrob-dl { padding: 5px 14px 7px; }
+.cr-scrob-dlt { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.cr-scrob-dlt .cr-scrob-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--color-base-content); text-decoration: none; }
+.cr-scrob-dlt .cr-scrob-nm:hover { text-decoration: underline; }
+.cr-scrob-pc { color: color-mix(in srgb, var(--color-base-content) 60%, transparent); font-size: 11px; flex: none; }
+.cr-scrob-phase { color: var(--color-info); animation: cr-scrob-pulse 1.6s ease-in-out infinite; }
+.cr-scrob-bar { height: 4px; border-radius: 999px; background: var(--color-base-300); overflow: hidden; }
+.cr-scrob-bar i { display: block; height: 100%; border-radius: inherit; background: var(--color-primary); }
+.cr-scrob-bar i.is-info { background: var(--color-info); opacity: .55; }
+.cr-scrob-more { padding: 2px 14px 8px; font-size: 11px; color: color-mix(in srgb, var(--color-base-content) 45%, transparent); }
+.cr-scrob-empty { padding: 12px 14px 14px; font-size: 12px; color: color-mix(in srgb, var(--color-base-content) 48%, transparent); }
+.cr-scrob-foot { display: flex; gap: 14px; padding: 9px 14px; border-top: 1px solid var(--color-base-300); font-size: 11.5px; }
+.cr-scrob-foot a { color: var(--color-primary); text-decoration: none; }
+.cr-scrob-foot a:hover { text-decoration: underline; }
+
+/* Hidden on phones: it would cover content; pages surface status inline there. */
+@media (max-width: 768px) { .cr-scrob { display: none; } }

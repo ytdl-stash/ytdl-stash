@@ -368,15 +368,27 @@ _tag_locks: dict[str, asyncio.Lock] = {}
 _lock_dict_meta: asyncio.Lock = asyncio.Lock()
 
 
-_IMAGE_CONTENT_TYPES = {
-    "image/jpeg": "image/jpeg",
-    "image/png": "image/png",
-    "image/gif": "image/gif",
-    "image/webp": "image/webp",
-    "image/svg+xml": "image/svg+xml",
-}
 # Max image download size (10 MB) — avoid fetching unexpectedly huge files.
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+
+def _sniff_image_mime(data: bytes) -> str | None:
+    """Detect an image MIME type from magic bytes; None if not a known image."""
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data.startswith(b"BM"):
+        return "image/bmp"
+    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in (
+        b"avif", b"avis", b"heic", b"heix", b"mif1"
+    ):
+        return "image/avif"
+    return None
 
 
 def _has_custom_image(image_path: str | None) -> bool:
@@ -483,9 +495,23 @@ async def _url_to_data_uri(
         )
         return None
 
-    # Determine MIME type from Content-Type header; fall back to jpeg.
+    # Determine MIME type from magic bytes first (authoritative), then from the
+    # Content-Type header for formats we cannot sniff (e.g. SVG). Anything else
+    # (HTML error/bot-check pages, JSON, ...) is NOT an image: sending it to
+    # Stash would make the whole studio/performer mutation fail, so return None
+    # and let the caller proceed without an image.
     raw_ct = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
-    mime = _IMAGE_CONTENT_TYPES.get(raw_ct, "image/jpeg")
+    # SVG is the one supported format magic bytes can't identify — trust the
+    # header for it alone; raster types must actually sniff as images.
+    mime = _sniff_image_mime(resp.content) or (
+        "image/svg+xml" if raw_ct == "image/svg+xml" else None
+    )
+    if not mime:
+        logger.warning(
+            "Response from %s is not an image (content_type=%s, first_bytes=%r); skipping",
+            url, raw_ct or "(none)", resp.content[:16],
+        )
+        return None
 
     encoded = base64.b64encode(resp.content).decode("ascii")
     return f"data:{mime};base64,{encoded}"
@@ -511,7 +537,8 @@ class StashClient:
         cookies_file: str | None = None,
         image_request_headers: dict[str, str] | None = None,
     ) -> None:
-        self.graphql_url = f"{url.rstrip('/')}/graphql"
+        self._base_url = url.rstrip("/")
+        self.graphql_url = f"{self._base_url}/graphql"
         self.headers: dict[str, str] = {"Content-Type": "application/json"}
         if api_key:
             self.headers["ApiKey"] = api_key
@@ -567,12 +594,32 @@ class StashClient:
             self._client = None
 
     async def download_image_data_uri(self, url: str) -> str | None:
-        """Download an image and return a base64 data URI, using this client's cookies/headers."""
+        """Download an image and return a base64 data URI, using this client's cookies/headers.
+
+        Images hosted by this Stash instance (e.g. performer images) require the
+        ApiKey header when auth is enabled, so it is added for our own host.
+        """
+        headers = dict(self.image_request_headers or {})
+        if url.startswith(self._base_url + "/") and "ApiKey" in self.headers:
+            headers.setdefault("ApiKey", self.headers["ApiKey"])
         return await _url_to_data_uri(
             url,
             cookies_file=self.cookies_file,
-            headers=self.image_request_headers,
+            headers=headers or None,
         )
+
+    async def _first_image_data_uri(
+        self, image_url: str | list[str] | None
+    ) -> str | None:
+        """Resolve the first candidate URL that downloads as a real image."""
+        candidates = [image_url] if isinstance(image_url, str) else list(image_url or [])
+        for candidate in candidates:
+            if not candidate:
+                continue
+            data_uri = await self.download_image_data_uri(candidate)
+            if data_uri:
+                return data_uri
+        return None
 
     async def _query(self, query: str, variables: dict | None = None) -> dict:
         """Send a GraphQL request. Raises on HTTP or GraphQL errors. Returns data dict."""
@@ -1180,23 +1227,38 @@ class StashClient:
         self,
         name: str,
         urls: list[str],
-        image_url: str | None = None,
+        image_url: str | list[str] | None = None,
         details: str | None = None,
     ) -> str:
-        """Create a studio with name, urls, and optional image/details. Returns the new studio's ID."""
+        """Create a studio with name, urls, and optional image/details. Returns the new studio's ID.
+
+        ``image_url`` may be a single URL or a list of candidates (the first one
+        that downloads as a real image wins). If Stash rejects the create because
+        of the image, it is retried once without the image so the studio — with
+        its name/urls/details — is never lost to a bad thumbnail.
+        """
         name = name.strip()
         input_dict: dict = {"name": name, "urls": urls}
-        if image_url:
-            data_uri = await self.download_image_data_uri(image_url)
-            if data_uri:
-                input_dict["image"] = data_uri
+        data_uri = await self._first_image_data_uri(image_url)
+        if data_uri:
+            input_dict["image"] = data_uri
         if details:
             input_dict["details"] = details
         logger.info(
             "Creating Stash studio %r with fields: %s",
             name, list(input_dict.keys()),
         )
-        data = await self._query(_STUDIO_CREATE_MUTATION, {"input": input_dict})
+        try:
+            data = await self._query(_STUDIO_CREATE_MUTATION, {"input": input_dict})
+        except Exception as e:
+            if "image" not in input_dict:
+                raise
+            logger.warning(
+                "Stash rejected studio create for %r with image (%s); retrying without image",
+                name, e,
+            )
+            del input_dict["image"]
+            data = await self._query(_STUDIO_CREATE_MUTATION, {"input": input_dict})
         return data["studioCreate"]["id"]
 
     async def update_studio(self, studio_id: str, **fields: object) -> None:
@@ -1217,16 +1279,20 @@ class StashClient:
         self,
         studio: dict,
         url: str,
-        image_url: str | None,
+        image_url: str | list[str] | None,
         details: str | None,
     ) -> None:
-        """Add URL, image, and details to an existing studio if missing."""
+        """Add URL, image, and details to an existing studio if missing.
+
+        If Stash rejects the update because of the image, it is retried once
+        without the image so the URL/details still land.
+        """
         updates: dict = {}
         stash_urls = studio.get("urls") or []
         if url and url not in stash_urls:
             updates["urls"] = stash_urls + [url]
         if image_url and not _has_custom_image(studio.get("image_path")):
-            data_uri = await self.download_image_data_uri(image_url)
+            data_uri = await self._first_image_data_uri(image_url)
             if data_uri:
                 updates["image"] = data_uri
         stash_details = (studio.get("details") or "").strip()
@@ -1238,16 +1304,31 @@ class StashClient:
                 studio["id"],
                 list(updates.keys()),
             )
-            await self.update_studio(studio["id"], **updates)
+            try:
+                await self.update_studio(studio["id"], **updates)
+            except Exception as e:
+                if "image" not in updates:
+                    raise
+                logger.warning(
+                    "Stash rejected studio %s gap-fill with image (%s); retrying without image",
+                    studio["id"], e,
+                )
+                del updates["image"]
+                if updates:
+                    await self.update_studio(studio["id"], **updates)
 
     async def find_or_create_studio_by_url(
         self,
         name: str,
         url: str,
-        image_url: str | None = None,
+        image_url: str | list[str] | None = None,
         details: str | None = None,
     ) -> str:
-        """Find studio by URL first, then by name, then create with metadata. Returns studio ID."""
+        """Find studio by URL first, then by name, then create with metadata. Returns studio ID.
+
+        Gap-fill failures on found studios are logged but never raised — linking
+        the channel to the existing studio takes priority over enriching it.
+        """
         name = name.strip()
         key = name.lower()
         async with _lock_dict_meta:
@@ -1257,17 +1338,29 @@ class StashClient:
         async with lock:
             by_url = await self.find_studio_by_url(url)
             if by_url:
-                await self._gap_fill_studio_url_image_details(
-                    by_url, url, image_url, details
-                )
+                try:
+                    await self._gap_fill_studio_url_image_details(
+                        by_url, url, image_url, details
+                    )
+                except Exception:
+                    logger.warning(
+                        "Stash: gap-fill failed for studio %s; linking anyway",
+                        by_url["id"], exc_info=True,
+                    )
                 return by_url["id"]
             studio_id = await self.find_studio(name)
             if studio_id:
                 studio = await self.get_studio(studio_id)
                 if studio:
-                    await self._gap_fill_studio_url_image_details(
-                        studio, url, image_url, details
-                    )
+                    try:
+                        await self._gap_fill_studio_url_image_details(
+                            studio, url, image_url, details
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Stash: gap-fill failed for studio %s; linking anyway",
+                            studio_id, exc_info=True,
+                        )
                 return studio_id
             logger.info("Stash: creating new studio '%s' with URL %s", name, url)
             return await self.create_studio_with_metadata(

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 from app.downloader import async_extract_channel_metadata
 from app.performer_sync import is_placeholder_name
-from app.stash_client import _has_custom_image
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -89,33 +88,20 @@ async def _push_to_stash(
 ) -> None:
     """Push source data to Stash for any fields the Stash studio is missing.
 
-    We only fill in gaps — never overwrite data the user set in Stash.
+    We only fill in gaps — never overwrite data the user set in Stash. Image
+    candidates are tried in order: the yt-dlp source thumbnail first, then the
+    channel's performer image (which the client can fetch from its own Stash
+    host with the ApiKey).
     """
     if not channel.stash_studio_id:
         return
 
-    updates: dict = {}
-    stash_urls = stash_studio.get("urls") or []
-    if channel.url and channel.url not in stash_urls:
-        updates["urls"] = stash_urls + [channel.url]
-
-    image_url = source_image_url or channel.performer_image_url
-    if image_url and not _has_custom_image(stash_studio.get("image_path")):
-        data_uri = await stash.download_image_data_uri(image_url)
-        if data_uri:
-            updates["image"] = data_uri
-
-    stash_details = (stash_studio.get("details") or "").strip()
-    if channel_description and not stash_details:
-        updates["details"] = channel_description
-
-    if updates:
-        logger.info(
-            "Pushing source data to Stash studio %s: %s",
-            channel.stash_studio_id,
-            list(updates.keys()),
-        )
-        await stash.update_studio(channel.stash_studio_id, **updates)
+    image_candidates = [
+        u for u in (source_image_url, channel.performer_image_url) if u
+    ]
+    await stash._gap_fill_studio_url_image_details(
+        stash_studio, channel.url, image_candidates, channel_description
+    )
 
 
 async def sync_channel_studio(
@@ -167,7 +153,11 @@ async def sync_channel_studio(
             studio_id = await stash.find_or_create_studio_by_url(
                 name=channel.name,
                 url=channel.url,
-                image_url=source_image_url or channel.performer_image_url,
+                image_url=[
+                    u
+                    for u in (source_image_url, channel.performer_image_url)
+                    if u
+                ],
                 details=channel_description,
             )
             channel.stash_studio_id = str(studio_id) if studio_id is not None else None

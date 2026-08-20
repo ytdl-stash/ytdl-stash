@@ -1,0 +1,85 @@
+{# Floating background-activity widget ("scrobbler"), bottom right on all pages.
+   The shell (.cr-scrob in base.html) is never swapped, so its open/closed class
+   survives polling; this root re-polls and swaps only itself (hx-target="this"
+   — required, see docs/patterns/htmx.md on hx-target inheritance). #}
+<div hx-get="/jobs/scrobbler"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     hx-target="this">
+  <div class="cr-scrob-panel">
+    <div class="cr-scrob-head">
+      <span>Background activity</span>
+      {% if downloads_paused %}<span class="cr-scrob-chip">downloads paused</span>{% endif %}
+      {% if channels_paused %}<span class="cr-scrob-chip">scans paused</span>{% endif %}
+    </div>
+
+    {% if running_jobs %}
+    <div class="cr-scrob-sec">Jobs</div>
+    {% for r in running_jobs %}
+    <div class="cr-scrob-item">
+      <span class="cr-scrob-spin"></span>
+      <span class="cr-scrob-nm">{{ r.job.name }}</span>
+      {% if r.elapsed %}<span class="cr-scrob-sub">{{ r.elapsed }}</span>{% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if error_jobs %}
+    <div class="cr-scrob-sec">Errors</div>
+    {% for j in error_jobs %}
+    <div class="cr-scrob-item">
+      <span class="cr-dot error cr-scrob-minidot"></span>
+      <span class="cr-scrob-nm">{{ j.name }}</span>
+      <span class="cr-scrob-sub is-error" title="{{ j.last_error|e }}">{{ j.last_error[:38] }}{% if j.last_error|length > 38 %}…{% endif %}</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if active_videos %}
+    <div class="cr-scrob-sec">Pipeline · {{ active_total }} active</div>
+    {% for video in active_videos %}
+    {% set p = (download_progress or {}).get(video.id) %}
+    <div class="cr-scrob-dl">
+      <div class="cr-scrob-dlt">
+        <a class="cr-scrob-nm" href="/videos/{{ video.id }}">{{ video.title }}</a>
+        {% if video.status == 'downloading' and p and p.percent is not none %}
+        <span class="cr-scrob-pc">{{ p.percent }}%{% if p.speed %} · {{ p.speed }}{% endif %}</span>
+        {% elif p and p.phase %}
+        <span class="cr-scrob-pc cr-scrob-phase">{{ p.phase }}…</span>
+        {% else %}
+        <span class="cr-scrob-pc">{{ video.status }}</span>
+        {% endif %}
+      </div>
+      {% if video.status == 'downloading' and p and p.percent is not none %}
+      <div class="cr-scrob-bar"><i style="width: {{ p.percent }}%"></i></div>
+      {% elif p and p.phase %}
+      <div class="cr-scrob-bar"><i class="is-info" style="width: 100%"></i></div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if active_total > active_videos|length %}
+    <div class="cr-scrob-more">+ {{ active_total - active_videos|length }} more</div>
+    {% endif %}
+    {% endif %}
+
+    {% if not running_jobs and not error_jobs and not active_videos %}
+    <div class="cr-scrob-empty">
+      Nothing running.{% if next_job_name %} Next: {{ next_job_name }} in {{ next_job_in }}.{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="cr-scrob-foot">
+      <a href="/jobs">Jobs →</a>
+      <a href="/videos">Pipeline →</a>
+    </div>
+  </div>
+
+  <button type="button" class="cr-scrob-pill"
+          aria-label="Toggle background activity panel"
+          onclick="this.closest('.cr-scrob').classList.toggle('open')">
+    <span class="cr-dot {% if state == 'running' %}run{% elif state == 'paused' %}warn{% elif state == 'error' %}error{% endif %}"></span>
+    <span class="cr-scrob-lbl{% if state == 'idle' %} cr-scrob-muted{% endif %}">{{ pill_label }}</span>
+    {% if pill_suffix %}<span class="cr-scrob-muted">{{ pill_suffix }}</span>{% endif %}
+    <span class="cr-scrob-chev"></span>
+  </button>
+</div>

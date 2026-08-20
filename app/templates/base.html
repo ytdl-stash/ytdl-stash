@@ -119,5 +119,11 @@
   });
 })();
 </script>
+
+<!-- Floating background-activity widget; content polls /jobs/scrobbler.
+     The shell keeps the open/closed state across swaps. -->
+<div class="cr-scrob" id="scrobbler">
+  <div hx-get="/jobs/scrobbler" hx-trigger="load, every 3s" hx-swap="outerHTML" hx-target="this"></div>
+</div>
 </body>
 </html>
