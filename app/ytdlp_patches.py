@@ -103,6 +103,48 @@ def _patch_pornhub_age_cookie() -> None:
     logger.info("yt-dlp patch applied: PornHub age-disclaimer cookie=2 (issue #16729)")
 
 
+def _register_bundled_plugins() -> None:
+    """Make the bundled ``yt_dlp_plugins`` package discoverable by yt-dlp.
+
+    yt-dlp finds plugins by scanning every ``sys.path`` entry for a
+    ``yt_dlp_plugins`` namespace package (see ``yt_dlp/plugins.py``). The repo
+    root usually lands on ``sys.path`` anyway — the app is imported as
+    ``app.main`` — but that depends on how the process was launched, so we
+    register it explicitly rather than relying on the working directory.
+    """
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    if not (root / "yt_dlp_plugins" / "extractor").is_dir():
+        logger.warning(
+            "Bundled yt-dlp plugins not found under %s — channel support for "
+            "xvideos/xhamster pornstar pages will be unavailable",
+            root,
+        )
+        return
+
+    if str(root) not in sys.path:
+        sys.path.append(str(root))
+
+    # If something already built a YoutubeDL (and therefore loaded plugins)
+    # before this ran, reload so our late sys.path entry is still picked up.
+    try:
+        from yt_dlp.globals import all_plugins_loaded
+
+        if all_plugins_loaded.value:
+            import importlib
+
+            from yt_dlp.plugins import load_all_plugins
+
+            importlib.invalidate_caches()
+            load_all_plugins()
+    except Exception:  # noqa: BLE001 - best effort only
+        logger.debug("Could not force-reload yt-dlp plugins", exc_info=True)
+
+    logger.info("yt-dlp plugin directory registered: %s", root / "yt_dlp_plugins")
+
+
 def apply_patches() -> None:
     """Apply all local yt-dlp patches. Idempotent; safe to call repeatedly."""
     global _applied
@@ -111,6 +153,7 @@ def apply_patches() -> None:
     try:
         _patch_pornhub_legacy_ssl()
         _patch_pornhub_age_cookie()
+        _register_bundled_plugins()
     except Exception:
         logger.exception("Failed to apply yt-dlp patches")
     _applied = True

@@ -286,3 +286,45 @@ for all yt-dlp usage). Each patch is idempotent and failure-tolerant.
 > Alternative (no code): some users report the impersonation approach (PR #16794)
 > works. Since the app already supports `impersonate`, you can try setting
 > `YTDL_YTDLP_IMPERSONATE=chrome` instead of / in addition to the patch.
+
+## Bundled Extractor Plugins
+
+Some sites have a yt-dlp *single-video* extractor but no *channel/playlist*
+extractor, so watching a creator page fails with `Unsupported URL`. We ship
+yt-dlp plugin extractors for those cases in `yt_dlp_plugins/extractor/`.
+
+Currently bundled (`yt_dlp_plugins/extractor/ytdlstash.py`):
+
+| Extractor | Handles | Why |
+|---|---|---|
+| `xvideos:channel` | `xvideos.com/<slug>`, `/channels/<slug>`, `/profiles/<slug>`, `/models/<slug>`, `/{amateur,model,pornstar}-channels/<slug>` | upstream has **no** xvideos playlist extractor |
+| `xhamster:pornstar` | `xhamster.com/pornstars/<name>` (+ mirror domains) | upstream `XHamsterUserIE` only covers `/users/` and `/creators/` |
+
+Each enumerates videos via the site's own listing (xvideos exposes a JSON
+endpoint at `/{kind}/{slug}/videos/new/{page}`; xHamster is server-rendered
+with `page-button-link` pagination) and hands individual video URLs back to the
+upstream single-video extractor, so downloading/formats stay upstream's job.
+Entries carry title/duration/thumbnail so flat scans populate the video list.
+
+### How discovery works
+yt-dlp scans every `sys.path` entry for a `yt_dlp_plugins` namespace package.
+`app/ytdlp_patches.py:_register_bundled_plugins()` adds the repo root
+explicitly so this never depends on the working directory or launcher, and the
+`Dockerfile` has a `COPY yt_dlp_plugins/ yt_dlp_plugins/` line. There are
+deliberately **no `__init__.py` files** — they are namespace packages.
+
+### Rules when adding an extractor here
+- **Plugins are *prepended* to yt-dlp's extractor lookup**, so an over-greedy
+  `_VALID_URL` will hijack URLs from upstream extractors. Bare-slug patterns
+  (like xvideos) need negative lookaheads for video URLs, reserved site
+  sections, and other extractors' URL shapes (e.g. `#quickies`). Always test
+  routing both ways after a change.
+- Supply a channel avatar as `thumbnails=[{'id': 'avatar', ...}]`. Without it
+  `extract_channel_metadata()` falls back to a slow non-flat retry that fully
+  extracts a video just to find an image (and can fail on videos with no
+  formats).
+- Guard imports of upstream internals (e.g. `XHamsterIE._DOMAINS`) with
+  try/except — an upstream rename would otherwise raise at module import and
+  silently disable *every* extractor in the file.
+- Verify with the real app path, not just yt-dlp:
+  `python -c "from app.downloader import scan_channel; ..."`.

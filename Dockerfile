@@ -28,6 +28,10 @@ ARG APP_VERSION=dev
 RUN echo "$APP_VERSION" > /app/VERSION
 
 COPY app/ app/
+# Bundled yt-dlp extractor plugins (channel support for sites yt-dlp only has
+# single-video extractors for). Discovered via sys.path — see
+# app/ytdlp_patches.py:_register_bundled_plugins.
+COPY yt_dlp_plugins/ yt_dlp_plugins/
 # Overwrite the committed app.css with a freshly compiled one so it always
 # matches the templates in this build.
 COPY --from=assets /assets/app/static/app.css app/static/app.css
