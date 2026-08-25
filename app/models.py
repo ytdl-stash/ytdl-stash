@@ -87,6 +87,7 @@ class Video(Base):
     __table_args__ = (
         Index("ix_videos_status", "status"),
         Index("ix_videos_channel_id", "channel_id"),
+        Index("ix_videos_url", "url"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

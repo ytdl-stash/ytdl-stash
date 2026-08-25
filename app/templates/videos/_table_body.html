@@ -6,7 +6,9 @@
     {% endwith %}
   </td>
   <td data-label="Title" class="cr-c-title"><a href="/videos/{{ video.id }}" class="link link-hover">{{ video.title }}</a></td>
-  <td data-label="Channel" class="cr-c-channel">{% if video.channel %}<a href="/channels/{{ video.channel.id }}" class="link link-hover">{{ video.channel.name }}</a>{% else %}—{% endif %}</td>
+  {# The singles channel has no meaningful detail page (scan/sync controls make
+     no sense for it), so link it to the filtered video list instead. #}
+  <td data-label="Channel" class="cr-c-channel">{% if video.channel %}<a href="{% if is_singles_channel_url(video.channel.url) %}/videos?channel_id={{ video.channel.id }}{% else %}/channels/{{ video.channel.id }}{% endif %}" class="link link-hover">{{ video.channel.name }}</a>{% else %}—{% endif %}</td>
   <td data-label="Status" class="cr-c-status">{% include "videos/_status_badge.html" %}</td>
   <td data-label="Upload Date" class="cr-c-date">{{ video.upload_date.isoformat() if video.upload_date else '—' }}</td>
   <td data-label="Duration" class="cr-c-dur">{% if video.duration_seconds %}{{ video.duration_seconds // 60 }} min{% else %}—{% endif %}</td>

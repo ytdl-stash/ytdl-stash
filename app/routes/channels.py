@@ -22,6 +22,7 @@ from app.main import templates
 from app.models import Channel, Video
 from app.performer_sync import sync_channel_performer
 from app.pipeline import generate_for_scene, process_channel_scan
+from app.singles import SINGLES_CHANNEL_URL
 from app.studio_sync import sync_channel_studio
 from app.stash_client import StashClient
 
@@ -79,9 +80,10 @@ def _derive_site(url: str) -> str:
 
 
 async def _load_channels_with_videos(db: AsyncSession) -> list[Channel]:
-    """Load all channels with videos (for list, bulk edit)."""
+    """Load all channels with videos (for list, bulk edit). Excludes the singles sentinel."""
     result = await db.execute(
         select(Channel)
+        .where(Channel.url != SINGLES_CHANNEL_URL)
         .options(selectinload(Channel.videos))
         .order_by(func.lower(Channel.name), Channel.name)
     )
@@ -112,6 +114,7 @@ async def list_channels(
     """List all channels as cards. filter: all|watched|not_watched, sort: name|video_count|last_checked, search: name substring."""
     stmt = (
         select(Channel)
+        .where(Channel.url != SINGLES_CHANNEL_URL)
         .options(selectinload(Channel.videos))
         .order_by(func.lower(Channel.name), Channel.name)
     )
@@ -307,6 +310,9 @@ async def channel_preview(
                 "request": request,
                 "error_message": f"Could not scrape channel: {e!s}",
                 "url": url,
+                # The URL may be a single video rather than a creator page —
+                # offer the Add Video flow without re-scraping here.
+                "offer_single_video": True,
             },
         )
     return templates.TemplateResponse(
@@ -644,6 +650,10 @@ async def channel_detail(
     channel = await _load_channel_with_videos(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
+    if channel.url == SINGLES_CHANNEL_URL:
+        # No detail page for the singles sentinel — its scan/sync/relink
+        # controls are meaningless. Its videos live on the filtered list.
+        return RedirectResponse(url=f"/videos?channel_id={channel_id}", status_code=303)
 
     sort_clean = sort.strip() if sort else CHANNEL_VIDEO_SORT_DEFAULT
     if sort_clean not in CHANNEL_VIDEO_SORT_OPTIONS:
@@ -1086,6 +1096,13 @@ async def delete_channel(
     channel = await db.get(Channel, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
+    if channel.url == SINGLES_CHANNEL_URL:
+        # Videos cascade-delete with their channel, so this would wipe every
+        # single video at once.
+        raise HTTPException(
+            status_code=400,
+            detail="The Single Videos channel cannot be deleted. Delete individual videos instead.",
+        )
 
     # Cancel any in-flight downloads for this channel's videos before deleting
     active_ids = download_control.get_active_ids()

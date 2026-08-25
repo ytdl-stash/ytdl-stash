@@ -1,5 +1,5 @@
 <form hx-post="/channels/preview"
-      hx-target="#add-channel-modal-body"
+      hx-target="closest .cr-modal-body"
       hx-swap="innerHTML"
       hx-indicator="#add-step1-spinner"
       class="flex flex-col gap-4">
@@ -12,6 +12,15 @@
     <span class="text-sm font-medium tooltip tooltip-bottom self-start" data-tip="Paste the full channel/user page URL from the video site">Channel URL</span>
     <input type="url" name="url" placeholder="https://..." value="{{ url|default('', true) }}" required class="input input-bordered w-full">
   </label>
+  <div class="bg-base-200 rounded-box p-3 text-xs text-base-content/70">
+    <p class="font-medium mb-1">Confirmed working</p>
+    <ul class="list-disc list-inside space-y-0.5">
+      <li>PornHub — <code>pornhub.com/model/&lt;name&gt;</code></li>
+      <li>XVideos — <code>xvideos.com/&lt;creator&gt;</code> (any creator page)</li>
+      <li>xHamster — <code>xhamster.com/creators/&lt;name&gt;</code>, <code>/users/&lt;name&gt;</code>, <code>/pornstars/&lt;name&gt;</code></li>
+    </ul>
+    <p class="mt-1 opacity-70">Redtube &amp; YouPorn creator pages are not supported. Channel/playlist pages from other yt-dlp-supported sites may work — paste the URL and try. For a single video, use <strong>+ Add Video</strong> in the top bar instead.</p>
+  </div>
   <div class="flex items-center gap-2">
     <button type="submit" class="btn btn-primary" id="add-step1-submit">
       Scrape
@@ -19,3 +28,14 @@
     <span id="add-step1-spinner" class="htmx-indicator">Scraping…</span>
   </div>
 </form>
+{% if offer_single_video %}
+{# Handoff: the URL may be a single video. Sibling form — nested forms are
+   invalid HTML. Posts into whichever modal body is currently showing. #}
+<form hx-post="/videos/preview"
+      hx-target="closest .cr-modal-body"
+      hx-swap="innerHTML"
+      class="mt-3">
+  <input type="hidden" name="url" value="{{ url|e }}">
+  <button type="submit" class="btn btn-outline btn-sm">Add as single video instead</button>
+</form>
+{% endif %}

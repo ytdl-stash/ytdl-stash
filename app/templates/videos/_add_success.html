@@ -1,0 +1,18 @@
+{# Final step of the Add Video wizard. Nothing behind the modal needs updating,
+   so the modal stays open with this panel instead of firing a close trigger. #}
+<div class="space-y-4">
+  <div class="alert alert-success text-sm">
+    <span>Queued — the downloader picks it up within about 30 seconds.</span>
+  </div>
+  <p class="text-sm text-base-content/80">{{ video.title }}</p>
+  <div class="flex items-center gap-2 flex-wrap">
+    <a href="/videos/{{ video.id }}" class="btn btn-primary">View video</a>
+    <button type="button"
+            class="btn btn-ghost btn-sm"
+            hx-get="/videos/add-modal"
+            hx-target="closest .cr-modal-body"
+            hx-swap="innerHTML">
+      Add another
+    </button>
+  </div>
+</div>

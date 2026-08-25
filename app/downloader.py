@@ -674,6 +674,80 @@ def extract_video_info(url: str, settings: Settings) -> dict:
         return {"duration": None, "title": "", "upload_date": None}
 
 
+# Raised when a creator/playlist page is pasted into the Add Video flow. The
+# route matches on this to offer the "Add as channel instead" handoff, so keep
+# the two in sync via this constant rather than a literal.
+PLAYLIST_URL_ERROR = "This URL is a channel or playlist, not a single video."
+
+
+def extract_single_video_metadata(url: str, settings: Settings) -> dict:
+    """Extract full metadata for one video URL, for the Add Video preview.
+
+    Unlike :func:`extract_video_info` this raises on failure instead of
+    returning empty values, so the modal can show why the URL was rejected.
+    The URL is used as given — ``normalize_channel_url`` rewrites creator-page
+    paths and must not touch a video URL.
+
+    Returns dict with ``id``, ``title``, ``duration``, ``upload_date``
+    (YYYYMMDD str), ``thumbnail``, ``uploader`` and ``webpage_url``.
+    """
+    opts: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "noplaylist": True,
+        # Preview only needs title/duration/thumbnail. Some sites (xHamster in
+        # particular) expose no formats until the download request itself, and
+        # without this yt-dlp raises "No video formats found" and the video
+        # could never be added.
+        "ignore_no_formats_error": True,
+        # `noplaylist` does not stop a URL that is *only* a playlist, so a
+        # creator page pasted here would otherwise extract every video before
+        # we could reject it. These bound that to one flat entry, which is all
+        # the "this is a playlist" check below needs.
+        "extract_flat": "in_playlist",
+        "playlistend": 1,
+    }
+    if settings.cookies_file:
+        opts["cookiefile"] = settings.cookies_file
+    opts.update(_build_common_ytdlp_opts(settings))
+    opts.update(
+        _parse_json_obj(settings.ytdlp_scan_opts_json, name="YTDL_YTDLP_SCAN_OPTS_JSON")
+    )
+
+    try:
+        logger.info("Extracting single video metadata: %s", url)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except DownloadError as e:
+        logger.warning("Single video extraction failed for %s: %s", url, e)
+        raise RuntimeError(str(e)) from e
+
+    if not info:
+        raise RuntimeError("No metadata returned for this URL.")
+    if info.get("entries"):
+        raise RuntimeError(PLAYLIST_URL_ERROR)
+
+    upload_date_raw = info.get("upload_date")
+    upload_date_str: str | None = None
+    if upload_date_raw is not None:
+        parsed = _parse_date(str(upload_date_raw).strip())
+        if parsed is not None:
+            upload_date_str = parsed.strftime("%Y%m%d")
+
+    duration = info.get("duration")
+    video_id = info.get("id")
+    return {
+        "id": str(video_id) if video_id is not None else None,
+        "title": info.get("title") or "",
+        "duration": int(duration) if duration is not None else None,
+        "upload_date": upload_date_str,
+        "thumbnail": info.get("thumbnail"),
+        "uploader": info.get("uploader") or info.get("channel"),
+        "webpage_url": info.get("webpage_url") or url,
+    }
+
+
 async def async_compute_oshash(filepath: str) -> str:
     """Async wrapper for compute_oshash. Use this from async code to avoid blocking the event loop."""
     return await asyncio.to_thread(compute_oshash, filepath)
@@ -689,6 +763,11 @@ async def async_extract_channel_metadata(
 async def async_extract_video_info(url: str, settings: Settings) -> dict:
     """Async wrapper for extract_video_info. Use from async code to avoid blocking the event loop."""
     return await asyncio.to_thread(extract_video_info, url, settings)
+
+
+async def async_extract_single_video_metadata(url: str, settings: Settings) -> dict:
+    """Async wrapper for extract_single_video_metadata. Use from async code to avoid blocking the event loop."""
+    return await asyncio.to_thread(extract_single_video_metadata, url, settings)
 
 
 async def async_scan_channel(url: str, settings: Settings) -> dict:

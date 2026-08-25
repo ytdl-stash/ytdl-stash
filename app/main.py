@@ -28,6 +28,11 @@ templates.env.globals["is_downloads_paused"] = _dc.is_downloads_paused
 templates.env.globals["is_channels_paused"] = _dc.is_channels_paused
 templates.env.globals["is_stash_healthy"] = _dc.is_stash_healthy
 
+# Lets templates spot the hidden channel that owns single videos.
+from app.singles import is_singles_channel_url as _is_singles
+
+templates.env.globals["is_singles_channel_url"] = _is_singles
+
 
 def status_badge_class(status: str | None) -> str:
     """Return DaisyUI badge class for a video status (used in templates)."""

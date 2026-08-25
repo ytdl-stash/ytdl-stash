@@ -4,7 +4,11 @@
 {% block content %}
 <div class="flex items-center justify-between mb-4">
   <h1 class="text-2xl font-bold">Settings</h1>
-  <span class="badge badge-outline badge-lg font-mono">{{ app_version }}</span>
+  <a href="{{ release_url }}"
+     target="_blank"
+     rel="noopener noreferrer"
+     class="badge badge-outline badge-lg font-mono tooltip tooltip-bottom hover:badge-primary"
+     data-tip="View this build on GitHub">{{ app_version }}</a>
 </div>
 <div class="overflow-x-auto">
   <table class="table mb-6">

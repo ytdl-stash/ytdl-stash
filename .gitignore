@@ -28,6 +28,9 @@ ENV/
 # Database
 *.db
 *.sqlite3
+# SQLite WAL/SHM sidecars hold committed page data — never publish them.
+*.db-shm
+*.db-wal
 
 # OS
 Thumbs.db
@@ -36,6 +39,9 @@ Desktop.ini
 
 # Downloads (runtime data)
 downloads/
+
+# Docker volume mount: runtime database + logs
+data/
 
 # Logs
 *.log

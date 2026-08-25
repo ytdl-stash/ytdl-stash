@@ -11,6 +11,7 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.main import templates
 from app.models import Channel, Video
+from app.singles import SINGLES_CHANNEL_URL
 
 router = APIRouter(tags=["dashboard"])
 
@@ -22,8 +23,10 @@ async def dashboard(
     settings: Settings = Depends(get_settings),
 ):
     """Render dashboard with total channels, total videos, pending/failed counts, recent downloads."""
-    # Total channels
-    result = await db.execute(select(func.count(Channel.id)))
+    # Total channels (the singles sentinel is an implementation detail, not a channel)
+    result = await db.execute(
+        select(func.count(Channel.id)).where(Channel.url != SINGLES_CHANNEL_URL)
+    )
     total_channels = result.scalar() or 0
 
     # Total videos

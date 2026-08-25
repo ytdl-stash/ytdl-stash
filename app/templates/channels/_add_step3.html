@@ -41,7 +41,7 @@
 
 <div class="flex items-center gap-2 flex-wrap">
   <form hx-get="/channels/add-modal/step2"
-        hx-target="#add-channel-modal-body"
+        hx-target="closest .cr-modal-body"
         hx-swap="innerHTML"
         class="inline">
     <input type="hidden" name="url" value="{{ url|e }}">

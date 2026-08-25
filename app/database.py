@@ -121,6 +121,11 @@ async def _migrate_videos_columns(conn) -> None:
             )
             logger.info("Added column videos.%s", col_name)
 
+    # create_all(checkfirst=True) skips indexes on tables that already exist,
+    # so add this one explicitly for existing databases. Single-video lookups
+    # and the scan's singles dedup both query videos.url.
+    await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_videos_url ON videos (url)"))
+
     # Best-effort backfill: set synced_at/downloaded_at from updated_at for existing rows.
     r1 = await conn.execute(
         text(

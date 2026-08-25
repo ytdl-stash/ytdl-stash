@@ -1,0 +1,48 @@
+{# Step 2 of the Add Video wizard: confirm the scraped metadata. #}
+<form hx-post="/videos"
+      hx-target="closest .cr-modal-body"
+      hx-swap="innerHTML"
+      hx-indicator="#add-video-step2-spinner"
+      class="space-y-4">
+  <p class="text-sm text-base-content/70">
+    <span class="badge badge-ghost">Single video</span>
+    This downloads one video only — no channel is watched.
+  </p>
+  <input type="hidden" name="url" value="{{ url|e }}">
+  <input type="hidden" name="site_video_id" value="{{ site_video_id|e }}">
+  <input type="hidden" name="duration_seconds" value="{{ duration or '' }}">
+  <input type="hidden" name="upload_date" value="{{ upload_date or '' }}">
+  <input type="hidden" name="thumbnail_url" value="{{ thumbnail|default('', true) }}">
+  <div class="flex gap-4 flex-wrap">
+    {% if thumbnail %}
+    <div class="shrink-0">
+      <img src="{{ thumbnail|e }}" alt="" class="w-32 h-20 object-cover rounded-lg">
+    </div>
+    {% endif %}
+    <div class="flex-1 min-w-0">
+      <label class="flex flex-col gap-1 w-full">
+        <span class="text-sm font-medium">Title</span>
+        <input type="text" name="title" value="{{ title|e }}" class="input input-bordered w-full">
+      </label>
+      <p class="text-sm text-base-content/70 mt-2 flex gap-3 flex-wrap">
+        {% if uploader %}<span>Uploader: {{ uploader|e }}</span>{% endif %}
+        {% if duration %}<span>Duration: {{ (duration // 60) }}m {{ (duration % 60) }}s</span>{% endif %}
+        {# yt-dlp hands back YYYYMMDD; show it the way the rest of the app does. #}
+        {% if upload_date %}<span>Uploaded: {{ upload_date[:4] }}-{{ upload_date[4:6] }}-{{ upload_date[6:8] }}</span>{% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="flex items-center gap-2 flex-wrap">
+    <button type="button"
+            class="btn btn-ghost btn-sm"
+            hx-get="/videos/add-modal?url={{ url|urlencode }}"
+            hx-target="closest .cr-modal-body"
+            hx-swap="innerHTML">
+      Back
+    </button>
+    <button type="submit" class="btn btn-primary" id="add-video-step2-submit">
+      Add &amp; Download
+    </button>
+    <span id="add-video-step2-spinner" class="htmx-indicator">Queueing…</span>
+  </div>
+</form>

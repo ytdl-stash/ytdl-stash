@@ -6,9 +6,10 @@ import math
 import os
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import asc, desc, func, or_, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,9 +18,15 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.download_control import download_control
 from app.download_progress import download_progress
+from app.downloader import (
+    PLAYLIST_URL_ERROR,
+    _parse_date,
+    async_extract_single_video_metadata,
+)
 from app.main import templates
 from app.models import Channel, Video
 from app.pipeline import generate_for_scene, hard_reset_video
+from app.singles import get_or_create_singles_channel
 from app.stash_client import StashClient
 
 logger = logging.getLogger(__name__)
@@ -194,6 +201,213 @@ async def active_downloads(
             "download_progress": progress_map,
             "settings": settings,
         },
+    )
+
+
+def _add_step1_response(
+    request: Request,
+    url: str = "",
+    error_message: str | None = None,
+    duplicate_video: Video | None = None,
+    try_as_channel: bool = False,
+):
+    """Render step 1 of the Add Video wizard (also used for every error state)."""
+    return templates.TemplateResponse(
+        "videos/_add_step1.html",
+        {
+            "request": request,
+            "url": url,
+            "error_message": error_message,
+            "duplicate_video": duplicate_video,
+            "try_as_channel": try_as_channel,
+        },
+    )
+
+
+def _url_variants(url: str) -> set[str]:
+    """The equivalent spellings of one video URL.
+
+    Channel scans record whatever the extractor emitted — often ``http://`` and
+    a ``www.`` host — while a pasted URL usually carries the browser's
+    ``https://``.  Comparing a handful of exact variants keeps the lookup on an
+    index instead of resorting to a LIKE scan.
+    """
+    variants = {url}
+    for u in list(variants):
+        if u.startswith("https://"):
+            variants.add("http://" + u[len("https://"):])
+        elif u.startswith("http://"):
+            variants.add("https://" + u[len("http://"):])
+    for u in list(variants):
+        if "://www." in u:
+            variants.add(u.replace("://www.", "://", 1))
+        else:
+            variants.add(u.replace("://", "://www.", 1))
+    return variants
+
+
+async def _find_tracked_video(db: AsyncSession, *, url: str | None = None,
+                              site_video_id: str | None = None) -> Video | None:
+    """Look up an already-tracked video by URL or by site_video_id.
+
+    Both columns are checked against the URL variants because a channel scan
+    stores the URL *as* the site_video_id on sites whose flat entries carry no
+    ID (PornHub, xHamster), while single-video extraction returns the real one.
+    """
+    conditions = []
+    if url:
+        variants = _url_variants(url)
+        conditions.append(Video.url.in_(variants))
+        conditions.append(Video.site_video_id.in_(variants))
+    if site_video_id:
+        conditions.append(Video.site_video_id == site_video_id)
+        conditions.append(Video.url == site_video_id)
+    if not conditions:
+        return None
+    result = await db.execute(select(Video).where(or_(*conditions)))
+    return result.scalars().first()
+
+
+@router.get("/add-modal")
+async def add_video_modal_body(request: Request, url: str = ""):
+    """HTMX partial: step 1 of the Add Video wizard (URL entry)."""
+    return _add_step1_response(request, url=url)
+
+
+@router.post("/preview")
+async def single_video_preview(
+    request: Request,
+    # Defaulted rather than required so a missing field renders the friendly
+    # error in the modal instead of swapping a raw 422 body into it.
+    url: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Scrape metadata for one video URL and return step 2 (confirm). Errors re-render step 1."""
+    url = url.strip()
+    if not url:
+        return _add_step1_response(request, error_message="URL is required.")
+    if not url.startswith(("http://", "https://")):
+        return _add_step1_response(
+            request, url=url, error_message="Enter a full video URL starting with http:// or https://."
+        )
+
+    # Cheap URL check before spending a yt-dlp round-trip.
+    existing = await _find_tracked_video(db, url=url)
+    if existing is not None:
+        return _add_step1_response(request, url=url, duplicate_video=existing)
+    # Extraction can take minutes on a slow site; don't hold the connection
+    # (and its WAL read snapshot) open across it.
+    await db.rollback()
+
+    try:
+        meta = await async_extract_single_video_metadata(url, settings)
+    except Exception as e:
+        logger.debug("Single video preview failed for %s: %s", url, e, exc_info=True)
+        message = str(e)
+        return _add_step1_response(
+            request,
+            url=url,
+            error_message=f"Could not read this video: {message}",
+            try_as_channel=PLAYLIST_URL_ERROR in message,
+        )
+
+    site_video_id = meta["id"] or meta["webpage_url"] or url
+    existing = await _find_tracked_video(db, site_video_id=site_video_id)
+    if existing is not None:
+        return _add_step1_response(request, url=url, duplicate_video=existing)
+
+    return templates.TemplateResponse(
+        "videos/_add_step2.html",
+        {
+            "request": request,
+            "url": meta["webpage_url"],
+            "site_video_id": site_video_id,
+            "title": meta["title"],
+            "duration": meta["duration"],
+            "upload_date": meta["upload_date"],
+            "thumbnail": meta["thumbnail"],
+            "uploader": meta["uploader"],
+        },
+    )
+
+
+@router.post("")
+async def add_single_video(
+    request: Request,
+    url: str = Form(""),
+    site_video_id: str = Form(""),
+    title: str = Form(""),
+    duration_seconds: str = Form(""),
+    upload_date: str = Form(""),
+    thumbnail_url: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a single video (owned by the hidden singles channel) with status=pending.
+
+    The download processor picks up any pending video on its next tick, so no
+    explicit queueing is needed.
+    """
+    # Truncate to the column widths up front so the dedup checks below compare
+    # the same strings that get stored.
+    url = url.strip()[:2048]
+    site_video_id = site_video_id.strip()[:255]
+    if not url or not site_video_id:
+        return _add_step1_response(
+            request, url=url, error_message="Missing video details — please preview the URL again."
+        )
+    if not url.startswith(("http://", "https://")):
+        return _add_step1_response(
+            request, url=url, error_message="Enter a full video URL starting with http:// or https://."
+        )
+
+    # Re-check: the row may have appeared between preview and confirm.
+    existing = await _find_tracked_video(db, url=url, site_video_id=site_video_id)
+    if existing is not None:
+        return _add_step1_response(request, url=url, duplicate_video=existing)
+
+    try:
+        duration = int(duration_seconds)
+    except ValueError:
+        duration = None
+
+    channel = await get_or_create_singles_channel(db)
+    video = Video(
+        channel_id=channel.id,
+        site_video_id=site_video_id,
+        title=(title.strip() or url)[:500],
+        url=url,
+        upload_date=_parse_date(upload_date) if upload_date else None,
+        duration_seconds=duration if duration and duration > 0 else None,
+        thumbnail_url=(thumbnail_url or None) and thumbnail_url[:2048],
+        status="pending",
+    )
+    db.add(video)
+    try:
+        # Commit here so the download processor's own session sees the row.
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = await _find_tracked_video(db, url=url, site_video_id=site_video_id)
+        if existing is not None:
+            return _add_step1_response(request, url=url, duplicate_video=existing)
+        return _add_step1_response(
+            request, url=url,
+            error_message="That video conflicts with one already in the library.",
+        )
+    except SQLAlchemyError:
+        # A locked database would otherwise 500, and htmx doesn't swap those —
+        # the button would appear to do nothing.
+        await db.rollback()
+        logger.exception("Failed to add single video %s", url)
+        return _add_step1_response(
+            request, url=url,
+            error_message="Could not save the video — the database was busy. Try again.",
+        )
+
+    logger.info("Added single video %s: %s", video.id, url)
+    return templates.TemplateResponse(
+        "videos/_add_success.html", {"request": request, "video": video}
     )
 
 

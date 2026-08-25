@@ -22,6 +22,7 @@ from app.downloader import (
 )
 from app.models import Channel, Video
 from app.performer_sync import is_placeholder_name
+from app.singles import SINGLES_CHANNEL_URL
 from app.stash_client import StashClient, _normalize_performer_name
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,28 @@ async def _process_channel_scan_locked(
         if v.title:
             title_to_video[v.title] = v
 
+    # ------------------------------------------------------------------
+    # Dedup against singles by URL.  site_video_id is whatever the extractor
+    # yields for a flat entry — the real video ID on some sites, the URL on
+    # others — so a video added by URL to the singles channel can carry an ID
+    # this scan will never match.  The URL is stable across extraction modes,
+    # so use it to avoid downloading the same video a second time.
+    #
+    # Deliberately limited to the singles channel: videos parked in the YTDLM
+    # orphan channel should still be picked up by their real channel's scan.
+    # ------------------------------------------------------------------
+    singles_urls: set[str] = set()
+    entry_urls = [
+        u for u in (e.get("url") or e.get("webpage_url") for e in entries) if u
+    ]
+    if entry_urls and channel.url != SINGLES_CHANNEL_URL:
+        singles_result = await db.execute(
+            select(Video.url)
+            .join(Channel, Video.channel_id == Channel.id)
+            .where(Video.url.in_(entry_urls), Channel.url == SINGLES_CHANNEL_URL)
+        )
+        singles_urls = set(singles_result.scalars().all())
+
     # Pre-compute filter thresholds from channel settings
     min_upload_date: date | None = None
     if channel.max_video_age_days is not None:
@@ -133,6 +156,7 @@ async def _process_channel_scan_locked(
     backfilled = 0
     skipped_age = 0
     skipped_duration = 0
+    skipped_single = 0
     for entry in entries:
         site_video_id = (
             str(entry["id"]) if entry.get("id") is not None else None
@@ -143,6 +167,12 @@ async def _process_channel_scan_locked(
 
         # Primary dedup: exact site_video_id match (normal case)
         if site_video_id in existing_ids:
+            continue
+
+        # Already added as a single video: leave it there rather than
+        # downloading a second copy.
+        if str(url) in singles_urls:
+            skipped_single += 1
             continue
 
         # Secondary dedup: match by URL or title against existing channel
@@ -210,6 +240,8 @@ async def _process_channel_scan_locked(
         parts.append(f"skipped {skipped_age} too old")
     if skipped_duration:
         parts.append(f"skipped {skipped_duration} too short")
+    if skipped_single:
+        parts.append(f"skipped {skipped_single} already added as single videos")
     logger.info("Channel %s: %s", channel.id, ", ".join(parts))
     return new_count
 

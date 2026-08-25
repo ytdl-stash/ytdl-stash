@@ -1,11 +1,21 @@
 <form hx-post="/channels/preview/link"
-      hx-target="#add-channel-modal-body"
+      hx-target="closest .cr-modal-body"
       hx-swap="innerHTML"
       hx-indicator="#add-step2-spinner"
       class="space-y-4">
   {% if video_count is defined and video_count == 0 %}
-  <div class="alert alert-warning text-sm">
-    <span>No videos found at this URL. If this is a profile page, try appending <code>/videos</code> to the URL.</span>
+  <div class="alert alert-warning text-sm flex-col items-start gap-2">
+    <span>No videos found at this URL. If this is a profile page, try appending <code>/videos</code> to the URL. If it's a single video, add it as one instead.</span>
+    {# type="button" so it doesn't submit the channel form; hx-include picks up
+       the hidden url input without nesting a second form. #}
+    <button type="button"
+            class="btn btn-outline btn-xs"
+            hx-post="/videos/preview"
+            hx-include="closest form"
+            hx-target="closest .cr-modal-body"
+            hx-swap="innerHTML">
+      Add as single video instead
+    </button>
   </div>
   {% endif %}
   <input type="hidden" name="url" value="{{ url|e }}">
@@ -49,7 +59,7 @@
     <button type="button"
             class="link link-hover text-sm btn btn-ghost btn-sm"
             hx-get="/channels/add-modal?url={{ url|urlencode }}"
-            hx-target="#add-channel-modal-body"
+            hx-target="closest .cr-modal-body"
             hx-swap="innerHTML">
       Back
     </button>

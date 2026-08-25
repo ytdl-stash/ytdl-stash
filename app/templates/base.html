@@ -38,6 +38,16 @@
               hx-on::after-request="document.getElementById('add-channel-modal').showModal()">
         + Add Channel
       </button>
+      <button type="button"
+              class="btn btn-sm btn-info tooltip tooltip-bottom"
+              data-tip="Download a single video by URL — no channel is watched"
+              hx-get="/videos/add-modal"
+              hx-target="#add-video-modal-body"
+              hx-swap="innerHTML"
+              hx-trigger="click"
+              hx-on::after-request="document.getElementById('add-video-modal').showModal()">
+        + Add Video
+      </button>
       <span class="cr-status"
             hx-get="/jobs/system-status"
             hx-trigger="every 30s"
@@ -66,12 +76,17 @@
   {% block content %}{% endblock %}
 </main>
 
-{# Add Channel modal — available on every page so the persistent nav button works. #}
+{# Add Channel / Add Video modals — available on every page so the persistent nav buttons work. #}
 {% include "channels/_add_modal.html" %}
+{% include "videos/_add_modal.html" %}
 <script>
   document.body.addEventListener('closeAddChannelModal', function () {
-    var modal = document.getElementById('add-channel-modal');
-    if (modal) modal.close();
+    // The channel wizard can also run inside the Add Video modal (the
+    // "Add as channel instead" handoff), so close whichever one is open.
+    ['add-channel-modal', 'add-video-modal'].forEach(function (id) {
+      var m = document.getElementById(id);
+      if (m && m.open) m.close();
+    });
     // The new channel card renders into #channel-grid, which only exists on the
     // Channels page. When the modal was opened from elsewhere (persistent nav
     // button), send the user to /channels so they can see the result.
